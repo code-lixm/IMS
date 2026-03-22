@@ -154,6 +154,32 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
     return ok({ items: rows.map(r => ({ ...r, parsedData: r.parsedDataJson ? JSON.parse(r.parsedDataJson) : null })) });
   }
 
+  const resumeMatch = path.match(/^\/api\/resumes\/([^/]+)$/);
+  if (resumeMatch && request.method === "GET") {
+    const id = resumeMatch[1];
+    const [row] = await db.select().from(resumes).where(eq(resumes.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "resume not found", 404);
+    return ok({ ...row, parsedData: row.parsedDataJson ? JSON.parse(row.parsedDataJson) : null });
+  }
+
+  const resumeDownloadMatch = path.match(/^\/api\/resumes\/([^/]+)\/download$/);
+  if (resumeDownloadMatch && request.method === "GET") {
+    const id = resumeDownloadMatch[1];
+    const [row] = await db.select().from(resumes).where(eq(resumes.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "resume not found", 404);
+    const { statSync, existsSync } = await import("node:fs");
+    if (!existsSync(row.filePath)) return fail("NOT_FOUND", "file not found on disk", 404);
+    const stat = statSync(row.filePath);
+    const file = Bun.file(row.filePath);
+    return new Response(file, {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(row.fileName ?? "resume")}"`,
+        "Content-Length": String(stat.size),
+      },
+    });
+  }
+
   // Interviews
   const intCandMatch = path.match(/^\/api\/candidates\/([^/]+)\/interviews$/);
   if (intCandMatch && request.method === "GET") {
@@ -304,7 +330,7 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
     if (!body.candidateId) return fail("VALIDATION_ERROR", "candidateId is required", 422);
     if (!(await candidateOrFail(body.candidateId))) return fail("NOT_FOUND", "candidate not found", 404);
     try {
-      const { statSync } = await import("node:fs");
+      const { statSync, existsSync } = await import("node:fs");
       const filePath = await exportCandidate(body.candidateId);
       return ok({ filePath, fileSize: statSync(filePath).size });
     } catch (err) { return fail("SHARE_EXPORT_FAILED", (err as Error).message, 500); }
