@@ -1,9 +1,20 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for interview manager desktop app",
+  "description": "Default capability for Interview Manager desktop app",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-set-focus",
+    "core:window:allow-is-visible",
+    "core:event:default",
+    "shell:allow-open",
+    "deep-link:default"
   ]
 }

@@ -17,7 +17,7 @@
 | IMR 导入/导出 | ✅ 完成 | server/src/services/imr/ |
 | 局域网共享 | ✅ 完成 | server/src/services/share/ |
 | 前端界面 | ✅ 完成 | web/public/index.html |
-| Tauri 桌面壳 | 🔲 待做 | src-tauri/ |
+| Tauri 桌面壳 | ✅ 完成 | src-tauri/ |
 | 远程系统适配 | 🔲 待做 | stub — 依赖公司内部 API |
 
 ---

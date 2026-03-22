@@ -779,8 +779,26 @@ function debounce(fn, ms = 300) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // Boot
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Listen for .imr file opened via file association or deep link
+window.__TAURI__?.event?.listen?.("imr-file-opened", (event) => {
+  const filePath = (event.payload as string) || "";
+  if (filePath && confirm(`检测到 .imr 文件：\n${filePath}\n\n是否导入？`)) {
+    api("/share/import", {
+      method: "POST",
+      body: JSON.stringify({ filePath }),
+    })
+      .then(() => {
+        alert("导入成功！");
+        navigate("candidates");
+      })
+      .catch((err) => alert("导入失败: " + err.message));
+  }
+});
 
 navigate("candidates");
 </script>
