@@ -4,6 +4,7 @@ import { config } from "./config";
 import "./db";
 import { route } from "./routes";
 import { OpenCodeManager } from "./services/opencode-manager";
+import { syncManager } from "./services/sync-manager";
 
 const opencode = new OpenCodeManager();
 
@@ -30,6 +31,7 @@ const server = Bun.serve({
 });
 
 const shutdown = async () => {
+  syncManager.stop();
   server.stop();
   await opencode.stop();
   process.exit(0);

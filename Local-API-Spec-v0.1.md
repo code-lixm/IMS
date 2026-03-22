@@ -1127,6 +1127,7 @@
 | `IMPORT_SAVE_FAILED` | 500 | 文件保存失败 |
 | `IMPORT_INDEX_FAILED` | 500 | 索引建立失败 |
 | `WORKSPACE_CREATE_FAILED` | 503 | 工作台创建失败 |
+| `SHARE_EXPORT_FAILED` | 500 | 导出 IMR 包失败 |
 | `SHARE_DEVICE_OFFLINE` | 503 | 目标设备不在线 |
 | `SHARE_CONFLICT_DETECTED` | 409 | 共享冲突（候选人信息冲突） |
 | `SHARE_IMPORT_FAILED` | 422 | 导入 IMR 包失败 |

@@ -1,4 +1,11 @@
 import { and, desc, eq, like, ne, or, isNull } from "drizzle-orm";
+import { syncManager } from "./services/sync-manager";
+import { processFile } from "./services/import/pipeline";
+import { exportCandidate } from "./services/imr/exporter";
+import { importIpmr } from "./services/imr/importer";
+import { getDiscovery } from "./services/share/discovery";
+import { sendToDevice } from "./services/share/transfer";
+import { config } from "./config";
 import {
   type OpenCodeManager,
 } from "./services/opencode-manager";
@@ -150,16 +157,26 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   // -------------------------------------------------------------------------
   if (path === "/api/sync/toggle" && request.method === "POST") {
     const body = (await parseJson<{ enabled: boolean }>(request)) ?? { enabled: false };
-    return ok({ enabled: Boolean(body.enabled), intervalMs: 5000 });
+    if (body.enabled) {
+      syncManager.start(5000);
+    } else {
+      syncManager.stop();
+    }
+    const s = syncManager.status();
+    return ok({ enabled: s.enabled, intervalMs: s.intervalMs });
   }
 
   if (path === "/api/sync/status" && request.method === "GET") {
-    return ok({ enabled: false, intervalMs: 5000, lastSyncAt: null, lastError: null });
+    return ok(syncManager.status());
   }
 
   if (path === "/api/sync/run" && request.method === "POST") {
-    // TODO: implement real remote sync
-    return ok({ syncedCandidates: 0, syncedInterviews: 0, syncAt: now() });
+    try {
+      const result = await syncManager.runOnce();
+      return ok({ ...result, syncAt: syncManager.getLastSyncAt() ?? now() });
+    } catch (err) {
+      return fail("REMOTE_SYNC_FAILED", (err as Error).message, 502);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -555,21 +572,53 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
     }
 
     const id = `batch_${crypto.randomUUID()}`;
+    const ts = now();
+
+    // Create batch record
     await db.insert(importBatches).values({
       id,
-      status: "queued",
+      status: "processing",
       sourceType: null,
-      currentStage: null,
+      currentStage: "processing",
       totalFiles: body.paths.length,
       processedFiles: 0,
       successFiles: 0,
       failedFiles: 0,
       autoScreen: body.autoScreen ?? false,
-      createdAt: now(),
+      createdAt: ts,
+      startedAt: ts,
     });
 
-    // TODO: enqueue actual processing job
-    return ok({ id, status: "queued", totalFiles: body.paths.length, autoScreen: body.autoScreen ?? false, createdAt: now() }, { status: 201 });
+    // Create file tasks and kick off background processing
+    for (const filePath of body.paths) {
+      const taskId = `task_${crypto.randomUUID()}`;
+      const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+      const fileType = ["pdf", "png", "jpg", "jpeg", "webp"].includes(ext) ? ext : "unknown";
+
+      await db.insert(importFileTasks).values({
+        id: taskId,
+        batchId: id,
+        originalPath: filePath,
+        normalizedPath: null,
+        fileType,
+        status: "queued",
+        stage: null,
+        errorCode: null,
+        errorMessage: null,
+        candidateId: null,
+        resultJson: null,
+        retryCount: 0,
+        createdAt: ts,
+        updatedAt: ts,
+      });
+
+      // Process in background (fire and forget)
+      void processFile(taskId, filePath, fileType as "pdf" | "png" | "jpg" | "jpeg" | "webp" | "unknown").catch(
+        (err) => console.error(`[import] file processing error: ${err.message}`)
+      );
+    }
+
+    return ok({ id, status: "processing", totalFiles: body.paths.length, autoScreen: body.autoScreen ?? false, createdAt: ts }, { status: 201 });
   }
 
   const batchMatch = path.match(/^\/api\/import\/batches\/([^/]+)$/);
@@ -612,14 +661,28 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   // Share
   // -------------------------------------------------------------------------
   if (path === "/api/share/devices" && request.method === "GET") {
-    return ok({ recentContacts: [], onlineDevices: [] });
+    const discovery = getDiscovery("Interview-Manager", config.port);
+    const online = discovery.getDevices();
+    return ok({
+      recentContacts: [], // TODO: load from share records
+      onlineDevices: online.map((d) => ({
+        id: d.deviceId,
+        name: d.deviceName,
+        ip: d.ip,
+        port: d.apiPort,
+      })),
+    });
   }
 
   if (path === "/api/share/discover/start" && request.method === "POST") {
+    const discovery = getDiscovery("Interview-Manager", config.port);
+    await discovery.startDiscovery();
     return ok({ status: "discovering" });
   }
 
   if (path === "/api/share/discover/stop" && request.method === "POST") {
+    const discovery = getDiscovery("Interview-Manager", config.port);
+    await discovery.stopDiscovery();
     return ok({ status: "stopped" });
   }
 
@@ -627,32 +690,51 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
     const body = await parseJson<{ candidateId: string }>(request);
     if (!body.candidateId) return fail("VALIDATION_ERROR", "candidateId is required", 422);
     if (!(await candidateOrFail(body.candidateId))) return fail("NOT_FOUND", "candidate not found", 404);
-    // TODO: generate .imr
-    return ok({ filePath: "", fileSize: 0 });
+    try {
+      const filePath = await exportCandidate(body.candidateId);
+      const { statSync } = await import("node:fs");
+      const fileSize = statSync(filePath).size;
+      return ok({ filePath, fileSize });
+    } catch (err) {
+      return fail("SHARE_EXPORT_FAILED", (err as Error).message, 500);
+    }
   }
 
   if (path === "/api/share/send" && request.method === "POST") {
-    const body = await parseJson<{ candidateId: string; target: { ip: string; port: number; deviceId?: string; name: string } }>(request);
-    if (!body.candidateId || !body.target) return fail("VALIDATION_ERROR", "candidateId and target are required", 422);
-    const recordId = `share_${crypto.randomUUID()}`;
-    await db.insert(shareRecords).values({
-      id: recordId,
-      type: "send",
-      candidateId: body.candidateId,
-      targetDeviceJson: JSON.stringify(body.target),
-      status: "pending",
-      createdAt: now(),
-    });
-    // TODO: actual transfer
-    await db.update(shareRecords).set({ status: "success", completedAt: now() }).where(eq(shareRecords.id, recordId));
-    return ok({ recordId, status: "success", transferredAt: now() });
+    const body = await parseJson<{
+      candidateId: string;
+      target: { ip: string; port: number; deviceId?: string; name: string };
+    }>(request);
+    if (!body.candidateId || !body.target) {
+      return fail("VALIDATION_ERROR", "candidateId and target are required", 422);
+    }
+    if (!(await candidateOrFail(body.candidateId))) {
+      return fail("NOT_FOUND", "candidate not found", 404);
+    }
+
+    // Generate .imr then transfer
+    try {
+      const imrPath = await exportCandidate(body.candidateId);
+      const result = await sendToDevice(body.candidateId, body.target as any, imrPath);
+      return ok({
+        recordId: result.recordId,
+        status: result.success ? "success" : "failed",
+        error: result.error,
+        transferredAt: result.success ? Date.now() : null,
+      });
+    } catch (err) {
+      return fail("SHARE_DEVICE_OFFLINE", (err as Error).message, 503);
+    }
   }
 
   if (path === "/api/share/import" && request.method === "POST") {
     const body = await parseJson<{ filePath: string }>(request);
     if (!body.filePath) return fail("VALIDATION_ERROR", "filePath is required", 422);
-    // TODO: validate and import .imr
-    return ok({ recordId: "", result: "merged", candidateId: "", mergedFields: [] });
+    const result = await importIpmr(body.filePath);
+    if (result.result === "failed") {
+      return fail("SHARE_IMPORT_FAILED", result.error, 422);
+    }
+    return ok(result);
   }
 
   if (path === "/api/share/records" && request.method === "GET") {
