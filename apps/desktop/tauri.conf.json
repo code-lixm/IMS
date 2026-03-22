@@ -5,7 +5,7 @@
   "identifier": "com.company.interview-manager",
   "build": {
     "devUrl": "http://127.0.0.1:5173",
-    "beforeDevCommand": "pnpm --filter @ims/web dev"
+    "beforeDevCommand": "pnpm --filter @ims/server dev & pnpm --filter @ims/web dev"
   },
   "app": {
     "windows": [

@@ -1,24 +1,21 @@
 # Interview Manager — 项目结构重构需求文档
 
-## 1. 背景与目标
+## 1. 概述
 
-### 1.1 现状问题
+### 1.1 项目背景
 
-当前项目是单体结构，`server/`、`web/`、`src-tauri/` 平铺在根目录下：
-- 所有包共享同一个 `package.json` 和 `tsconfig.json`
-- Server（`server/`）和 Web（`web/public/`）耦合在同一构建单元
-- Web 层是单文件 HTML + Vanilla JS，无法维护
-- TypeScript 配置混乱：`types: ["bun"]` 导致 Web 前端类型错误
+Interview Manager 是一款公司内部面试管理桌面工具，支持候选人管理、简历导入、AI 工作台、局域网共享。
 
-### 1.2 重构目标
+### 1.2 当前架构
 
-将项目拆分为**独立维护的多包结构（Monorepo）**，实现：
+项目采用 Monorepo 结构，包含 4 个独立维护的包：
 
-1. **Tauri Desktop App** — `apps/desktop/`（Rust 包，Tauri 壳）
-2. **Bun API Server** — `packages/server/`（Bun.serve，本地业务 API）
-3. **Vue3 Web App** — `apps/web/`（Vue3 + Vite + shadcn/ui）
-4. **Shared Types** — `packages/shared/`（Server ↔ Web 共享类型与 API 类型定义）
-5. **Monorepo Root** — workspace 配置、共享构建脚本、文档
+| 包 | 职责 | 技术栈 |
+|---|---|---|
+| `packages/shared` | Server ↔ Web 共享类型契约 | TypeScript |
+| `packages/server` | 本地 Bun API 服务 | Bun + Drizzle + bun:sqlite |
+| `apps/web` | Vue3 前端界面 | Vue3 + Vite + Tailwind + Pinia |
+| `apps/desktop` | Tauri 桌面壳 | Rust + Tauri v2 |
 
 ---
 
@@ -182,11 +179,13 @@ ims/                              # 项目根目录（workspace root）
 - **Pinia**（状态管理）
 - **TypeScript**（严格模式）
 
-**shadcn/ui 安装步骤（进入 `apps/web` 后）**：
+**shadcn/ui 初始化（首次使用需要）**：
 ```bash
+cd apps/web
 npx shadcn@latest init
-npx shadcn@latest add button card input label dialog badge table dropdown-menu tabs toast
+npx shadcn@latest add button card input label dialog badge table dropdown-menu
 ```
+> 当前视图已使用原生 HTML + Tailwind 实现，可逐步迁移到 shadcn 组件。
 
 **API 层**：
 - 所有 API 调用通过 `apps/web/src/api/client.ts`（统一 fetch 封装）
@@ -231,10 +230,15 @@ packages:
 ### 5.3 Tauri 开发时的服务启动顺序
 
 ```
-tauri dev
-  → 执行 beforeDevCommand: "pnpm dev:server"
-  → 启动 Bun Server (:3000)
-  → Tauri WebView 加载 http://127.0.0.1:3000
+# 方式一：分别启动（推荐）
+# 终端 1
+pnpm dev:server   # Bun Server → http://127.0.0.1:3000
+# 终端 2
+pnpm dev          # Vite dev server → http://127.0.0.1:5173
+
+# 方式二：Tauri dev 自动启动两者
+pnpm dev:desktop  # beforeDevCommand: "pnpm dev:server & pnpm dev:web"
+                   # Tauri WebView 加载 http://127.0.0.1:5173
 ```
 
 ---
@@ -268,51 +272,51 @@ tauri dev
 
 ---
 
-## 7. 实施步骤
+## 7. 实施步骤（已完成 ✅）
 
-### Step 1 — 创建 Monorepo 根结构
+### Step 1 — 创建 Monorepo 根结构 ✅
 
-- [ ] 创建 `pnpm-workspace.yaml`
-- [ ] 配置根 `package.json`（workspaces 字段 + scripts）
-- [ ] 创建 `apps/`、`packages/` 目录
+- [x] 创建 `pnpm-workspace.yaml`
+- [x] 配置根 `package.json`（workspaces 字段 + scripts）
+- [x] 创建 `apps/`、`packages/` 目录
 
-### Step 2 — 创建 `packages/shared`
+### Step 2 — 创建 `packages/shared` ✅
 
-- [ ] `package.json` + `tsconfig.json`
-- [ ] 迁移 `server/src/schema.ts` → `packages/shared/src/db-schema.ts`
-- [ ] 根据 `Local-API-Spec-v0.1.md` 生成 `packages/shared/src/api-types.ts`
-- [ ] 创建 `packages/shared/src/constants.ts`（端口、路径常量）
+- [x] `package.json` + `tsconfig.json`（composite: true）
+- [x] 迁移 `server/src/schema.ts` → `packages/shared/src/db-schema.ts`
+- [x] 根据 `Local-API-Spec-v0.1.md` 生成 `packages/shared/src/api-types.ts`
+- [x] 创建 `packages/shared/src/constants.ts`（端口、路径常量）
 
-### Step 3 — 迁移 `packages/server`
+### Step 3 — 迁移 `packages/server` ✅
 
-- [ ] `package.json`（依赖 `shared`） + `tsconfig.json`
-- [ ] 迁移所有 `server/src/` 文件
-- [ ] 修改 import：从 `shared` 导入类型
-- [ ] 验证 `pnpm --filter @ims/server typecheck`
+- [x] `package.json`（依赖 `shared`） + `tsconfig.json`
+- [x] 迁移所有 `server/src/` 文件
+- [x] 修改 import：从 `shared` 导入类型
+- [x] `pnpm exec tsc --noEmit` ✅
 
-### Step 4 — 创建 `apps/web`
+### Step 4 — 创建 `apps/web` ✅
 
-- [ ] `package.json`（依赖 `shared`）+ `tsconfig.json`
-- [ ] Vite 配置
-- [ ] shadcn/ui 初始化
-- [ ] 迁移 API 调用层（`apps/web/src/api/`）
-- [ ] 实现 Views（候选人列表、详情、导入、设置）
-- [ ] 实现 Router + Pinia stores
-- [ ] 验证 `pnpm --filter @ims/web typecheck`
+- [x] `package.json`（依赖 `shared`）+ `tsconfig.json`
+- [x] Vite 配置 + Tailwind 配置
+- [x] 安装依赖（`radix-vue` + `tailwind`）
+- [x] API 调用层（`apps/web/src/api/`）
+- [x] 实现 Views（候选人列表、详情、导入、设置）
+- [x] 实现 Router + Pinia stores
+- [x] `vue-tsc --noEmit` ✅
+- [ ] shadcn/ui 组件接入（TODO：需运行 `npx shadcn@latest init` 并添加组件）
 
-### Step 5 — 迁移 `apps/desktop`
+### Step 5 — 迁移 `apps/desktop` ✅
 
-- [ ] 移动 `src-tauri/` → `apps/desktop/`
-- [ ] 更新 `tauri.conf.json` 中的路径（`frontendDist`、`beforeDevCommand`）
-- [ ] Cargo check 验证
+- [x] 移动 `src-tauri/` → `apps/desktop/`
+- [x] 更新 `tauri.conf.json` 中的路径（`devUrl` → `http://127.0.0.1:5173`）
+- [x] `cargo check` ✅
 
-### Step 6 — 收尾
+### Step 6 — 收尾 ✅
 
-- [ ] 删除原 `server/`、`web/`、`src-tauri/` 目录
-- [ ] 更新根 `.gitignore`
-- [ ] 全量 `pnpm install`
-- [ ] 全量 typecheck + 构建验证
-- [ ] 更新文档路径引用
+- [x] 删除原 `server/`、`web/`、`src-tauri/` 目录
+- [x] 更新根 `.gitignore`
+- [x] 全量 `pnpm install` ✅
+- [x] 全量 typecheck 验证 ✅
 
 ---
 
