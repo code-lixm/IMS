@@ -6,3 +6,13 @@ runtime/
 *.db
 *.db-shm
 *.db-wal
+
+# Tauri build output
+apps/desktop/target
+
+# App-specific dirs
+packages/server/runtime/
+packages/shared/dist/
+
+# Vite build output
+apps/web/dist/

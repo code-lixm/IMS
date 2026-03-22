@@ -1,25 +1,25 @@
 {
-  "name": "interview-manager",
+  "name": "ims",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "bun run dev:server",
-    "dev:server": "bun run server/src/index.ts",
-    "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build",
-    "typecheck": "bunx tsc --noEmit"
-  },
-  "dependencies": {
-    "drizzle-orm": "^0.44.6",
-    "jszip": "^3.10.1",
-    "pdf-parse": "^2.4.5",
-    "tesseract.js": "^7.0.0"
+    "dev": "pnpm --filter @ims/web dev",
+    "dev:server": "pnpm --filter @ims/server dev",
+    "dev:desktop": "pnpm --filter @ims/desktop tauri dev",
+    "build": "pnpm --filter @ims/shared build && pnpm --filter @ims/server build && pnpm --filter @ims/web build",
+    "build:server": "pnpm --filter @ims/server build",
+    "build:web": "pnpm --filter @ims/web build",
+    "typecheck": "pnpm --filter @ims/shared check && pnpm --filter @ims/server check && pnpm --filter @ims/web check",
+    "check": "turbo run typecheck build --filter=!@ims/desktop",
+    "clean": "turbo run clean && rm -rf node_modules packages/*/node_modules apps/*/node_modules"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.1.0",
-    "@types/bun": "latest",
-    "drizzle-kit": "^0.31.4",
+    "turbo": "^2.5.3",
     "typescript": "^5.9.2"
-  }
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.9"
 }

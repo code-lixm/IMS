@@ -1,0 +1,220 @@
+/**
+ * Shared database schema types.
+ *
+ * These are plain TypeScript types mirroring the server DB schema.
+ * They are the source of truth for both the server (direct use)
+ * and the web app (API response shapes).
+ *
+ * NOTE: Drizzle schema definitions live in packages/server/src/schema.ts
+ * and import from drizzle-orm/sqlite-core. Only plain types live here.
+ */
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+export type TokenStatus = "valid" | "expired" | "unauthenticated";
+export type CandidateSource = "local" | "remote" | "hybrid";
+export type InterviewStatus = "scheduled" | "completed" | "cancelled" | "no_show";
+export type ArtifactType = "screening" | "questions" | "evaluation" | "summary";
+export type WorkspaceStatus = "active" | "degraded" | "closed";
+export type BatchStatus =
+  | "queued"
+  | "preparing"
+  | "extracting"
+  | "classifying"
+  | "processing"
+  | "indexing"
+  | "completed"
+  | "partial_success"
+  | "failed"
+  | "cancelled";
+export type FileTaskStatus =
+  | "queued"
+  | "extracting"
+  | "text_extracting"
+  | "ocr_running"
+  | "parsing"
+  | "matching_candidate"
+  | "saving"
+  | "done"
+  | "failed"
+  | "skipped";
+export type ShareType = "send" | "receive";
+export type ShareStatus = "pending" | "success" | "failed" | "conflict";
+export type NotificationType =
+  | "sync_error"
+  | "import_complete"
+  | "share_received"
+  | "token_expired"
+  | "system";
+
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+export interface User {
+  id: string;
+  name: string;
+  email: string | null;
+  tokenStatus: TokenStatus;
+  lastSyncAt: number | null;
+  settingsJson: string | null;
+}
+
+export interface Candidate {
+  id: string;
+  source: CandidateSource;
+  remoteId: string | null;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  position: string | null;
+  yearsOfExperience: number | null;
+  tagsJson: string; // JSON string array
+  deletedAt: number | null; // soft delete unix ms
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Resume {
+  id: string;
+  candidateId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  filePath: string;
+  extractedText: string | null;
+  parsedDataJson: string | null; // ParsedResume JSON
+  ocrConfidence: number | null;
+  createdAt: number;
+}
+
+export interface Interview {
+  id: string;
+  candidateId: string;
+  remoteId: string | null;
+  round: number;
+  status: InterviewStatus;
+  scheduledAt: number | null;
+  meetingLink: string | null;
+  interviewerIdsJson: string; // JSON string array
+  manualEvaluationJson: string | null; // { rating, decision, comments }
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Artifact {
+  id: string;
+  candidateId: string;
+  interviewId: string | null;
+  type: ArtifactType;
+  roundNumber: number | null;
+  currentVersion: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ArtifactVersion {
+  id: string;
+  artifactId: string;
+  version: number;
+  promptSnapshot: string | null;
+  feedbackText: string | null;
+  structuredDataJson: string | null;
+  markdownPath: string | null;
+  pdfPath: string | null;
+  createdAt: number;
+}
+
+export interface CandidateWorkspace {
+  id: string;
+  candidateId: string;
+  opencodeSessionId: string;
+  workspaceStatus: WorkspaceStatus;
+  lastAccessedAt: number;
+  createdAt: number;
+}
+
+export interface ImportBatch {
+  id: string;
+  status: BatchStatus;
+  sourceType: string | null;
+  currentStage: string | null;
+  totalFiles: number;
+  processedFiles: number;
+  successFiles: number;
+  failedFiles: number;
+  autoScreen: boolean;
+  createdAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
+}
+
+export interface ImportFileTask {
+  id: string;
+  batchId: string;
+  originalPath: string;
+  normalizedPath: string | null;
+  fileType: string | null;
+  status: FileTaskStatus;
+  stage: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  candidateId: string | null;
+  resultJson: string | null;
+  retryCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ShareRecord {
+  id: string;
+  type: ShareType;
+  candidateId: string;
+  targetDeviceJson: string | null;
+  exportFilePath: string | null;
+  status: ShareStatus;
+  resultJson: string | null;
+  createdAt: number;
+  completedAt: number | null;
+}
+
+export interface Notification {
+  id: string;
+  userId: string | null;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  readAt: number | null;
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Parsed resume shape (used in API responses)
+// ---------------------------------------------------------------------------
+
+export interface ParsedResume {
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  position: string | null;
+  yearsOfExperience: number | null;
+  skills: string[];
+  education: string[];
+  workHistory: string[];
+  rawText: string;
+}
+
+// ---------------------------------------------------------------------------
+// Device info (for LAN discovery)
+// ---------------------------------------------------------------------------
+
+export interface Device {
+  deviceId: string;
+  deviceName: string;
+  ip: string;
+  apiPort: number;
+  version: string;
+  lastSeen: number;
+}

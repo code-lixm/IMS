@@ -1,0 +1,25 @@
+{
+  "name": "@ims/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "echo 'no build step needed for bun'",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ims/shared": "workspace:*",
+    "drizzle-orm": "^0.44.6",
+    "jszip": "^3.10.1",
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.11",
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.31.4",
+    "typescript": "^5.9.2"
+  }
+}
