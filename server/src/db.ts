@@ -26,30 +26,122 @@ CREATE TABLE IF NOT EXISTS candidates (
   position TEXT,
   years_of_experience INTEGER,
   tags_json TEXT,
+  deleted_at INTEGER,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS resumes (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL REFERENCES candidates(id),
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_size INTEGER NOT NULL,
+  file_path TEXT NOT NULL,
+  extracted_text TEXT,
+  parsed_data_json TEXT,
+  ocr_confidence INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS interviews (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL REFERENCES candidates(id),
+  remote_id TEXT,
+  "round" INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  scheduled_at INTEGER,
+  meeting_link TEXT,
+  interviewer_ids_json TEXT,
+  manual_evaluation_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL REFERENCES candidates(id),
+  interview_id TEXT REFERENCES interviews(id),
+  type TEXT NOT NULL,
+  round_number INTEGER,
+  current_version INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS artifact_versions (
+  id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+  version INTEGER NOT NULL,
+  prompt_snapshot TEXT,
+  feedback_text TEXT,
+  structured_data_json TEXT,
+  markdown_path TEXT,
+  pdf_path TEXT,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS candidate_workspaces (
   id TEXT PRIMARY KEY,
-  candidate_id TEXT NOT NULL,
+  candidate_id TEXT NOT NULL REFERENCES candidates(id),
   opencode_session_id TEXT NOT NULL UNIQUE,
   workspace_status TEXT NOT NULL DEFAULT 'active',
   last_accessed_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY(candidate_id) REFERENCES candidates(id)
+  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS import_batches (
   id TEXT PRIMARY KEY,
-  status TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  source_type TEXT,
   current_stage TEXT,
   total_files INTEGER NOT NULL DEFAULT 0,
   processed_files INTEGER NOT NULL DEFAULT 0,
   success_files INTEGER NOT NULL DEFAULT 0,
   failed_files INTEGER NOT NULL DEFAULT 0,
+  auto_screen INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  started_at INTEGER,
+  completed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS import_file_tasks (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES import_batches(id),
+  original_path TEXT NOT NULL,
+  normalized_path TEXT,
+  file_type TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  stage TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  candidate_id TEXT REFERENCES candidates(id),
+  result_json TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS share_records (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  candidate_id TEXT NOT NULL REFERENCES candidates(id),
+  target_device_json TEXT,
+  export_file_path TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  result_json TEXT,
   created_at INTEGER NOT NULL,
   completed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  read_at INTEGER,
+  created_at INTEGER NOT NULL
 );
 `);
 
