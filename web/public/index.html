@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interview Manager</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0b0f19;
+        color: #ecf2ff;
+      }
+
+      .app {
+        max-width: 980px;
+        margin: 32px auto;
+        padding: 16px;
+      }
+
+      .card {
+        background: #151c2e;
+        border: 1px solid #2f3a56;
+        border-radius: 10px;
+        padding: 16px;
+        margin-top: 12px;
+      }
+
+      code {
+        background: #0f1526;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <h1>Interview Manager</h1>
+      <p>本地服务已经启动，当前是骨架页面。</p>
+
+      <div class="card">
+        <p>健康检查: <code>GET /api/health</code></p>
+        <p>候选人列表: <code>GET /api/candidates</code></p>
+        <p>创建候选人: <code>POST /api/candidates</code></p>
+        <p>OpenCode 状态: <code>GET /api/system/opencode/status</code></p>
+      </div>
+    </div>
+  </body>
+</html>
