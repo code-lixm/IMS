@@ -12,7 +12,7 @@
 | `packages/server` | ✅ 完成 | `packages/server/src/` |
 | `apps/web` (Vue3) | ✅ 完成 | `apps/web/src/` |
 | `apps/desktop` (Tauri) | ✅ 完成 | `apps/desktop/src/` |
-| 远程系统适配 | 🔲 待做 | stub — 依赖公司内部 API |
+| 远程系统适配 | ✅ 完成 | `packages/server/src/services/baobao-client.ts` |
 
 ---
 
@@ -60,8 +60,15 @@ apps/desktop
 
 ---
 
+## 已完成功能
+
+- **远程系统适配** — 已实现 `BaobaoClient`，支持连接公司内部面试系统
+  - `POST /api/auth/baobao/connect` — 连接宝巴账号
+  - `GET /api/auth/baobao/status` — 查询连接状态
+  - `POST /api/auth/baobao/disconnect` — 断开连接
+  - 简历下载 Token 机制：URL 路径中嵌入 JWT Token
+
 ## 剩余待做
 
-- **远程系统适配** — 等公司内部 API 文档，实现 `RemoteClient`
 - **shadcn/ui 组件接入** — 需在 `apps/web` 中运行 `npx shadcn@latest init`
 - **Tauri 打包签名** — 需配置 macOS/Windows 签名证书

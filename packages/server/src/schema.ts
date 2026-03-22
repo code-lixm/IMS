@@ -169,3 +169,20 @@ export const notifications = sqliteTable("notifications", {
   readAt: integer("read_at"),
   createdAt: integer("created_at").notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Remote User (Baobao)
+// ---------------------------------------------------------------------------
+export const remoteUsers = sqliteTable("remote_users", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull().default("baobao"),
+  name: text("name").notNull(),
+  username: text("username").notNull(),
+  email: text("email"),
+  remoteId: text("remote_id"),
+  token: text("token").notNull(),
+  tokenExpAt: integer("token_exp_at"),
+  userDataJson: text("user_data_json"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

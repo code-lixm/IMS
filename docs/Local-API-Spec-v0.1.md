@@ -144,6 +144,99 @@
 
 ---
 
+### `POST /api/auth/baobao/connect`
+
+连接第三方（宝巴）账号。
+
+**请求：**
+
+```json
+{
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+**响应 `200`：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "valid",
+    "user": {
+      "id": "10001",
+      "name": "张三",
+      "username": "e947fb27-e93d-485a-9c28-559e8ab395ac",
+      "email": "zhangsan@company.com"
+    },
+    "tokenExpAt": 1773898802000
+  }
+}
+```
+
+**响应 `401`：**
+
+```json
+{
+  "success": false,
+  "error": { "code": "AUTH_INVALID", "message": "Invalid baobao token" }
+}
+```
+
+---
+
+### `GET /api/auth/baobao/status`
+
+查询第三方（宝巴）账号连接状态。
+
+**响应 `200`（已连接）：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "connected": true,
+    "user": {
+      "id": "10001",
+      "name": "张三",
+      "username": "e947fb27-e93d-485a-9c28-559e8ab395ac",
+      "email": "zhangsan@company.com",
+      "userData": {}
+    },
+    "tokenExpAt": 1773898802000
+  }
+}
+```
+
+**响应 `200`（未连接）：**
+
+```json
+{
+  "success": true,
+  "data": {
+    "connected": false,
+    "user": null
+  }
+}
+```
+
+---
+
+### `POST /api/auth/baobao/disconnect`
+
+断开第三方（宝巴）账号连接。
+
+**响应 `200`：**
+
+```json
+{
+  "success": true,
+  "data": { "status": "disconnected" }
+}
+```
+
+---
+
 ## 4. 用户与同步接口
 
 ### `GET /api/me`
@@ -873,9 +966,35 @@
       { "id": "device_001", "name": "李四的电脑", "lastSeen": 1742640000000 }
     ],
     "onlineDevices": [
-      { "id": "device_002", "name": "王五的 MacBook", "ip": "192.168.1.20", "port": 3001 }
+      { "id": "device_002", "name": "王五的 MacBook", "ip": "192.168.1.20", "port": 3001, "userName": "wangwu", "userDisplayName": "王五" }
     ]
   }
+}
+```
+
+> `userName` 和 `userDisplayName` 字段表示该设备的登录用户身份，用于在局域网共享时识别是谁的设备。
+
+---
+
+### `POST /api/share/set-user-info`
+
+设置本地用户身份信息（用于局域网共享广播）。
+
+**请求：**
+
+```json
+{
+  "userName": "zhangsan",
+  "displayName": "张三"
+}
+```
+
+**响应 `200`：**
+
+```json
+{
+  "success": true,
+  "data": { "status": "updated" }
 }
 ```
 

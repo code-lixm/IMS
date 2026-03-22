@@ -5,12 +5,14 @@ import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
 import { sendToDevice } from "./services/share/transfer";
+import { BaobaoClient, setBaobaoClient, getBaobaoClient } from "./services/baobao-client";
 import { config } from "./config";
 import { db } from "./db";
 import { ok, fail } from "./utils/http";
 import {
   users, candidates, resumes, interviews, artifacts, artifactVersions,
   candidateWorkspaces, importBatches, importFileTasks, shareRecords, notifications,
+  remoteUsers,
 } from "./schema";
 import type { OpenCodeManager } from "./services/opencode-manager";
 
@@ -64,6 +66,83 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   if (path === "/api/auth/logout" && request.method === "POST") {
     await db.update(users).set({ tokenStatus: "unauthenticated" });
     return ok({ status: "logged_out" });
+  }
+
+  // Baobao Auth
+  if (path === "/api/auth/baobao/status" && request.method === "GET") {
+    const row = await db.select().from(remoteUsers).where(eq(remoteUsers.provider, "baobao")).limit(1);
+    if (!row.length) return ok({ connected: false as const, user: null });
+    const remote = row[0];
+    const isExpired = remote.tokenExpAt ? Date.now() > remote.tokenExpAt : true;
+    const userData = remote.userDataJson ? JSON.parse(remote.userDataJson) : null;
+    return ok({
+      connected: !isExpired,
+      user: { id: remote.id, name: remote.name, username: remote.username, email: remote.email, userData: userData },
+      tokenExpAt: remote.tokenExpAt,
+    });
+  }
+
+  if (path === "/api/auth/baobao/connect" && request.method === "POST") {
+    const body = await parseJson<{ token: string }>(request);
+    if (!body.token) return fail("VALIDATION_ERROR", "token is required", 422);
+
+    // Validate token by calling Baobao API
+    const client = new BaobaoClient(body.token);
+    try {
+      const response = await client.getCurrentUser();
+      if (response.errno !== 0 || !response.data?.data) {
+        return fail("AUTH_INVALID", "Invalid baobao token", 401);
+      }
+
+      const baobaoUser = response.data.data;
+      const payload = BaobaoClient.parseJwtPayload(body.token);
+      const tokenExpAt = payload?.exp ? payload.exp * 1000 : null;
+
+      // Upsert remote user
+      const existing = await db.select().from(remoteUsers).where(eq(remoteUsers.provider, "baobao")).limit(1);
+      const now = Date.now();
+
+      if (existing.length) {
+        await db.update(remoteUsers)
+          .set({ token: body.token, tokenExpAt, userDataJson: JSON.stringify(baobaoUser), updatedAt: now })
+          .where(eq(remoteUsers.provider, "baobao"));
+      } else {
+        await db.insert(remoteUsers).values({
+          id: `remote_${crypto.randomUUID()}`,
+          provider: "baobao",
+          name: baobaoUser.name,
+          username: baobaoUser.username,
+          email: baobaoUser.email,
+          remoteId: baobaoUser.id,
+          token: body.token,
+          tokenExpAt,
+          userDataJson: JSON.stringify(baobaoUser),
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      // Set global client instance
+      setBaobaoClient(client);
+
+      // Update discovery service with user info for LAN sharing
+      const discovery = getDiscovery("Interview-Manager", config.port);
+      discovery.setLocalUserInfo(baobaoUser.username, baobaoUser.name);
+
+      return ok({
+        status: "valid" as const,
+        user: { id: baobaoUser.id, name: baobaoUser.name, username: baobaoUser.username, email: baobaoUser.email },
+        tokenExpAt,
+      });
+    } catch (err) {
+      return fail("AUTH_INVALID", `Failed to validate token: ${(err as Error).message}`, 401);
+    }
+  }
+
+  if (path === "/api/auth/baobao/disconnect" && request.method === "POST") {
+    await db.delete(remoteUsers).where(eq(remoteUsers.provider, "baobao"));
+    setBaobaoClient(null);
+    return ok({ status: "disconnected" });
   }
 
   // Me
@@ -310,7 +389,14 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   if (path === "/api/share/devices" && request.method === "GET") {
     const discovery = getDiscovery("Interview-Manager", config.port);
     const online = discovery.getDevices();
-    return ok({ recentContacts: [], onlineDevices: online.map(d => ({ id: d.deviceId, name: d.deviceName, ip: d.ip, port: d.apiPort })) });
+    return ok({ recentContacts: [], onlineDevices: online.map(d => ({ id: d.deviceId, name: d.deviceName, userName: d.deviceUserName, userDisplayName: d.deviceUserDisplayName, ip: d.ip, port: d.apiPort })) });
+  }
+
+  if (path === "/api/share/set-user-info" && request.method === "POST") {
+    const body = await parseJson<{ userName?: string; displayName?: string }>(request);
+    const discovery = getDiscovery("Interview-Manager", config.port);
+    discovery.setLocalUserInfo(body.userName || "", body.displayName || body.userName || "");
+    return ok({ status: "updated" });
   }
 
   if (path === "/api/share/discover/start" && request.method === "POST") {

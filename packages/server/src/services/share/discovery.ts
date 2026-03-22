@@ -7,7 +7,14 @@ const DISCOVERY_PORT = 34567;
 const DEVICE_TTL_MS = 30_000;
 
 export interface Device {
-  deviceId: string; deviceName: string; ip: string; apiPort: number; version: string; lastSeen: number;
+  deviceId: string;
+  deviceName: string;
+  deviceUserName?: string;
+  deviceUserDisplayName?: string;
+  ip: string;
+  apiPort: number;
+  version: string;
+  lastSeen: number;
 }
 
 export class DiscoveryService {
@@ -17,6 +24,8 @@ export class DiscoveryService {
   private readonly devices = new Map<string, Device>();
   private localDeviceId: string;
   private localDeviceName: string;
+  private localUserName: string = "";
+  private localUserDisplayName: string = "";
   private localApiPort: number;
   private discovering = false;
 
@@ -24,6 +33,14 @@ export class DiscoveryService {
     this.localDeviceId = DiscoveryService.loadOrCreateDeviceId();
     this.localDeviceName = deviceName;
     this.localApiPort = apiPort;
+  }
+
+  /**
+   * Set local user info for discovery broadcast
+   */
+  setLocalUserInfo(userName: string, displayName: string): void {
+    this.localUserName = userName;
+    this.localUserDisplayName = displayName;
   }
 
   isDiscovering() { return this.discovering; }
@@ -61,18 +78,37 @@ export class DiscoveryService {
 
   private async broadcast() {
     if (!this.socket) return;
-    const payload = Buffer.from(JSON.stringify({ type: "announce", deviceId: this.localDeviceId, deviceName: this.localDeviceName, apiPort: this.localApiPort, version: "0.1.0", ts: Date.now() }));
+    const payload = Buffer.from(JSON.stringify({
+      type: "announce",
+      deviceId: this.localDeviceId,
+      deviceName: this.localDeviceName,
+      userName: this.localUserName,
+      userDisplayName: this.localUserDisplayName,
+      apiPort: this.localApiPort,
+      version: "0.1.0",
+      ts: Date.now()
+    }));
     for (const addr of ["255.255.255.255", "192.168.1.255", "192.168.0.255"]) {
       try { this.socket.send(payload, DISCOVERY_PORT, addr); } catch {}
     }
   }
 
   private handleMessage(msg: Buffer, rinfo: RemoteInfo) {
-    let data: { type: string; deviceId: string; deviceName: string; apiPort: number; version: string; ts: number };
+    let data: { type: string; deviceId: string; deviceName: string; userName?: string; userDisplayName?: string; apiPort: number; version: string; ts: number };
     try { data = JSON.parse(msg.toString()); } catch { return; }
     if (data.type !== "announce" || data.deviceId === this.localDeviceId) return;
-    this.devices.set(data.deviceId, { deviceId: data.deviceId, deviceName: data.deviceName, ip: rinfo.address, apiPort: data.apiPort, version: data.version ?? "0.1.0", lastSeen: data.ts ?? Date.now() });
-    console.log(`[discovery] found ${data.deviceName} (${rinfo.address}:${data.apiPort})`);
+    this.devices.set(data.deviceId, {
+      deviceId: data.deviceId,
+      deviceName: data.deviceName,
+      deviceUserName: data.userName,
+      deviceUserDisplayName: data.userDisplayName,
+      ip: rinfo.address,
+      apiPort: data.apiPort,
+      version: data.version ?? "0.1.0",
+      lastSeen: data.ts ?? Date.now()
+    });
+    const displayInfo = data.userDisplayName ? `${data.userDisplayName} (${data.deviceName})` : data.deviceName;
+    console.log(`[discovery] found ${displayInfo} at ${rinfo.address}:${data.apiPort}`);
   }
 
   private cleanupStale() {
