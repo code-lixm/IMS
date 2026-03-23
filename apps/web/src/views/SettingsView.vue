@@ -1,63 +1,149 @@
 <template>
-  <div class="min-h-screen flex">
-    <aside class="w-56 bg-card border-r border-border flex flex-col shrink-0">
-      <div class="p-4 font-semibold text-sm border-b border-border">📋 面试管理</div>
-      <nav class="flex-1 p-2">
-        <RouterLink to="/candidates" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-accent" active-class="bg-primary/10 text-primary font-medium">👥 候选人</RouterLink>
-        <RouterLink to="/import" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-accent" active-class="bg-primary/10 text-primary font-medium">📥 导入任务</RouterLink>
-        <RouterLink to="/settings" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-accent" active-class="bg-primary/10 text-primary font-medium">⚙️ 设置</RouterLink>
+  <div class="flex min-h-screen bg-background">
+    <!-- Sidebar -->
+    <aside class="flex w-52 shrink-0 flex-col border-r border-border bg-muted/20">
+      <div class="flex items-center gap-2 border-b border-border px-4 py-3 font-semibold text-sm">
+        <Briefcase class="h-4 w-4 text-muted-foreground" />
+        面试管理
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5">
+        <RouterLink
+          to="/candidates"
+          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+          active-class="bg-accent font-medium text-accent-foreground"
+        >
+          <User class="h-4 w-4" />
+          候选人
+        </RouterLink>
+        <RouterLink
+          to="/import"
+          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+          active-class="bg-accent font-medium text-accent-foreground"
+        >
+          <Upload class="h-4 w-4" />
+          导入任务
+        </RouterLink>
+        <RouterLink
+          to="/settings"
+          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+          active-class="bg-accent font-medium text-accent-foreground"
+        >
+          <Settings class="h-4 w-4" />
+          设置
+        </RouterLink>
       </nav>
     </aside>
 
-    <main class="flex-1 flex flex-col min-w-0">
-      <header class="h-14 border-b border-border flex items-center px-6 gap-4 shrink-0">
-        <h1 class="font-medium text-sm">设置</h1>
+    <!-- Main content -->
+    <main class="flex flex-1 flex-col min-w-0">
+      <!-- Header -->
+      <header class="flex h-14 shrink-0 items-center border-b border-border bg-muted/10 px-6">
+        <h1 class="text-sm font-medium">设置</h1>
       </header>
 
-      <div class="flex-1 overflow-auto p-6">
-        <!-- 账户 -->
-        <div class="border border-border rounded-xl p-5 mb-4">
-          <h2 class="text-sm font-semibold mb-3">账户</h2>
+      <!-- Content -->
+      <div class="flex-1 overflow-auto p-6 space-y-4">
+        <!-- Account -->
+        <Card class="p-5">
+          <h2 class="text-sm font-semibold mb-4">账户</h2>
+          <Separator class="mb-4" />
           <div v-if="authStore.status === 'valid'" class="flex items-center gap-3">
-            <span class="text-sm">✅ 已登录: {{ authStore.user?.name }}</span>
-            <button @click="logout" class="px-3 py-1.5 border border-border rounded-lg text-xs hover:bg-accent">退出登录</button>
+            <div class="flex items-center gap-2">
+              <Badge variant="secondary" class="gap-1.5">
+                <CheckCircle class="h-3 w-3" />
+                已登录
+              </Badge>
+              <span class="text-sm">{{ authStore.user?.name }}</span>
+            </div>
+            <Button variant="outline" size="sm" class="ml-auto gap-1.5" @click="logout">
+              <Power class="h-3.5 w-3.5" />
+              退出登录
+            </Button>
           </div>
           <div v-else class="flex items-center gap-3">
-            <span class="text-sm text-muted-foreground">未登录</span>
-            <button class="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90">登录</button>
+            <Badge variant="outline" class="gap-1.5 text-muted-foreground">
+              <XCircle class="h-3 w-3" />
+              未登录
+            </Badge>
+            <Button size="sm" class="ml-auto">登录</Button>
           </div>
-        </div>
+        </Card>
 
-        <!-- 同步 -->
-        <div class="border border-border rounded-xl p-5 mb-4">
-          <h2 class="text-sm font-semibold mb-3">同步</h2>
+        <!-- Sync -->
+        <Card class="p-5">
+          <h2 class="text-sm font-semibold mb-4">同步</h2>
+          <Separator class="mb-4" />
           <div class="flex items-center gap-3 mb-3">
-            <label class="flex items-center gap-2 text-sm">
-              <input type="checkbox" v-model="syncEnabled" @change="toggleSync" class="rounded" />
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                v-model="syncEnabled"
+                class="rounded border-border"
+                @change="toggleSync"
+              />
               开启自动同步
             </label>
+            <span v-if="syncStore.status.enabled" class="flex items-center gap-1 text-xs text-muted-foreground">
+              <span class="h-1.5 w-1.5 rounded-full bg-green-500" />
+              同步中
+            </span>
           </div>
-          <p class="text-xs text-muted-foreground mb-3">
-            {{ syncStore.status.lastSyncAt ? `上次同步: ${fmtTime(syncStore.status.lastSyncAt)}` : "从未同步" }}
-            <span v-if="syncStore.status.lastError" class="text-red-500 block mt-1">错误: {{ syncStore.status.lastError }}</span>
-          </p>
-          <button @click="runSyncNow" :disabled="syncStore.loading" class="px-3 py-1.5 border border-border rounded-lg text-xs hover:bg-accent disabled:opacity-50">
+          <div class="text-xs text-muted-foreground mb-3">
+            <p v-if="syncStore.status.lastSyncAt">
+              上次同步: {{ fmtTime(syncStore.status.lastSyncAt) }}
+            </p>
+            <p v-else>从未同步</p>
+            <p v-if="syncStore.status.lastError" class="text-destructive mt-1">
+              {{ syncStore.status.lastError }}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            :disabled="syncStore.loading"
+            class="gap-1.5"
+            @click="runSyncNow"
+          >
+            <RefreshCw class="h-3.5 w-3.5" :class="syncStore.loading ? 'animate-spin' : ''" />
             立即同步
-          </button>
-        </div>
+          </Button>
+        </Card>
 
         <!-- OpenCode -->
-        <div class="border border-border rounded-xl p-5">
-          <h2 class="text-sm font-semibold mb-3">🤖 OpenCode AI 引擎</h2>
-          <div class="flex items-center gap-3 mb-3">
-            <span class="w-2 h-2 rounded-full" :class="opencodeStatus.running ? 'bg-green-500' : 'bg-muted'" />
-            <span class="text-sm">{{ opencodeStatus.running ? `运行中 (${opencodeStatus.baseUrl})` : "未运行" }}</span>
+        <Card class="p-5">
+          <h2 class="text-sm font-semibold mb-4">OpenCode AI 引擎</h2>
+          <Separator class="mb-4" />
+          <div class="flex items-center gap-3 mb-4">
+            <Badge :variant="opencodeStatus.running ? 'default' : 'outline'" class="gap-1.5">
+              <component :is="opencodeStatus.running ? Wifi : WifiOff" class="h-3 w-3" />
+              {{ opencodeStatus.running ? "运行中" : "未运行" }}
+            </Badge>
+            <span v-if="opencodeStatus.running" class="text-xs text-muted-foreground">
+              {{ opencodeStatus.baseUrl }}
+            </span>
           </div>
           <div class="flex gap-2">
-            <button v-if="!opencodeStatus.running" @click="startOpencode" class="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90">启动引擎</button>
-            <button v-else @click="stopOpencode" class="px-3 py-1.5 border border-border rounded-lg text-xs hover:bg-accent">停止引擎</button>
+            <Button
+              v-if="!opencodeStatus.running"
+              size="sm"
+              class="gap-1.5"
+              @click="startOpencode"
+            >
+              <Power class="h-3.5 w-3.5" />
+              启动引擎
+            </Button>
+            <Button
+              v-else
+              variant="outline"
+              size="sm"
+              class="gap-1.5"
+              @click="stopOpencode"
+            >
+              <Power class="h-3.5 w-3.5" />
+              停止引擎
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
     </main>
   </div>
@@ -65,9 +151,25 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import {
+  Briefcase,
+  CheckCircle,
+  Power,
+  RefreshCw,
+  Settings,
+  Upload,
+  User,
+  Wifi,
+  WifiOff,
+  XCircle,
+} from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { useSyncStore } from "@/stores/sync";
 import { opencodeApi } from "@/api/opencode";
+import Badge from "@/components/ui/badge.vue";
+import Button from "@/components/ui/button.vue";
+import Card from "@/components/ui/card.vue";
+import Separator from "@/components/ui/separator.vue";
 
 const authStore = useAuthStore();
 const syncStore = useSyncStore();
@@ -78,11 +180,20 @@ onMounted(async () => {
   await authStore.checkStatus();
   await syncStore.fetchStatus();
   syncEnabled.value = syncStore.status.enabled;
-  try { opencodeStatus.value = await opencodeApi.status(); } catch {}
+  try {
+    opencodeStatus.value = await opencodeApi.status();
+  } catch {
+    // service not ready
+  }
 });
 
 function fmtTime(ts: number) {
-  return new Date(ts).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return new Date(ts).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 async function logout() {
@@ -93,7 +204,9 @@ async function toggleSync() {
   await syncStore.toggle(syncEnabled.value);
 }
 
-async function runSyncNow() { await syncStore.runNow(); }
+async function runSyncNow() {
+  await syncStore.runNow();
+}
 
 async function startOpencode() {
   opencodeStatus.value = await opencodeApi.start();

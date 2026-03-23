@@ -35,7 +35,7 @@ export const useCandidatesStore = defineStore("candidates", () => {
 
   async function remove(id: string) {
     await candidatesApi.delete(id);
-    list.value = list.value.filter((c) => c.id !== id);
+    list.value = list.value.filter((c: { id: string }) => c.id !== id);
   }
 
   return { list, loading, current, fetchList, fetchOne, create, remove };
