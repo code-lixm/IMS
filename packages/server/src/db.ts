@@ -143,7 +143,32 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at INTEGER,
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS remote_users (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT 'baobao',
+  name TEXT NOT NULL,
+  username TEXT NOT NULL,
+  email TEXT,
+  remote_id TEXT,
+  token TEXT NOT NULL,
+  cookie_json TEXT,
+  token_exp_at INTEGER,
+  user_data_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `);
+
+function ensureColumn(table: string, column: string, definition: string) {
+  const rows = sqlite.query(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>;
+  const exists = rows.some((row) => row.name === column);
+  if (!exists) {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
+  }
+}
+
+ensureColumn("remote_users", "cookie_json", "TEXT");
 
 export const db = drizzle(sqlite);
 export const rawDb = sqlite;

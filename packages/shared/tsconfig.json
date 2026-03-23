@@ -7,7 +7,9 @@
     "skipLibCheck": true,
     "composite": true,
     "declaration": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "declarationDir": "./dist",
+    "rootDir": "./src"
   },
   "include": ["src/**/*"]
 }

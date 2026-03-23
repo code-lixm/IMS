@@ -18,6 +18,7 @@ import type {
   Notification,
   Device,
   ParsedResume,
+  Agent,
 } from "./db-schema";
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,29 @@ export interface AuthCompleteData {
 
 export interface AuthLogoutData {
   status: "logged_out";
+}
+
+export interface BaobaoLoginQrData {
+  provider: "baobao";
+  imageSrc: string;
+  source: "background-image" | "element-screenshot";
+  fetchedAt: number;
+  refreshed: boolean;
+}
+
+export interface BaobaoLoginSessionStatusData {
+  provider: "baobao";
+  status: "pending" | "authenticated" | "error";
+  currentUrl: string;
+  lastCheckedAt: number;
+  error: string | null;
+  authenticated: boolean;
+  user: {
+    id: string;
+    name: string;
+    username: string;
+    email: string | null;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,10 +322,21 @@ export interface ShareSendData {
   transferredAt: number | null;
 }
 
+export interface ConflictField {
+  name: string;
+  label: string;
+  localValue: string | number | null;
+  importValue: string | number | null;
+}
+
 export interface ShareImportResult {
   result: "created" | "merged" | "conflict" | "failed";
   candidateId?: string;
   mergedFields?: string[];
+  candidateName?: string;
+  phone?: string | null;
+  email?: string | null;
+  conflicts?: ConflictField[];
   error?: string;
 }
 
@@ -339,4 +374,110 @@ export interface OpenCodeStatusData {
   host: string;
   port: number;
   crashed?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// LUI (Local AI Workbench)
+// ---------------------------------------------------------------------------
+
+export interface ConversationData {
+  id: string;
+  title: string;
+  candidateId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ConversationListData {
+  items: ConversationData[];
+}
+
+export interface ConversationDetailData {
+  conversation: ConversationData;
+  messages: MessageData[];
+  files: FileResourceData[];
+}
+
+export interface CreateConversationInput {
+  title?: string;
+  candidateId?: string;
+}
+
+export interface MessageData {
+  id: string;
+  conversationId: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  reasoning: string | null;
+  tools: unknown[] | null;
+  status: "streaming" | "error" | "complete";
+  createdAt: number;
+}
+
+export interface SendMessageInput {
+  content: string;
+  fileIds?: string[];
+}
+
+export interface FileResourceData {
+  id: string;
+  conversationId: string;
+  name: string;
+  type: "code" | "document" | "image";
+  content: string;
+  language: string | null;
+  size: number;
+  createdAt: number;
+}
+
+export interface FileResourceListData {
+  items: FileResourceData[];
+}
+
+export interface UploadFileData {
+  id: string;
+  name: string;
+  type: "code" | "document" | "image";
+  size: number;
+  content: string;
+}
+
+// ---------------------------------------------------------------------------
+// LUI - Agent
+// ---------------------------------------------------------------------------
+
+export interface AgentData {
+  id: string;
+  name: string;
+  description: string | null;
+  mode: "all" | "chat" | "ask";
+  temperature: number;
+  systemPrompt: string | null;
+  tools: string[];
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AgentListData {
+  items: AgentData[];
+}
+
+export interface CreateAgentInput {
+  name: string;
+  description?: string;
+  mode?: "all" | "chat" | "ask";
+  temperature?: number;
+  systemPrompt?: string;
+  tools?: string[];
+  isDefault?: boolean;
+}
+
+export interface UpdateAgentInput {
+  description?: string;
+  mode?: "all" | "chat" | "ask";
+  temperature?: number;
+  systemPrompt?: string;
+  tools?: string[];
+  isDefault?: boolean;
 }

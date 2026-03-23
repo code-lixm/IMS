@@ -1,57 +1,32 @@
 <template>
-  <div class="flex min-h-screen bg-background">
-    <!-- Sidebar -->
-    <aside class="flex w-52 shrink-0 flex-col border-r border-border bg-muted/20">
-      <div class="flex items-center gap-2 border-b border-border px-4 py-3 font-semibold text-sm">
-        <Briefcase class="h-4 w-4 text-muted-foreground" />
-        面试管理
-      </div>
-      <nav class="flex-1 p-2 space-y-0.5">
-        <RouterLink
-          to="/candidates"
-          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-          active-class="bg-accent font-medium text-accent-foreground"
-        >
-          <User class="h-4 w-4" />
-          候选人
-        </RouterLink>
-        <RouterLink
-          to="/import"
-          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-          active-class="bg-accent font-medium text-accent-foreground"
-        >
-          <Upload class="h-4 w-4" />
-          导入任务
-        </RouterLink>
-        <RouterLink
-          to="/settings"
-          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-          active-class="bg-accent font-medium text-accent-foreground"
-        >
-          <Settings class="h-4 w-4" />
-          设置
-        </RouterLink>
-      </nav>
-    </aside>
-
-    <!-- Main content -->
-    <main class="flex flex-1 flex-col min-w-0">
-      <!-- Header -->
-      <header class="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-muted/10 px-6">
+  <div class="min-h-screen bg-background">
+    <header class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div class="flex h-16 items-center gap-3 px-4 sm:px-6">
         <RouterLink to="/candidates">
           <Button variant="ghost" size="sm" class="gap-1.5 text-muted-foreground hover:text-foreground">
             <ArrowLeft class="h-4 w-4" />
             返回
           </Button>
         </RouterLink>
-        <Separator orientation="vertical" class="h-5" />
-        <h1 class="text-sm font-medium">
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+          <Briefcase class="h-4 w-4 text-primary" />
+        </div>
+        <h1 class="text-base font-semibold tracking-tight truncate">
           {{ store.current?.candidate?.name ?? "候选人详情" }}
         </h1>
-      </header>
+        <div class="flex-1" />
+        <div class="hidden sm:flex items-center gap-2 shrink-0">
+          <Button variant="outline" class="gap-2" @click="$router.push('/import')">
+            <Upload class="h-4 w-4" />
+            任务
+          </Button>
+          <AppUserActions />
+        </div>
+      </div>
+    </header>
 
       <!-- Loading -->
-      <div v-if="store.loading" class="flex flex-1 items-center justify-center p-6">
+      <div v-if="store.loading" class="flex items-center justify-center p-6">
         <Card class="w-full max-w-xl p-6">
           <Skeleton class="h-4 w-2/3 rounded-md mb-3" />
           <Skeleton class="h-4 w-full rounded-md mb-3" />
@@ -62,15 +37,15 @@
       <!-- Not found -->
       <div
         v-else-if="!store.current"
-        class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+        class="flex items-center justify-center p-10 text-sm text-muted-foreground"
       >
         未找到候选人
       </div>
 
       <!-- Content -->
-      <div v-else class="flex-1 overflow-auto p-6">
+      <main v-else class="p-4 sm:p-6">
         <!-- Top row: Basic info + AI workspace -->
-        <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="grid gap-4 mb-4 lg:grid-cols-2">
           <!-- Basic info card -->
           <Card class="p-5">
             <div class="flex items-center gap-2 mb-4">
@@ -127,9 +102,12 @@
             </TabsList>
 
             <TabsContent value="resumes">
-              <div v-if="!store.current.resumes.length" class="py-8 text-center text-sm text-muted-foreground">
-                暂无简历
-              </div>
+              <EmptyState
+                v-if="!store.current.resumes.length"
+                scenario="folder"
+                title="暂无简历"
+                description="该候选人还没有上传简历"
+              />
               <div v-else class="space-y-3">
                 <div
                   v-for="r in store.current.resumes"
@@ -155,9 +133,12 @@
             </TabsContent>
 
             <TabsContent value="interviews">
-              <div v-if="!store.current.interviews.length" class="py-8 text-center text-sm text-muted-foreground">
-                暂无面试记录
-              </div>
+              <EmptyState
+                v-if="!store.current.interviews.length"
+                scenario="folder"
+                title="暂无面试记录"
+                description="该候选人还没有面试记录"
+              />
               <div v-else class="space-y-3">
                 <div
                   v-for="i in store.current.interviews"
@@ -188,8 +169,7 @@
             </TabsContent>
           </Tabs>
         </Card>
-      </div>
-    </main>
+      </main>
   </div>
 </template>
 
@@ -204,21 +184,21 @@ import {
   FileText,
   MessageSquare,
   Send,
-  Settings,
   Upload,
   User,
 } from "lucide-vue-next";
 import { useCandidatesStore } from "@/stores/candidates";
 import { opencodeApi } from "@/api/opencode";
+import AppUserActions from "@/components/app-user-actions.vue";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
-import Separator from "@/components/ui/separator.vue";
 import Skeleton from "@/components/ui/skeleton.vue";
 import Tabs from "@/components/ui/tabs.vue";
 import TabsContent from "@/components/ui/tabs-content.vue";
 import TabsList from "@/components/ui/tabs-list.vue";
 import TabsTrigger from "@/components/ui/tabs-trigger.vue";
+import EmptyState from "@/components/ui/empty-state.vue";
 
 const route = useRoute();
 const store = useCandidatesStore();

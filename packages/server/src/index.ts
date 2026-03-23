@@ -1,12 +1,30 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { desc, eq } from "drizzle-orm";
 import "./db";
 import { route } from "./routes";
+import { db } from "./db";
+import { remoteUsers } from "./schema";
+import { config } from "./config";
+import { BaobaoClient, setBaobaoClient } from "./services/baobao-client";
+import { getDiscovery } from "./services/share/discovery";
 import { OpenCodeManager } from "./services/opencode-manager";
 import { syncManager } from "./services/sync-manager";
-import { config } from "./config";
 
 const opencode = new OpenCodeManager();
+
+const persistedRemote = await db
+  .select()
+  .from(remoteUsers)
+  .where(eq(remoteUsers.provider, "baobao"))
+  .orderBy(desc(remoteUsers.updatedAt))
+  .limit(1);
+
+const restoredRemote = persistedRemote[0];
+if (restoredRemote?.token) {
+  setBaobaoClient(new BaobaoClient(restoredRemote.token));
+  getDiscovery("Interview-Manager", config.port).setLocalUserInfo(restoredRemote.username, restoredRemote.name);
+}
 
 const server = Bun.serve({
   hostname: config.host,

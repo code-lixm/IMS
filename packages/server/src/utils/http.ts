@@ -9,10 +9,19 @@ function meta() {
   };
 }
 
+export function corsHeaders(headers?: HeadersInit): HeadersInit {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    ...headers,
+  };
+}
+
 export function ok<T>(data: T, extra?: { status?: number }): Response {
   return Response.json(
     { success: true as const, data, error: null, meta: meta() },
-    { status: extra?.status ?? 200 }
+    { status: extra?.status ?? 200, headers: corsHeaders() }
   );
 }
 
@@ -28,6 +37,6 @@ export function fail(
       error: { code, message },
       meta: meta(),
     },
-    { status }
+    { status, headers: corsHeaders() }
   );
 }

@@ -6,15 +6,25 @@ import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
 import { sendToDevice } from "./services/share/transfer";
 import { BaobaoClient, setBaobaoClient, getBaobaoClient } from "./services/baobao-client";
+import { clearBaobaoLoginSession, fetchBaobaoLoginQrCode, getBaobaoLoginSessionStatus } from "./services/baobao-login";
 import { config } from "./config";
 import { db } from "./db";
-import { ok, fail } from "./utils/http";
+import { corsHeaders, ok, fail } from "./utils/http";
 import {
   users, candidates, resumes, interviews, artifacts, artifactVersions,
   candidateWorkspaces, importBatches, importFileTasks, shareRecords, notifications,
-  remoteUsers,
+  remoteUsers, conversations, messages, fileResources, agents,
 } from "./schema";
 import type { OpenCodeManager } from "./services/opencode-manager";
+import { streamText } from "ai";
+import { buildCandidateContext, formatCandidateContextForPrompt } from "./services/lui-context";
+
+const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
+
+function logBaobaoAuth(stage: string, details?: Record<string, unknown>, important = false) {
+  if (!important && !DEBUG_BAOBAO) return;
+  console.log("[baobao-auth]", stage, details ?? {});
+}
 
 function parseJson<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
@@ -26,9 +36,89 @@ async function candidateOrFail(id: string) {
   return row[0];
 }
 
+async function upsertLocalUser(user: { name: string; email: string | null }) {
+  const existing = await db.select().from(users).limit(1);
+  const now = Date.now();
+
+  if (existing.length) {
+    await db.update(users)
+      .set({ name: user.name, email: user.email, tokenStatus: "valid", lastSyncAt: now })
+      .where(eq(users.id, existing[0].id));
+    return existing[0].id;
+  }
+
+  const id = `user_${crypto.randomUUID()}`;
+  await db.insert(users).values({
+    id,
+    name: user.name,
+    email: user.email,
+    tokenStatus: "valid",
+    lastSyncAt: now,
+  });
+  return id;
+}
+
+async function persistBaobaoAuth(
+  token: string,
+  baobaoUser: { id: string; name: string; username: string; email: string | null },
+  tokenExpAt: number | null,
+  cookieJson: string | null,
+) {
+  logBaobaoAuth("persist:start", {
+    userId: baobaoUser.id,
+    username: baobaoUser.username,
+    tokenExpAt,
+    hasCookies: Boolean(cookieJson),
+  }, true);
+  const existing = await db.select().from(remoteUsers).where(eq(remoteUsers.provider, "baobao")).limit(1);
+  const now = Date.now();
+
+  if (existing.length) {
+    await db.update(remoteUsers)
+      .set({
+        name: baobaoUser.name,
+        username: baobaoUser.username,
+        email: baobaoUser.email,
+        remoteId: baobaoUser.id,
+        token,
+        cookieJson,
+        tokenExpAt,
+        userDataJson: JSON.stringify(baobaoUser),
+        updatedAt: now,
+      })
+      .where(eq(remoteUsers.provider, "baobao"));
+  } else {
+    await db.insert(remoteUsers).values({
+      id: `remote_${crypto.randomUUID()}`,
+      provider: "baobao",
+      name: baobaoUser.name,
+      username: baobaoUser.username,
+        email: baobaoUser.email,
+        remoteId: baobaoUser.id,
+        token,
+        cookieJson,
+        tokenExpAt,
+        userDataJson: JSON.stringify(baobaoUser),
+        createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  await upsertLocalUser({ name: baobaoUser.name, email: baobaoUser.email });
+  setBaobaoClient(new BaobaoClient(token));
+
+  const discovery = getDiscovery("Interview-Manager", config.port);
+  discovery.setLocalUserInfo(baobaoUser.username, baobaoUser.name);
+  logBaobaoAuth("persist:done", {
+    userId: baobaoUser.id,
+    username: baobaoUser.username,
+    hasExisting: existing.length > 0,
+  }, true);
+}
+
 export async function route(request: Request, opencode: OpenCodeManager): Promise<Response> {
   if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" } });
+    return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   const url = new URL(request.url);
@@ -40,9 +130,23 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   // Auth
   if (path === "/api/auth/status" && request.method === "GET") {
     const row = await db.select().from(users).limit(1);
-    if (!row.length) return ok({ status: "unauthenticated" as const, user: null, lastValidatedAt: null });
     const u = row[0];
-    return ok({ status: u.tokenStatus as "valid" | "expired" | "unauthenticated", user: { id: u.id, name: u.name, email: u.email }, lastValidatedAt: u.lastSyncAt });
+    if (u && u.tokenStatus !== "unauthenticated") {
+      return ok({ status: u.tokenStatus as "valid" | "expired" | "unauthenticated", user: { id: u.id, name: u.name, email: u.email }, lastValidatedAt: u.lastSyncAt });
+    }
+
+    const remote = await db.select().from(remoteUsers).where(eq(remoteUsers.provider, "baobao")).limit(1);
+    if (remote.length) {
+      const item = remote[0];
+      const expired = item.tokenExpAt ? Date.now() > item.tokenExpAt : true;
+      return ok({
+        status: expired ? "expired" as const : "valid" as const,
+        user: { id: item.remoteId ?? item.id, name: item.name, email: item.email },
+        lastValidatedAt: item.updatedAt,
+      });
+    }
+
+    return ok({ status: "unauthenticated" as const, user: null, lastValidatedAt: null });
   }
 
   if (path === "/api/auth/start" && request.method === "POST") {
@@ -65,6 +169,9 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
 
   if (path === "/api/auth/logout" && request.method === "POST") {
     await db.update(users).set({ tokenStatus: "unauthenticated" });
+    await db.delete(remoteUsers).where(eq(remoteUsers.provider, "baobao"));
+    setBaobaoClient(null);
+    await clearBaobaoLoginSession();
     return ok({ status: "logged_out" });
   }
 
@@ -98,36 +205,8 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
       const payload = BaobaoClient.parseJwtPayload(body.token);
       const tokenExpAt = payload?.exp ? payload.exp * 1000 : null;
 
-      // Upsert remote user
-      const existing = await db.select().from(remoteUsers).where(eq(remoteUsers.provider, "baobao")).limit(1);
-      const now = Date.now();
-
-      if (existing.length) {
-        await db.update(remoteUsers)
-          .set({ token: body.token, tokenExpAt, userDataJson: JSON.stringify(baobaoUser), updatedAt: now })
-          .where(eq(remoteUsers.provider, "baobao"));
-      } else {
-        await db.insert(remoteUsers).values({
-          id: `remote_${crypto.randomUUID()}`,
-          provider: "baobao",
-          name: baobaoUser.name,
-          username: baobaoUser.username,
-          email: baobaoUser.email,
-          remoteId: baobaoUser.id,
-          token: body.token,
-          tokenExpAt,
-          userDataJson: JSON.stringify(baobaoUser),
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      // Set global client instance
+      await persistBaobaoAuth(body.token, baobaoUser, tokenExpAt, null);
       setBaobaoClient(client);
-
-      // Update discovery service with user info for LAN sharing
-      const discovery = getDiscovery("Interview-Manager", config.port);
-      discovery.setLocalUserInfo(baobaoUser.username, baobaoUser.name);
 
       return ok({
         status: "valid" as const,
@@ -139,9 +218,80 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
     }
   }
 
+  if (path === "/api/auth/baobao/qr" && request.method === "GET") {
+    try {
+      logBaobaoAuth("route:qr:start");
+      const qrCode = await fetchBaobaoLoginQrCode();
+      if (qrCode.authenticated) {
+        logBaobaoAuth("route:qr:authenticated", {
+          userId: qrCode.authenticated.user.id,
+          currentUrl: qrCode.currentUrl,
+        }, true);
+        await persistBaobaoAuth(
+          qrCode.authenticated.token,
+          qrCode.authenticated.user,
+          qrCode.authenticated.tokenExpAt,
+          JSON.stringify(qrCode.authenticated.cookies),
+        );
+      }
+      logBaobaoAuth("route:qr:done", {
+        currentUrl: qrCode.currentUrl,
+        source: qrCode.source,
+        refreshed: qrCode.refreshed,
+        status: qrCode.status,
+      });
+      return ok({
+        provider: "baobao" as const,
+        imageSrc: qrCode.imageSrc,
+        source: qrCode.source,
+        refreshed: qrCode.refreshed,
+        fetchedAt: Date.now(),
+      });
+    } catch (err) {
+      console.error("[baobao-auth] route:qr:error", err);
+      return fail("REMOTE_SYNC_FAILED", `Failed to load baobao QR code: ${(err as Error).message}`, 502);
+    }
+  }
+
+  if (path === "/api/auth/baobao/login-status" && request.method === "GET") {
+    logBaobaoAuth("route:login-status:start");
+    const session = await getBaobaoLoginSessionStatus();
+
+    if (session.authenticated) {
+      logBaobaoAuth("route:login-status:authenticated", {
+        userId: session.authenticated.user.id,
+        currentUrl: session.currentUrl,
+      }, true);
+      await persistBaobaoAuth(
+        session.authenticated.token,
+        session.authenticated.user,
+        session.authenticated.tokenExpAt,
+        JSON.stringify(session.authenticated.cookies),
+      );
+    }
+
+    logBaobaoAuth("route:login-status:done", {
+      status: session.status,
+      currentUrl: session.currentUrl,
+      authenticated: Boolean(session.authenticated),
+      error: session.error,
+    });
+
+    return ok({
+      provider: "baobao" as const,
+      status: session.status,
+      currentUrl: session.currentUrl,
+      lastCheckedAt: session.lastCheckedAt,
+      error: session.error,
+      authenticated: Boolean(session.authenticated),
+      user: session.authenticated?.user ?? null,
+    });
+  }
+
   if (path === "/api/auth/baobao/disconnect" && request.method === "POST") {
     await db.delete(remoteUsers).where(eq(remoteUsers.provider, "baobao"));
     setBaobaoClient(null);
+    await clearBaobaoLoginSession();
     return ok({ status: "disconnected" });
   }
 
@@ -433,6 +583,13 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
     } catch (err) { return fail("SHARE_DEVICE_OFFLINE", (err as Error).message, 503); }
   }
 
+  if (path === "/api/share/resolve" && request.method === "POST") {
+    const body = await parseJson<{ candidateId: string; strategy: "local" | "import" }>(request);
+    if (!body.candidateId || !body.strategy) return fail("VALIDATION_ERROR", "candidateId and strategy are required", 422);
+    // TODO: Apply strategy and complete the import
+    return ok({ status: "resolved", candidateId: body.candidateId, strategy: body.strategy });
+  }
+
   if (path === "/api/share/import" && request.method === "POST") {
     const body = await parseJson<{ filePath: string }>(request);
     if (!body.filePath) return fail("VALIDATION_ERROR", "filePath is required", 422);
@@ -469,6 +626,357 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   if (path === "/api/indicator" && request.method === "GET") {
     const opencodeRunning = opencode.status().running;
     return ok({ status: opencodeRunning ? "green" : "gray", reasons: opencodeRunning ? ["opencode_ready"] : ["idle"] });
+  }
+
+  // AI Chat (LUI)
+  if (path === "/api/chat" && request.method === "POST") {
+    try {
+      const body = await parseJson<{ messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> }>(request);
+      
+      const result = streamText({
+        model: 'openai/gpt-4o',
+        messages: body.messages,
+        system: `You are a helpful AI assistant for an Interview Management System. 
+You help recruiters manage candidates, schedule interviews, and analyze candidate information.
+When appropriate, you can help with:
+- Searching and filtering candidates
+- Creating interview schedules
+- Analyzing candidate resumes
+- Generating candidate evaluation reports
+Always be concise and helpful in your responses.`,
+      });
+
+      return result.toUIMessageStreamResponse();
+    } catch (err) {
+      return fail("AI_CHAT_ERROR", `Chat error: ${(err as Error).message}`, 500);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Conversations
+  // ---------------------------------------------------------------------------
+
+  // GET /api/lui/conversations - List conversations
+  if (path === "/api/lui/conversations" && request.method === "GET") {
+    const rows = await db.select().from(conversations).orderBy(desc(conversations.updatedAt));
+    return ok({ items: rows });
+  }
+
+  // POST /api/lui/conversations - Create conversation
+  if (path === "/api/lui/conversations" && request.method === "POST") {
+    const body = await parseJson<{ title?: string; candidateId?: string }>(request);
+    const now = new Date();
+    const id = `conv_${crypto.randomUUID()}`;
+    await db.insert(conversations).values({
+      id,
+      title: body.title?.trim() || `新会话 ${Date.now()}`,
+      candidateId: body.candidateId || null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return ok({ id, title: body.title?.trim() || `新会话`, candidateId: body.candidateId || null, createdAt: now.getTime(), updatedAt: now.getTime() }, { status: 201 });
+  }
+
+  // GET /api/lui/conversations/:id - Get conversation with messages and files
+  const convMatch = path.match(/^\/api\/lui\/conversations\/([^/]+)$/);
+  if (convMatch && request.method === "GET") {
+    const id = convMatch[1];
+    const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
+    if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
+
+    // Get candidate info if associated
+    let candidateInfo: { id: string; name: string; position: string | null } | null = null;
+    if (conv.candidateId) {
+      const [cand] = await db
+        .select({ id: candidates.id, name: candidates.name, position: candidates.position })
+        .from(candidates)
+        .where(eq(candidates.id, conv.candidateId))
+        .limit(1);
+      if (cand) {
+        candidateInfo = { id: cand.id, name: cand.name, position: cand.position ?? null };
+      }
+    }
+
+    const messageRows = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(messages.createdAt);
+    const fileRows = await db.select().from(fileResources).where(eq(fileResources.conversationId, id)).orderBy(desc(fileResources.createdAt));
+
+    return ok({
+      conversation: conv,
+      candidate: candidateInfo,
+      messages: messageRows.map(m => ({
+        ...m,
+        tools: m.toolsJson ? JSON.parse(m.toolsJson) : null,
+      })),
+      files: fileRows,
+    });
+  }
+
+  // DELETE /api/lui/conversations/:id - Delete conversation
+  if (convMatch && request.method === "DELETE") {
+    const id = convMatch[1];
+    const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
+    if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
+
+    // Delete associated messages and files first
+    await db.delete(messages).where(eq(messages.conversationId, id));
+    await db.delete(fileResources).where(eq(fileResources.conversationId, id));
+    await db.delete(conversations).where(eq(conversations.id, id));
+
+    return ok({ id });
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Messages (Streaming)
+  // ---------------------------------------------------------------------------
+
+  // POST /api/lui/conversations/:id/messages - Send message with streaming response
+  const msgMatch = path.match(/^\/api\/lui\/conversations\/([^/]+)\/messages$/);
+  if (msgMatch && request.method === "POST") {
+    const convId = msgMatch[1];
+    const [conv] = await db.select().from(conversations).where(eq(conversations.id, convId)).limit(1);
+    if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
+
+    const body = await parseJson<{ content: string; fileIds?: string[] }>(request);
+    if (!body.content?.trim()) return fail("VALIDATION_ERROR", "content is required", 422);
+
+    // Save user message
+    const now = new Date();
+    const msgId = `msg_${crypto.randomUUID()}`;
+    await db.insert(messages).values({
+      id: msgId,
+      conversationId: convId,
+      role: "user",
+      content: body.content.trim(),
+      status: "complete",
+      createdAt: now,
+    });
+
+    // Update conversation timestamp
+    await db.update(conversations).set({ updatedAt: now }).where(eq(conversations.id, convId));
+
+    // Build AI response using streamText
+    const historyRows = await db.select().from(messages).where(eq(messages.conversationId, convId)).orderBy(messages.createdAt);
+
+    // Build system prompt with candidate context if available
+    let systemPrompt = `You are a helpful AI assistant for an Interview Management System. 
+You help recruiters manage candidates, schedule interviews, and analyze candidate information.
+When appropriate, you can help with:
+- Searching and filtering candidates
+- Creating interview schedules
+- Analyzing candidate resumes
+- Generating candidate evaluation reports
+Always be concise and helpful in your responses.`;
+
+    if (conv.candidateId) {
+      const candidateContext = await buildCandidateContext(conv.candidateId);
+      if (candidateContext) {
+        const contextPrompt = `\n\n## Candidate Context\nYou are currently helping with candidate: ${candidateContext.candidateName}.\n${formatCandidateContextForPrompt(candidateContext)}`;
+        systemPrompt = `You are a helpful AI assistant for an Interview Management System. You are currently working with a specific candidate.\n${contextPrompt}\n\nWhen answering questions about this candidate, use the context above. Be specific and reference the candidate's information in your responses.`;
+      }
+    }
+
+    const historyMessages = historyRows.map(m => ({
+      role: m.role as "user" | "assistant" | "system",
+      content: m.content,
+    }));
+
+    // Note: Tool calling will be enabled in a future iteration
+    // For now, store tool execution results manually when AI calls tools
+    const result = streamText({
+      model: "openai/gpt-4o",
+      messages: historyMessages,
+      system: systemPrompt,
+    });
+
+    // Note: In a production app, you'd want to save the AI response to DB after streaming completes
+    return result.toUIMessageStreamResponse();
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Agents
+  // ---------------------------------------------------------------------------
+
+  // GET /api/lui/agents - List all agents
+  if (path === "/api/lui/agents" && request.method === "GET") {
+    const rows = await db.select().from(agents).orderBy(desc(agents.createdAt));
+    return ok({ items: rows });
+  }
+
+  // POST /api/lui/agents - Create agent
+  if (path === "/api/lui/agents" && request.method === "POST") {
+    const body = await parseJson<{
+      name: string;
+      description?: string;
+      mode?: string;
+      temperature?: number;
+      systemPrompt?: string;
+      tools?: string[];
+      isDefault?: boolean;
+    }>(request);
+
+    if (!body.name?.trim()) return fail("VALIDATION_ERROR", "name is required", 422);
+
+    const now = new Date();
+    const id = `agent_${crypto.randomUUID()}`;
+
+    // If setting as default, unset other defaults first
+    if (body.isDefault) {
+      await db.update(agents).set({ isDefault: false }).where(eq(agents.isDefault, true));
+    }
+
+    await db.insert(agents).values({
+      id,
+      name: body.name.trim(),
+      description: body.description || null,
+      mode: (body.mode as "all" | "chat" | "ask") || "chat",
+      temperature: body.temperature ?? 0,
+      systemPrompt: body.systemPrompt || null,
+      toolsJson: body.tools ? JSON.stringify(body.tools) : null,
+      isDefault: body.isDefault ?? false,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return ok({
+      id,
+      name: body.name.trim(),
+      description: body.description || null,
+      mode: (body.mode as "all" | "chat" | "ask") || "chat",
+      temperature: body.temperature ?? 0,
+      systemPrompt: body.systemPrompt || null,
+      tools: body.tools || [],
+      isDefault: body.isDefault ?? false,
+      createdAt: now.getTime(),
+      updatedAt: now.getTime(),
+    }, { status: 201 });
+  }
+
+  // GET /api/lui/agents/:id - Get agent
+  const agentMatch = path.match(/^\/api\/lui\/agents\/([^/]+)$/);
+  if (agentMatch && request.method === "GET") {
+    const id = agentMatch[1];
+    const [row] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "agent not found", 404);
+    return ok({
+      ...row,
+      tools: row.toolsJson ? JSON.parse(row.toolsJson) : [],
+    });
+  }
+
+  // PUT /api/lui/agents/:id - Update agent
+  if (agentMatch && request.method === "PUT") {
+    const id = agentMatch[1];
+    const [existing] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
+    if (!existing) return fail("NOT_FOUND", "agent not found", 404);
+
+    const body = await parseJson<{
+      description?: string;
+      mode?: string;
+      temperature?: number;
+      systemPrompt?: string;
+      tools?: string[];
+      isDefault?: boolean;
+    }>(request);
+
+    const now = new Date();
+
+    // If setting as default, unset other defaults first
+    if (body.isDefault) {
+      await db.update(agents).set({ isDefault: false }).where(eq(agents.isDefault, true));
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: now };
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.mode !== undefined) updates.mode = body.mode;
+    if (body.temperature !== undefined) updates.temperature = body.temperature;
+    if (body.systemPrompt !== undefined) updates.systemPrompt = body.systemPrompt;
+    if (body.tools !== undefined) updates.toolsJson = JSON.stringify(body.tools);
+    if (body.isDefault !== undefined) updates.isDefault = body.isDefault;
+
+    await db.update(agents).set(updates).where(eq(agents.id, id));
+
+    const [updated] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
+    return ok({
+      ...updated,
+      tools: updated.toolsJson ? JSON.parse(updated.toolsJson) : [],
+    });
+  }
+
+  // DELETE /api/lui/agents/:id - Delete agent
+  if (agentMatch && request.method === "DELETE") {
+    const id = agentMatch[1];
+    const [existing] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
+    if (!existing) return fail("NOT_FOUND", "agent not found", 404);
+
+    await db.delete(agents).where(eq(agents.id, id));
+    return ok({ id });
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Files
+  // ---------------------------------------------------------------------------
+
+  // GET /api/lui/files - List all files
+  if (path === "/api/lui/files" && request.method === "GET") {
+    const conversationId = url.searchParams.get("conversationId");
+    const filters = conversationId ? [eq(fileResources.conversationId, conversationId)] : [];
+    const rows = await db.select().from(fileResources).where(filters.length ? and(...filters) : undefined).orderBy(desc(fileResources.createdAt));
+    return ok({ items: rows });
+  }
+
+  // POST /api/lui/files - Upload file
+  if (path === "/api/lui/files" && request.method === "POST") {
+    try {
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+      const conversationId = formData.get("conversationId") as string | null;
+
+      if (!file) return fail("VALIDATION_ERROR", "file is required", 422);
+      if (!conversationId) return fail("VALIDATION_ERROR", "conversationId is required", 422);
+
+      const [conv] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+      if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
+
+      const content = await file.text();
+      const fileType = file.name.match(/\.(ts|js|tsx|jsx|py|go|java|cpp|c|h)$/) ? "code" :
+                       file.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/) ? "image" : "document";
+      const language = fileType === "code" ? file.name.split(".").pop() || "text" : null;
+
+      const now = new Date();
+      const id = `file_${crypto.randomUUID()}`;
+      await db.insert(fileResources).values({
+        id,
+        conversationId,
+        name: file.name,
+        type: fileType,
+        content,
+        language,
+        size: file.size,
+        createdAt: now,
+      });
+
+      return ok({ id, name: file.name, type: fileType, size: file.size, content }, { status: 201 });
+    } catch (err) {
+      return fail("INTERNAL_ERROR", `File upload error: ${(err as Error).message}`, 500);
+    }
+  }
+
+  // GET /api/lui/files/:id - Get file content
+  const fileMatch = path.match(/^\/api\/lui\/files\/([^/]+)$/);
+  if (fileMatch && request.method === "GET") {
+    const id = fileMatch[1];
+    const [row] = await db.select().from(fileResources).where(eq(fileResources.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "file not found", 404);
+    return ok({ content: row.content, name: row.name, type: row.type });
+  }
+
+  // DELETE /api/lui/files/:id - Delete file
+  if (fileMatch && request.method === "DELETE") {
+    const id = fileMatch[1];
+    const [row] = await db.select().from(fileResources).where(eq(fileResources.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "file not found", 404);
+    await db.delete(fileResources).where(eq(fileResources.id, id));
+    return ok({ id });
   }
 
   // OpenCode System

@@ -1,5 +1,5 @@
 <template>
-  <div :class="cn(badgeVariants({ variant }), props.class)">
+  <div :class="cn(badgeVariants({ variant: props.variant }), props.class)">
     <slot />
   </div>
 </template>
@@ -26,7 +26,7 @@ const badgeVariants = cva(
   },
 )
 
-interface BadgeProps extends VariantProps<typeof badgeVariants> {
+interface BadgeProps extends /* @vue-ignore */ VariantProps<typeof badgeVariants> {
   class?: HTMLAttributes["class"]
 }
 

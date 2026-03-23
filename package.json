@@ -14,8 +14,13 @@
     "clean": "turbo run clean && rm -rf node_modules packages/*/node_modules apps/*/node_modules"
   },
   "devDependencies": {
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5",
     "turbo": "^2.5.3",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "unplugin-auto-import": "^21.0.0",
+    "unplugin-vue-components": "^31.0.0"
   },
   "engines": {
     "node": ">=20",

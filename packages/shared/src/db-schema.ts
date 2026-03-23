@@ -191,6 +191,72 @@ export interface Notification {
 }
 
 // ---------------------------------------------------------------------------
+// LUI - Conversation
+// ---------------------------------------------------------------------------
+
+export interface Conversation {
+  id: string;
+  title: string;
+  candidateId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// LUI - Message
+// ---------------------------------------------------------------------------
+
+export type MessageRole = "user" | "assistant" | "system";
+export type MessageStatus = "streaming" | "error" | "complete";
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  role: MessageRole;
+  content: string;
+  reasoning: string | null;
+  toolsJson: string | null;
+  status: MessageStatus;
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// LUI - FileResource
+// ---------------------------------------------------------------------------
+
+export type FileResourceType = "code" | "document" | "image";
+
+export interface FileResource {
+  id: string;
+  conversationId: string;
+  name: string;
+  type: FileResourceType;
+  content: string;
+  language: string | null;
+  size: number;
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// LUI - Agent
+// ---------------------------------------------------------------------------
+
+export type AgentMode = "all" | "chat" | "ask";
+
+export interface Agent {
+  id: string;
+  name: string;
+  description: string | null;
+  mode: AgentMode;
+  temperature: number;
+  systemPrompt: string | null;
+  tools: string[];
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
 // Parsed resume shape (used in API responses)
 // ---------------------------------------------------------------------------
 

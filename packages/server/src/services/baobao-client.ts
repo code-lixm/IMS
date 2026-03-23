@@ -2,7 +2,7 @@
  * Baobao API Client — HTTP client for baobao.getui.com
  *
  * Base URL: https://baobao.getui.com
- * Auth: x-token header with JWT token
+ * Auth: x-token header with JWT token, or browser session cookie for login info
  *
  * Usage:
  *   const client = new BaobaoClient(token);
@@ -27,10 +27,12 @@ const PROD_API_BASE = `${BASE_URL}/prod-api`;
 
 export class BaobaoClient {
   private token: string;
+  private cookieHeader: string | null;
   private _currentUser: BaobaoLoginResponse["data"]["data"] | null = null;
 
-  constructor(token: string) {
+  constructor(token: string, options?: { cookieHeader?: string | null }) {
     this.token = token;
+    this.cookieHeader = options?.cookieHeader ?? null;
   }
 
   /**
@@ -70,6 +72,10 @@ export class BaobaoClient {
     this.token = token;
   }
 
+  setCookieHeader(cookieHeader: string | null): void {
+    this.cookieHeader = cookieHeader;
+  }
+
   /**
    * Get cached current user info (from previous API call)
    */
@@ -83,9 +89,13 @@ export class BaobaoClient {
   private async request<T>(path: string, options: {
     method?: "GET" | "POST";
     body?: Record<string, unknown> | null;
+    base?: "prod-api" | "api";
+    headers?: Record<string, string>;
+    omitTokenHeader?: boolean;
   } = {}): Promise<T> {
-    const { method = "GET", body = null } = options;
-    const url = `${PROD_API_BASE}${path}`;
+    const { method = "GET", body = null, base = "prod-api", headers: extraHeaders = {}, omitTokenHeader = false } = options;
+    const baseUrl = base === "api" ? `${BASE_URL}/api` : PROD_API_BASE;
+    const url = `${baseUrl}${path}`;
 
     const headers: Record<string, string> = {
       "accept": "application/json, text/plain, */*",
@@ -95,7 +105,16 @@ export class BaobaoClient {
       "sec-fetch-site": "same-origin",
       "sec-fetch-mode": "cors",
       "x-token": this.token,
+      ...extraHeaders,
     };
+
+    if (!body) {
+      delete headers["content-type"];
+    }
+
+    if (omitTokenHeader || !this.token) {
+      delete headers["x-token"];
+    }
 
     const response = await fetch(url, {
       method,
@@ -273,7 +292,18 @@ export class BaobaoClient {
    * Get current user info
    */
   async getCurrentUser(): Promise<BaobaoLoginResponse> {
-    const response = await this.request<BaobaoLoginResponse>("/usercenter/user/getLoginInfo");
+    const requestTime = Date.now();
+    const response = this.cookieHeader
+      ? await this.request<BaobaoLoginResponse>(`/usercenter/user/getLoginInfo?t=${requestTime}`, {
+          method: "POST",
+          base: "api",
+          omitTokenHeader: true,
+          headers: {
+            cookie: this.cookieHeader,
+            referer: `${BASE_URL}/`,
+          },
+        })
+      : await this.request<BaobaoLoginResponse>("/usercenter/user/getLoginInfo");
     if (response.data?.data) {
       this._currentUser = response.data.data;
     }

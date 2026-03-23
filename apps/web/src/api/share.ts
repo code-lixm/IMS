@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { ShareDevicesData, ShareExportData, ShareRecordListData } from "@ims/shared";
+import type { ShareDevicesData, ShareExportData, ShareRecordListData, ShareImportResult } from "@ims/shared";
 
 export const shareApi = {
   devices() { return api<ShareDevicesData>("/api/share/devices"); },
@@ -18,9 +18,15 @@ export const shareApi = {
     });
   },
   import(filePath: string) {
-    return api("/api/share/import", {
+    return api<ShareImportResult>("/api/share/import", {
       method: "POST",
       body: JSON.stringify({ filePath }),
+    });
+  },
+  resolve(candidateId: string, strategy: "local" | "import") {
+    return api("/api/share/resolve", {
+      method: "POST",
+      body: JSON.stringify({ candidateId, strategy }),
     });
   },
   records() { return api<ShareRecordListData>("/api/share/records"); },

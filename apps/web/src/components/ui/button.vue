@@ -2,7 +2,7 @@
   <Primitive
     :as="as"
     :as-child="asChild"
-    :class="cn(buttonVariants({ variant, size }), props.class)"
+    :class="cn(buttonVariants({ variant: props.variant, size: props.size }), props.class)"
   >
     <slot />
   </Primitive>
@@ -39,7 +39,7 @@ const buttonVariants = cva(
   },
 )
 
-interface ButtonProps extends VariantProps<typeof buttonVariants> {
+interface ButtonProps extends /* @vue-ignore */ VariantProps<typeof buttonVariants> {
   as?: string
   asChild?: boolean
   class?: HTMLAttributes["class"]

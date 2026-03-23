@@ -1,10 +1,14 @@
 import { createApp } from "vue";
-import { createPinia } from "pinia";
 import App from "./App.vue";
 import router from "./router";
+import { pinia } from "./stores";
+import { initTheme } from "./composables/use-theme";
 import "./styles/main.css";
+import "virtual:uno.css";
+
+initTheme();
 
 const app = createApp(App);
-app.use(createPinia());
+app.use(pinia);
 app.use(router);
 app.mount("#app");

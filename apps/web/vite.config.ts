@@ -1,12 +1,14 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { resolve } from "node:path";
+import vueDevTools from "vite-plugin-vue-devtools";
+import UnoCSS from "unocss/vite";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
-import { RadixVueReset } from "unplugin-vue-components/radix-vue";
 
 export default defineConfig({
   plugins: [
+    vueDevTools({ componentInspector: true }),
     vue(),
     AutoImport({
       imports: ["vue", "vue-router", "pinia"],
@@ -14,13 +16,9 @@ export default defineConfig({
     }),
     Components({
       dts: "src/components.d.ts",
-      resolvers: [
-        RadixVueReset({
-          prefix: "",
-        }),
-      ],
       dirs: ["src/components/ui"],
     }),
+    UnoCSS(),
   ],
   resolve: {
     alias: {

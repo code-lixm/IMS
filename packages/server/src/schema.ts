@@ -171,6 +171,61 @@ export const notifications = sqliteTable("notifications", {
 });
 
 // ---------------------------------------------------------------------------
+// LUI - Conversation
+// ---------------------------------------------------------------------------
+export const conversations = sqliteTable("conversations", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  candidateId: text("candidate_id").references(() => candidates.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// LUI - Message
+// ---------------------------------------------------------------------------
+export const messages = sqliteTable("messages", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull().references(() => conversations.id),
+  role: text("role", { enum: ["user", "assistant", "system"] }).notNull(),
+  content: text("content").notNull(),
+  reasoning: text("reasoning"),
+  toolsJson: text("tools_json"),
+  status: text("status", { enum: ["streaming", "error", "complete"] }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// LUI - FileResource
+// ---------------------------------------------------------------------------
+export const fileResources = sqliteTable("file_resources", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull().references(() => conversations.id),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["code", "document", "image"] }).notNull(),
+  content: text("content").notNull(),
+  language: text("language"),
+  size: integer("size").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// LUI - Agent
+// ---------------------------------------------------------------------------
+export const agents = sqliteTable("agents", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  mode: text("mode", { enum: ["all", "chat", "ask"] }).notNull().default("chat"),
+  temperature: integer("temperature").notNull().default(0),
+  systemPrompt: text("system_prompt"),
+  toolsJson: text("tools_json"),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // Remote User (Baobao)
 // ---------------------------------------------------------------------------
 export const remoteUsers = sqliteTable("remote_users", {
@@ -181,6 +236,7 @@ export const remoteUsers = sqliteTable("remote_users", {
   email: text("email"),
   remoteId: text("remote_id"),
   token: text("token").notNull(),
+  cookieJson: text("cookie_json"),
   tokenExpAt: integer("token_exp_at"),
   userDataJson: text("user_data_json"),
   createdAt: integer("created_at").notNull(),

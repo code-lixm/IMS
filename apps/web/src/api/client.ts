@@ -36,7 +36,8 @@ export async function api<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = path.startsWith("http") ? path : `${SERVER_BASE_URL}${path}`;
+  const baseUrl = import.meta.env.DEV ? "" : SERVER_BASE_URL;
+  const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json", ...options.headers },

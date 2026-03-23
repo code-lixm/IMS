@@ -19,8 +19,15 @@ export interface IMRCandidate {
   yearsOfExperience: number | null; tags: string[]; createdAt: number; updatedAt: number;
 }
 
+export interface ConflictInfo {
+  name: string;
+  label: string;
+  localValue: string | number | null;
+  importValue: string | number | null;
+}
+
 export type ImportResult =
   | { result: "created"; candidateId: string }
   | { result: "merged"; candidateId: string; mergedFields: string[] }
-  | { result: "conflict"; candidateId: string; conflicts: string[] }
+  | { result: "conflict"; candidateId: string; candidateName: string; phone: string | null; email: string | null; conflicts: ConflictInfo[] }
   | { result: "failed"; error: string };

@@ -1,48 +1,29 @@
 <template>
-  <div class="flex min-h-screen bg-background">
-    <!-- Sidebar -->
-    <aside class="flex w-52 shrink-0 flex-col border-r border-border bg-muted/20">
-      <div class="flex items-center gap-2 border-b border-border px-4 py-3 font-semibold text-sm">
-        <Briefcase class="h-4 w-4 text-muted-foreground" />
-        面试管理
+  <div class="min-h-screen bg-background">
+    <header class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div class="flex h-16 items-center gap-4 px-4 sm:px-6">
+        <RouterLink to="/candidates" class="flex items-center gap-2 shrink-0">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+            <Briefcase class="h-4 w-4 text-primary" />
+          </div>
+          <span class="text-lg font-semibold tracking-tight hidden sm:block">IMS</span>
+        </RouterLink>
+        <div class="flex-1" />
+        <div class="flex items-center gap-2 shrink-0">
+          <Button variant="outline" class="gap-2 hidden sm:flex" @click="$router.push('/candidates')">
+            <User class="h-4 w-4" />
+            候选人
+          </Button>
+          <Button variant="outline" class="gap-2 hidden sm:flex" @click="$router.push('/import')">
+            <Upload class="h-4 w-4" />
+            任务
+          </Button>
+          <AppUserActions />
+        </div>
       </div>
-      <nav class="flex-1 p-2 space-y-0.5">
-        <RouterLink
-          to="/candidates"
-          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-          active-class="bg-accent font-medium text-accent-foreground"
-        >
-          <User class="h-4 w-4" />
-          候选人
-        </RouterLink>
-        <RouterLink
-          to="/import"
-          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-          active-class="bg-accent font-medium text-accent-foreground"
-        >
-          <Upload class="h-4 w-4" />
-          导入任务
-        </RouterLink>
-        <RouterLink
-          to="/settings"
-          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
-          active-class="bg-accent font-medium text-accent-foreground"
-        >
-          <Settings class="h-4 w-4" />
-          设置
-        </RouterLink>
-      </nav>
-    </aside>
+    </header>
 
-    <!-- Main content -->
-    <main class="flex flex-1 flex-col min-w-0">
-      <!-- Header -->
-      <header class="flex h-14 shrink-0 items-center border-b border-border bg-muted/10 px-6">
-        <h1 class="text-sm font-medium">设置</h1>
-      </header>
-
-      <!-- Content -->
-      <div class="flex-1 overflow-auto p-6 space-y-4">
+    <main class="p-4 sm:p-6 space-y-4">
         <!-- Account -->
         <Card class="p-5">
           <h2 class="text-sm font-semibold mb-4">账户</h2>
@@ -65,7 +46,7 @@
               <XCircle class="h-3 w-3" />
               未登录
             </Badge>
-            <Button size="sm" class="ml-auto">登录</Button>
+            <Button size="sm" class="ml-auto" @click="$router.push('/login')">登录</Button>
           </div>
         </Card>
 
@@ -144,7 +125,6 @@
             </Button>
           </div>
         </Card>
-      </div>
     </main>
   </div>
 </template>
@@ -156,7 +136,6 @@ import {
   CheckCircle,
   Power,
   RefreshCw,
-  Settings,
   Upload,
   User,
   Wifi,
@@ -166,6 +145,7 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { useSyncStore } from "@/stores/sync";
 import { opencodeApi } from "@/api/opencode";
+import AppUserActions from "@/components/app-user-actions.vue";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
@@ -197,7 +177,7 @@ function fmtTime(ts: number) {
 }
 
 async function logout() {
-  await authStore.checkStatus();
+  await authStore.logout();
 }
 
 async function toggleSync() {

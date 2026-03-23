@@ -10,10 +10,13 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.47",
     "@ims/shared": "workspace:*",
+    "ai": "^6.0.135",
     "drizzle-orm": "^0.44.6",
     "jszip": "^3.10.1",
     "pdf-parse": "^1.1.1",
+    "playwright": "^1.54.2",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
