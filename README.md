@@ -10,14 +10,28 @@
 
 ## 目录
 
-- `server/src`: Bun 服务入口、路由、数据库、OpenCode 管理
-- `web/public`: 主界面占位页面
-- `src-tauri`: Tauri 桌面壳工程
-- `PRD-v0.1.md`: 产品需求文档
-- `IMR-Spec-v0.1.md`: 共享包规范
-- `Import-Pipeline-Spec-v0.1.md`: 导入流水线规范
-- `Local-API-Spec-v0.1.md`: 本地 API 规范
-- `Embedded-OpenCode-Service-Spec-v0.1.md`: 内置 OpenCode 服务设计
+```
+ims/
+├── apps/
+│   ├── web/           # Vue3 前端界面
+│   └── desktop/       # Tauri 桌面壳
+├── packages/
+│   ├── shared/        # 共享类型与 API schema
+│   └── server/        # Bun API 服务
+└── docs/              # 项目文档
+```
+
+### 文档索引
+
+| 文档 | 说明 |
+|------|------|
+| `docs/PRD.md` | 产品需求文档 |
+| `docs/Monorepo-Migration-Spec.md` | Monorepo 结构重构规范 |
+| `docs/IMR-Spec.md` | IMR 包格式规范 |
+| `docs/Local-API-Spec.md` | 本地 API 规范 |
+| `docs/Import-Pipeline-Spec.md` | 导入流水线规范 |
+| `docs/Embedded-OpenCode-Service-Spec.md` | 内置 OpenCode 服务设计 |
+| `docs/STATUS.md` | 开发进展追踪 |
 
 ## 快速启动
 
