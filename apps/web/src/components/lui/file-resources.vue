@@ -110,7 +110,10 @@
           </div>
 
           <ScrollArea class="h-[60vh] rounded-md border bg-muted/30">
-            <pre class="whitespace-pre-wrap break-all p-4 text-xs leading-5"><code>{{ previewFile.content }}</code></pre>
+            <div v-if="isMarkdownFile(previewFile)" class="p-4">
+              <div class="prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(previewFile.content)" />
+            </div>
+            <pre v-else class="whitespace-pre-wrap break-all p-4 text-xs leading-5"><code>{{ previewFile.content }}</code></pre>
           </ScrollArea>
 
           <div class="flex justify-end">
@@ -128,6 +131,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import { storeToRefs } from "pinia"
+import { marked } from "marked"
+import DOMPurify from "dompurify"
 import {
   Download,
   Eye,
@@ -190,6 +195,17 @@ function formatDate(value: Date) {
   }).format(date)
 }
 
+function isMarkdownFile(file: FileResource): boolean {
+  return file.name.toLowerCase().endsWith(".md") || 
+         file.name.toLowerCase().endsWith(".markdown") ||
+         file.language === "markdown"
+}
+
+function renderMarkdown(content: string): string {
+  const rawHtml = marked.parse(content, { async: false }) as string
+  return DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } })
+}
+
 function openPreview(file: FileResource) {
   previewFile.value = file
   previewOpen.value = true
@@ -226,7 +242,7 @@ function downloadFile(file: FileResource) {
   const link = document.createElement("a")
   link.href = objectUrl
   link.download = file.name
-  document.body.append(link)
+  document.body.appendChild(link)
   link.click()
   link.remove()
   URL.revokeObjectURL(objectUrl)

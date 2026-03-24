@@ -107,6 +107,19 @@ export const tools: Record<string, ToolDefinition> = {
       },
       required: ["inputPaths"]
     }
+  },
+
+  writeMarkdown: {
+    description: "Write markdown content to a file. Creates or overwrites the file at the specified path.",
+    parameters: {
+      type: "object",
+      properties: {
+        filePath: { type: "string", description: "Absolute or project-relative file path (must end with .md)" },
+        content: { type: "string", description: "Markdown content to write" },
+        title: { type: "string", description: "Optional title for the document" }
+      },
+      required: ["filePath", "content"]
+    }
   }
 };
 
@@ -200,6 +213,8 @@ export async function executeTool(
         inputPaths: string[]; maxConcurrency?: number; outputSummaryPath?: string;
         strictQualityGate?: boolean; keepExtractedTemp?: boolean; idempotencyKey?: string;
       }, context);
+    case "writeMarkdown":
+      return executeWriteMarkdown(args as { filePath: string; content: string; title?: string }, context);
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -337,5 +352,51 @@ async function executeBatchScreenResumes(
       word_count: 0,
       next_action: "通过"
     }))
+  }, null, 2);
+}
+
+async function executeWriteMarkdown(
+  args: { filePath: string; content: string; title?: string },
+  context: ToolContext
+): Promise<string> {
+  // Validate file path ends with .md
+  if (!args.filePath.endsWith(".md")) {
+    throw new Error("File path must end with .md extension");
+  }
+
+  // Resolve the file path
+  const resolvedPath = path.isAbsolute(args.filePath)
+    ? args.filePath
+    : path.join(context.directory, args.filePath);
+
+  // Ensure parent directory exists
+  const parentDir = path.dirname(resolvedPath);
+  await mkdir(parentDir, { recursive: true });
+
+  // Add frontmatter with title if provided
+  let content = args.content;
+  if (args.title) {
+    const frontmatter = `---
+title: "${args.title.replace(/"/g, '\\"')}"
+date: ${new Date().toISOString()}
+---
+
+`;
+    content = frontmatter + content;
+  }
+
+  // Write the file
+  await writeFile(resolvedPath, content, "utf-8");
+
+  // Get file stats
+  const stats = await stat(resolvedPath);
+
+  return JSON.stringify({
+    ok: true,
+    file_path: resolvedPath,
+    file_name: path.basename(resolvedPath),
+    size: stats.size,
+    content_length: content.length,
+    message: `Successfully wrote ${stats.size} bytes to ${resolvedPath}`
   }, null, 2);
 }

@@ -16,3 +16,4 @@ packages/shared/dist/
 
 # Vite build output
 apps/web/dist/
+.turbo/cache
