@@ -725,6 +725,38 @@ Always be concise and helpful in your responses.`,
     return ok({ id });
   }
 
+  // PUT /api/lui/conversations/:id - Update conversation metadata
+  if (convMatch && request.method === "PUT") {
+    const id = convMatch[1];
+    const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
+    if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
+
+    const body = await parseJson<{ title?: string; candidateId?: string | null }>(request);
+    if (body.candidateId) {
+      const [candidate] = await db.select({ id: candidates.id }).from(candidates).where(eq(candidates.id, body.candidateId)).limit(1);
+      if (!candidate) return fail("NOT_FOUND", "candidate not found", 404);
+    }
+
+    const nextUpdatedAt = new Date();
+    const updates: Partial<typeof conversations.$inferInsert> = {
+      updatedAt: nextUpdatedAt,
+    };
+
+    if (body.title !== undefined) {
+      updates.title = body.title.trim() || conv.title;
+    }
+    if (body.candidateId !== undefined) {
+      updates.candidateId = body.candidateId || null;
+    }
+
+    await db.update(conversations).set(updates).where(eq(conversations.id, id));
+
+    const [updated] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
+    if (!updated) return fail("NOT_FOUND", "conversation not found", 404);
+
+    return ok(updated);
+  }
+
   // ---------------------------------------------------------------------------
   // LUI - Messages (Streaming)
   // ---------------------------------------------------------------------------

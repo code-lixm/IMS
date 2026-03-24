@@ -85,6 +85,8 @@
 import { ref, watch } from "vue"
 import { Loader2, Search, User, X } from "lucide-vue-next"
 import { candidatesApi } from "@/api/candidates"
+import { useAppNotifications } from "@/composables/use-app-notifications"
+import { reportAppError } from "@/lib/errors/normalize"
 import Button from "@/components/ui/button.vue"
 import Badge from "@/components/ui/badge.vue"
 import Input from "@/components/ui/input.vue"
@@ -115,6 +117,7 @@ const candidates = ref<CandidateInfo[]>([])
 const selectedId = ref<string | null>(null)
 const isLoading = ref(false)
 const currentCandidate = ref<CandidateInfo | null>(null)
+const { notifyError } = useAppNotifications()
 
 // Watch for external changes
 watch(() => props.modelValue, async (newVal) => {
@@ -134,7 +137,7 @@ async function loadCandidate(id: string) {
       position: data.candidate.position,
       tags: data.candidate.tags,
     }
-  } catch {
+  } catch (_error) {
     currentCandidate.value = null
   }
 }
@@ -164,7 +167,10 @@ async function searchCandidates() {
       tags: c.tags,
     }))
   } catch (err) {
-    console.error("[candidate-selector] search error:", err)
+    notifyError(reportAppError("candidate-selector/search", err, {
+      title: "候选人搜索失败",
+      fallbackMessage: "暂时无法搜索候选人",
+    }))
     candidates.value = []
   } finally {
     isLoading.value = false

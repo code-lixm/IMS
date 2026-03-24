@@ -71,6 +71,8 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useTheme } from "@/composables/use-theme";
+import { useAppNotifications } from "@/composables/use-app-notifications";
+import { reportAppError } from "@/lib/errors/normalize";
 import { useAuthStore } from "@/stores/auth";
 import DropdownMenu from "@/components/ui/dropdown-menu.vue";
 import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
@@ -81,6 +83,7 @@ import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue";
 const router = useRouter();
 const authStore = useAuthStore();
 const { isDark, toggleTheme } = useTheme();
+const { notifyError } = useAppNotifications();
 const menuOpen = ref(false);
 
 onMounted(() => {
@@ -99,8 +102,25 @@ const userAvatarUrl = computed<string | null>(() => null);
 
 async function handleLogout() {
   menuOpen.value = false;
-  await authStore.logout().catch(() => undefined);
-  await router.replace("/login").catch(() => undefined);
+
+  try {
+    await authStore.logout();
+  } catch (error) {
+    notifyError(reportAppError("app-user-actions/logout", error, {
+      title: "退出登录失败",
+      fallbackMessage: "未能完成退出登录",
+    }));
+  }
+
+  try {
+    await router.replace("/login");
+  } catch (error) {
+    notifyError(reportAppError("app-user-actions/navigate-login", error, {
+      title: "页面跳转失败",
+      fallbackMessage: "未能跳转到登录页，将尝试强制刷新",
+    }), { durationMs: 5000 });
+  }
+
   if (window.location.pathname !== "/login") {
     window.location.assign("/login");
   }

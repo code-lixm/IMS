@@ -1,23 +1,10 @@
 <template>
-  <div class="min-h-screen bg-background">
-    <header
-      class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
-    >
-      <div class="flex h-16 items-center gap-4 px-4 sm:px-6">
-        <RouterLink to="/candidates" class="flex items-center gap-2 shrink-0">
-          <div
-            class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10"
-          >
-            <Briefcase class="h-4 w-4 text-primary" />
-          </div>
-          <span class="text-lg font-semibold tracking-tight hidden sm:block"
-            >IMS</span
-          >
-        </RouterLink>
-      </div>
-    </header>
+  <AppPageShell>
+    <AppPageHeader>
+      <AppBrandLink />
+    </AppPageHeader>
 
-    <main
+    <AppPageContent
       class="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 sm:p-6"
     >
       <div
@@ -148,21 +135,26 @@
           </div>
         </Card>
       </div>
-    </main>
-  </div>
+    </AppPageContent>
+  </AppPageShell>
 </template>
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
-  Briefcase,
   CircleAlert,
   RefreshCw,
   ScanQrCode,
 } from "lucide-vue-next";
 import { ApiError } from "@/api/client";
 import { authApi } from "@/api/auth";
+import AppBrandLink from "@/components/layout/app-brand-link.vue";
+import AppPageContent from "@/components/layout/app-page-content.vue";
+import AppPageHeader from "@/components/layout/app-page-header.vue";
+import AppPageShell from "@/components/layout/app-page-shell.vue";
+import { useAppNotifications } from "@/composables/use-app-notifications";
+import { reportAppError } from "@/lib/errors/normalize";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
@@ -173,6 +165,7 @@ import { useAuthStore } from "@/stores/auth";
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const { notifyError, notifySuccess } = useAppNotifications();
 const qrState = reactive<{
   loading: boolean;
   refreshing: boolean;
@@ -264,7 +257,10 @@ async function loadQrCode(options?: { silent?: boolean }) {
     qrState.refreshed = result.refreshed;
     qrState.error = "";
   } catch (error) {
-    console.error("[login-view] loadQrCode:error", error);
+    reportAppError("login-view/load-qr", error, {
+      title: "二维码加载失败",
+      fallbackMessage: "获取二维码失败",
+    });
     if (!silent) qrState.imageSrc = "";
     qrState.error =
       error instanceof ApiError ? error.message : "获取二维码失败";
@@ -301,10 +297,14 @@ async function checkLoginStatus() {
         target: redirectTarget(),
       });
       await authStore.checkStatus();
+      notifySuccess("登录成功，正在进入系统", { title: "欢迎回来" });
       await router.replace(redirectTarget());
     }
   } catch (error) {
-    console.error("[login-view] checkLoginStatus:error", error);
+    notifyError(reportAppError("login-view/check-login-status", error, {
+      title: "登录状态确认失败",
+      fallbackMessage: "正在重试登录状态检查",
+    }), { durationMs: 3000 });
   } finally {
     qrState.loginPolling = false;
   }

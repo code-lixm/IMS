@@ -1,8 +1,15 @@
-import { api } from "./client";
+import { api, requestForm, requestStream } from "./client";
+import {
+  consumeLuiMessageStream,
+  type LuiStreamCallbacks,
+  type LuiStreamMessageState,
+} from "./core/stream";
 import type {
   ConversationListData,
   ConversationDetailData,
+  ConversationData,
   CreateConversationInput,
+  UpdateConversationInput,
   MessageData,
   SendMessageInput,
   FileResourceListData,
@@ -25,7 +32,7 @@ export const luiApi = {
   create(input?: CreateConversationInput) {
     return api<{ id: string; title: string; candidateId: string | null }>("/api/lui/conversations", {
       method: "POST",
-      body: JSON.stringify(input ?? {}),
+      json: input ?? {},
     });
   },
 
@@ -35,12 +42,33 @@ export const luiApi = {
     });
   },
 
+  update(id: string, input: UpdateConversationInput) {
+    return api<ConversationData>(`/api/lui/conversations/${id}`, {
+      method: "PUT",
+      json: input,
+    });
+  },
+
   // Messages
   sendMessage(conversationId: string, input: SendMessageInput) {
     return api<MessageData>(`/api/lui/conversations/${conversationId}/messages`, {
       method: "POST",
-      body: JSON.stringify(input),
+      json: input,
     });
+  },
+
+  async streamMessage(
+    conversationId: string,
+    input: SendMessageInput,
+    options: LuiStreamCallbacks & { signal?: AbortSignal } = {}
+  ): Promise<LuiStreamMessageState> {
+    const response = await requestStream(`/api/lui/conversations/${conversationId}/messages`, {
+      method: "POST",
+      json: input,
+      signal: options.signal,
+    });
+
+    return consumeLuiMessageStream(response, options);
   },
 
   // Files
@@ -56,9 +84,9 @@ export const luiApi = {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("conversationId", conversationId);
-    return api<UploadFileData>("/api/lui/files", {
+    return requestForm<UploadFileData>("/api/lui/files", {
       method: "POST",
-      body: formData as unknown as string,
+      formData,
     });
   },
 
@@ -80,14 +108,14 @@ export const luiApi = {
   createAgent(input: CreateAgentInput) {
     return api<{ id: string }>("/api/lui/agents", {
       method: "POST",
-      body: JSON.stringify(input),
+      json: input,
     });
   },
 
   updateAgent(id: string, input: UpdateAgentInput) {
     return api<{ id: string }>(`/api/lui/agents/${id}`, {
       method: "PUT",
-      body: JSON.stringify(input),
+      json: input,
     });
   },
 

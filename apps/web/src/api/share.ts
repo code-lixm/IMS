@@ -8,25 +8,25 @@ export const shareApi = {
   export(candidateId: string) {
     return api<ShareExportData>("/api/share/export", {
       method: "POST",
-      body: JSON.stringify({ candidateId }),
+      json: { candidateId },
     });
   },
   send(candidateId: string, target: { ip: string; port: number; deviceId?: string; name: string }) {
     return api("/api/share/send", {
       method: "POST",
-      body: JSON.stringify({ candidateId, target }),
+      json: { candidateId, target },
     });
   },
   import(filePath: string) {
     return api<ShareImportResult>("/api/share/import", {
       method: "POST",
-      body: JSON.stringify({ filePath }),
+      json: { filePath },
     });
   },
   resolve(candidateId: string, strategy: "local" | "import") {
     return api("/api/share/resolve", {
       method: "POST",
-      body: JSON.stringify({ candidateId, strategy }),
+      json: { candidateId, strategy },
     });
   },
   records() { return api<ShareRecordListData>("/api/share/records"); },

@@ -6,7 +6,7 @@ export const syncApi = {
   toggle(enabled: boolean) {
     return api<SyncToggleData>("/api/sync/toggle", {
       method: "POST",
-      body: JSON.stringify({ enabled }),
+      json: { enabled },
     });
   },
   run() { return api<SyncRunData>("/api/sync/run", { method: "POST" }); },

@@ -112,7 +112,6 @@ interface PromptInputProps {
   disabled?: boolean;
   accept?: string;
   multiple?: boolean;
-  onFileUpload?: (files: File[]) => void | Promise<void>;
 }
 
 const props = withDefaults(defineProps<PromptInputProps>(), {
@@ -121,13 +120,13 @@ const props = withDefaults(defineProps<PromptInputProps>(), {
   disabled: false,
   accept: ".pdf,.png,.jpg,.jpeg,.webp,.zip,.imr",
   multiple: true,
-  onFileUpload: undefined,
 });
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: string): void;
   (e: "send", value: string): void;
   (e: "select-command", value: string): void;
+  (e: "file-upload", files: File[]): void;
 }>();
 
 const slashCommands: SlashCommand[] = [
@@ -157,7 +156,7 @@ const { setFileInputRef, triggerFileUpload, handleFileChange } = useFileUpload({
   disabled: () => props.disabled,
   onFilesSelected: async (files) => {
     pickedFiles.value = files;
-    await props.onFileUpload?.(files);
+    emit("file-upload", files);
   },
 });
 

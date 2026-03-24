@@ -7,13 +7,16 @@ import type {
 } from "@ims/shared";
 
 export const candidatesApi = {
-  list(params?: { search?: string; source?: string; page?: number; pageSize?: number }) {
+  list(
+    params?: { search?: string; source?: string; page?: number; pageSize?: number },
+    options?: { signal?: AbortSignal },
+  ) {
     const sp = new URLSearchParams();
     if (params?.search) sp.set("search", params.search);
     if (params?.source) sp.set("source", params.source);
     if (params?.page) sp.set("page", String(params.page));
     if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
-    return api<CandidateListData>(`/api/candidates?${sp}`);
+    return api<CandidateListData>(`/api/candidates?${sp}`, { signal: options?.signal });
   },
 
   get(id: string) {
@@ -23,12 +26,12 @@ export const candidatesApi = {
   create(input: CreateCandidateInput) {
     return api<{ id: string }>("/api/candidates", {
       method: "POST",
-      body: JSON.stringify(input),
+      json: input,
     });
   },
 
   update(id: string, input: UpdateCandidateInput) {
-    return api(`/api/candidates/${id}`, { method: "PUT", body: JSON.stringify(input) });
+    return api(`/api/candidates/${id}`, { method: "PUT", json: input });
   },
 
   delete(id: string) {

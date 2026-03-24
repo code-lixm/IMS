@@ -1,29 +1,22 @@
 <template>
-  <div class="min-h-screen bg-background">
-    <header class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div class="flex h-16 items-center gap-4 px-4 sm:px-6">
-        <RouterLink to="/candidates" class="flex items-center gap-2 shrink-0">
-          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <Briefcase class="h-4 w-4 text-primary" />
-          </div>
-          <span class="text-lg font-semibold tracking-tight hidden sm:block">IMS</span>
-        </RouterLink>
+  <AppPageShell>
+    <AppPageHeader>
+        <AppBrandLink />
         <div class="flex-1" />
         <div class="flex items-center gap-2 shrink-0">
           <Button variant="outline" class="gap-2 hidden sm:flex" @click="$router.push('/candidates')">
             <User class="h-4 w-4" />
             候选人
           </Button>
-          <Button class="gap-2" @click="triggerImport">
+          <Button class="gap-2" :disabled="fileImport.isImporting" @click="fileImport.triggerImport">
             <Plus class="h-4 w-4" />
             新建导入
           </Button>
           <AppUserActions />
         </div>
-      </div>
-    </header>
+    </AppPageHeader>
 
-    <main class="p-4 sm:p-6">
+    <AppPageContent>
         <!-- Loading -->
         <Card v-if="loading" class="p-6 space-y-3">
           <Skeleton class="h-4 w-full rounded-md" />
@@ -37,7 +30,7 @@
           scenario="import"
           :action-text="'新建导入'"
           :action-icon="Plus"
-          :action-handler="triggerImport"
+          :action-handler="fileImport.triggerImport"
         />
 
         <!-- Batch list -->
@@ -50,7 +43,7 @@
               </Badge>
               <span class="text-sm text-muted-foreground">{{ b.totalFiles }} 个文件</span>
               <div class="flex-1" />
-              <span class="text-xs text-muted-foreground">{{ fmtTime(b.createdAt) }}</span>
+              <span class="text-xs text-muted-foreground">{{ formatImportTimestamp(b.createdAt) }}</span>
             </div>
 
             <!-- Progress -->
@@ -128,223 +121,60 @@
             </div>
           </Card>
         </div>
-    </main>
+    </AppPageContent>
 
     <!-- Conflict merge dialog -->
     <ConflictMergeDialog
       :open="conflictDialog.open"
       :conflict-data="conflictDialog.data"
-      @update:open="conflictDialog.open = $event"
-      @resolve="handleConflictResolve"
+      @update:open="fileImport.setConflictDialogOpen"
+      @resolve="fileImport.resolveConflict"
     />
-  </div>
+  </AppPageShell>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import { Briefcase, Plus, User, ChevronDown, RefreshCw, X } from "lucide-vue-next";
-import { importApi } from "@/api/import";
-import { shareApi } from "@/api/share";
+import { onMounted } from "vue";
+import { Plus, User, ChevronDown, RefreshCw, X } from "lucide-vue-next";
 import AppUserActions from "@/components/app-user-actions.vue";
 import ConflictMergeDialog from "@/components/conflict-merge-dialog.vue";
-import type { ConflictData } from "@/components/conflict-merge-dialog.vue";
+import AppBrandLink from "@/components/layout/app-brand-link.vue";
+import AppPageContent from "@/components/layout/app-page-content.vue";
+import AppPageHeader from "@/components/layout/app-page-header.vue";
+import AppPageShell from "@/components/layout/app-page-shell.vue";
+import { useImportBatches } from "@/composables/import/use-import-batches";
+import { useImportFileSelection } from "@/composables/import/use-import-file-selection";
+import {
+  fileStatusLabel,
+  fileStatusVariant,
+  formatImportTimestamp,
+  statusLabel,
+  statusVariant,
+} from "@/composables/import/formatters";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
 import Progress from "@/components/ui/progress.vue";
 import Skeleton from "@/components/ui/skeleton.vue";
 import EmptyState from "@/components/ui/empty-state.vue";
-import type { ImportBatchListData, ImportFileListData } from "@ims/shared";
-
-const batches = ref<ImportBatchListData["items"]>([]);
-const loading = ref(false);
-const expandedBatches = ref<Set<string>>(new Set());
-const batchFiles = ref<Record<string, ImportFileListData["items"]>>({});
-const loadingFiles = ref<Record<string, boolean>>({});
-let pollInterval: ReturnType<typeof setInterval> | null = null;
-
-const conflictDialog = ref<{
-  open: boolean;
-  data: ConflictData | null;
-}>({
-  open: false,
-  data: null,
+const importBatches = useImportBatches();
+const fileImport = useImportFileSelection({
+  onImportFinished: importBatches.refresh,
 });
+const { conflictDialog } = fileImport;
+
+const {
+  batches,
+  loading,
+  expandedBatches,
+  batchFiles,
+  loadingFiles,
+  toggleFiles,
+  retryFailed,
+  cancelBatch,
+} = importBatches;
 
 onMounted(() => {
-  fetchBatches();
-  startPolling();
+  void importBatches.initialize();
 });
-
-onUnmounted(() => {
-  stopPolling();
-});
-
-function startPolling() {
-  pollInterval = setInterval(async () => {
-    const hasProcessing = batches.value.some(b => b.status === "processing" || b.status === "queued");
-    if (hasProcessing) {
-      await fetchBatches();
-    }
-  }, 3000);
-}
-
-function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
-}
-
-async function fetchBatches() {
-  loading.value = true;
-  try {
-    batches.value = (await importApi.list()).items;
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function toggleFiles(batchId: string) {
-  if (expandedBatches.value.has(batchId)) {
-    expandedBatches.value.delete(batchId);
-    expandedBatches.value = new Set(expandedBatches.value);
-    return;
-  }
-  expandedBatches.value.add(batchId);
-  expandedBatches.value = new Set(expandedBatches.value);
-  if (!batchFiles.value[batchId]) {
-    loadingFiles.value[batchId] = true;
-    try {
-      batchFiles.value[batchId] = (await importApi.files(batchId)).items;
-    } finally {
-      loadingFiles.value[batchId] = false;
-    }
-  }
-}
-
-async function retryFailed(batchId: string) {
-  await fetch(`/api/import/batches/${batchId}/retry-failed`, { method: "POST" });
-  await fetchBatches();
-}
-
-async function cancelBatch(batchId: string) {
-  await importApi.cancel(batchId);
-  await fetchBatches();
-}
-
-async function handleConflictResolve(strategy: "local" | "import") {
-  if (!conflictDialog.value.data) return;
-  const candidateId = conflictDialog.value.data.candidateName; // Use name as temp ID
-  await shareApi.resolve(candidateId, strategy);
-  conflictDialog.value.open = false;
-  conflictDialog.value.data = null;
-}
-
-function triggerImport() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".pdf,.png,.jpg,.jpeg,.webp,.zip,.imr";
-  input.multiple = true;
-  input.onchange = async () => {
-    const files = Array.from(input.files ?? []);
-    if (!files.length) return;
-
-    // Check if any .imr files
-    const imrFiles = files.filter(f => f.name.endsWith(".imr"));
-    const regularFiles = files.filter(f => !f.name.endsWith(".imr"));
-
-    // Handle regular files
-    if (regularFiles.length > 0) {
-      const paths = regularFiles.map((file) => {
-        const fileWithPath = file as File & { path?: string };
-        return fileWithPath.path ?? file.name;
-      });
-      await importApi.create(paths);
-    }
-
-    // Handle IMR files
-    for (const file of imrFiles) {
-      const fileWithPath = file as File & { path?: string };
-      const filePath = fileWithPath.path ?? file.name;
-      const result = await shareApi.import(filePath);
-      if (result.result === "conflict") {
-        const r = result as { result: string; candidateName?: string; phone?: string | null; email?: string | null; conflicts?: Array<{ name: string; label: string; localValue: string | number | null; importValue: string | number | null }> };
-        conflictDialog.value = {
-          open: true,
-          data: {
-            candidateName: r.candidateName ?? "",
-            source: "import",
-            phone: r.phone ?? null,
-            email: r.email ?? null,
-            conflicts: (r.conflicts ?? []).map(c => ({
-              name: c.name,
-              label: c.label,
-              localValue: c.localValue,
-              importValue: c.importValue,
-            })),
-          },
-        };
-      }
-    }
-
-    await fetchBatches();
-  };
-  input.click();
-}
-
-function statusVariant(status: string) {
-  const map: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    completed: "default",
-    partial_success: "secondary",
-    processing: "secondary",
-    failed: "destructive",
-    queued: "outline",
-    cancelled: "outline",
-  };
-  return map[status] ?? "outline";
-}
-
-function statusLabel(status: string) {
-  const map: Record<string, string> = {
-    completed: "已完成",
-    failed: "失败",
-    processing: "处理中",
-    partial_success: "部分成功",
-    queued: "排队中",
-    cancelled: "已取消",
-  };
-  return map[status] ?? status;
-}
-
-function fileStatusVariant(status: string) {
-  const map: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    completed: "default",
-    failed: "destructive",
-    processing: "secondary",
-    queued: "outline",
-    cancelled: "outline",
-  };
-  return map[status] ?? "outline";
-}
-
-function fileStatusLabel(status: string) {
-  const map: Record<string, string> = {
-    completed: "成功",
-    failed: "失败",
-    processing: "处理中",
-    queued: "排队",
-    cancelled: "取消",
-  };
-  return map[status] ?? status;
-}
-
-function fmtTime(ts: number) {
-  return new Date(ts).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 </script>

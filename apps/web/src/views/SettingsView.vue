@@ -1,13 +1,7 @@
 <template>
-  <div class="min-h-screen bg-background">
-    <header class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div class="flex h-16 items-center gap-4 px-4 sm:px-6">
-        <RouterLink to="/candidates" class="flex items-center gap-2 shrink-0">
-          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <Briefcase class="h-4 w-4 text-primary" />
-          </div>
-          <span class="text-lg font-semibold tracking-tight hidden sm:block">IMS</span>
-        </RouterLink>
+  <AppPageShell>
+    <AppPageHeader>
+        <AppBrandLink />
         <div class="flex-1" />
         <div class="flex items-center gap-2 shrink-0">
           <Button variant="outline" class="gap-2 hidden sm:flex" @click="$router.push('/candidates')">
@@ -20,10 +14,9 @@
           </Button>
           <AppUserActions />
         </div>
-      </div>
-    </header>
+    </AppPageHeader>
 
-    <main class="p-4 sm:p-6 space-y-4">
+    <AppPageContent class="space-y-4">
         <!-- Account -->
         <Card class="p-5">
           <h2 class="text-sm font-semibold mb-4">账户</h2>
@@ -125,14 +118,13 @@
             </Button>
           </div>
         </Card>
-    </main>
-  </div>
+      </AppPageContent>
+  </AppPageShell>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import {
-  Briefcase,
   CheckCircle,
   Power,
   RefreshCw,
@@ -146,6 +138,10 @@ import { useAuthStore } from "@/stores/auth";
 import { useSyncStore } from "@/stores/sync";
 import { opencodeApi } from "@/api/opencode";
 import AppUserActions from "@/components/app-user-actions.vue";
+import AppBrandLink from "@/components/layout/app-brand-link.vue";
+import AppPageContent from "@/components/layout/app-page-content.vue";
+import AppPageHeader from "@/components/layout/app-page-header.vue";
+import AppPageShell from "@/components/layout/app-page-shell.vue";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
@@ -162,7 +158,7 @@ onMounted(async () => {
   syncEnabled.value = syncStore.status.enabled;
   try {
     opencodeStatus.value = await opencodeApi.status();
-  } catch {
+  } catch (_error) {
     // service not ready
   }
 });

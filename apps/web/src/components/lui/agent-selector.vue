@@ -79,6 +79,8 @@
 import { ref, watch } from "vue"
 import { Bot, ChevronDown, Check, Loader2, RefreshCw } from "lucide-vue-next"
 import { luiApi } from "@/api/lui"
+import { useAppNotifications } from "@/composables/use-app-notifications"
+import { reportAppError } from "@/lib/errors/normalize"
 import Button from "@/components/ui/button.vue"
 import Badge from "@/components/ui/badge.vue"
 import ScrollArea from "@/components/ui/scroll-area.vue"
@@ -111,6 +113,7 @@ const agents = ref<AgentInfo[]>([])
 const selectedId = ref<string | null>(null)
 const isLoading = ref(false)
 const selectedAgent = ref<AgentInfo | null>(null)
+const { notifyError } = useAppNotifications()
 
 watch(() => props.modelValue, async (newVal) => {
   if (newVal && newVal !== selectedAgent.value?.id) {
@@ -142,7 +145,10 @@ async function loadAgents() {
       }
     }
   } catch (err) {
-    console.error("[agent-selector] load error:", err)
+    notifyError(reportAppError("agent-selector/load", err, {
+      title: "加载 Agent 失败",
+      fallbackMessage: "暂时无法获取 Agent 列表",
+    }))
     agents.value = []
   } finally {
     isLoading.value = false
@@ -162,7 +168,7 @@ async function loadAgent(id: string) {
       tools: data.tools,
       isDefault: data.isDefault,
     }
-  } catch {
+  } catch (_error) {
     selectedAgent.value = null
   }
 }

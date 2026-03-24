@@ -3,6 +3,7 @@
     <!-- 左边栏：会话列表 -->
     <div class="w-72 shrink-0 border-r">
       <ConversationList
+        :conversations="store.conversations"
         :selected-id="store.selectedId"
         @select="onConversationSelect"
         @create="onConversationCreate"
@@ -66,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { Bot } from 'lucide-vue-next'
 import { useLuiStore } from '@/stores/lui'
 import ConversationList from '@/components/lui/conversation-list.vue'
@@ -83,7 +84,8 @@ async function onConversationSelect(id: string) {
   await store.selectConversation(id)
 }
 
-async function onConversationCreate(conversation: { id: string }) {
+async function onConversationCreate() {
+  const conversation = await store.createConversation()
   await store.selectConversation(conversation.id)
 }
 
@@ -93,21 +95,8 @@ async function onConversationDelete(id: string) {
 
 async function onCandidateSelect(candidate: { id: string } | null) {
   if (!store.selectedId) return
-  
-  if (candidate) {
-    // Update conversation with candidate - need to call API
-    // For now, we just update the local state
-    const conv = store.conversations.find(c => c.id === store.selectedId)
-    if (conv) {
-      conv.candidateId = candidate.id
-    }
-  } else {
-    // Remove candidate association
-    const conv = store.conversations.find(c => c.id === store.selectedId)
-    if (conv) {
-      conv.candidateId = null
-    }
-  }
+
+  await store.bindConversationCandidate(store.selectedId, candidate?.id ?? null)
 }
 
 async function onSend(text: string) {
@@ -131,4 +120,8 @@ async function onFileUpload(files: File[]) {
     await store.addFileResource(store.selectedId, file)
   }
 }
+
+onMounted(async () => {
+  await store.initialize()
+})
 </script>

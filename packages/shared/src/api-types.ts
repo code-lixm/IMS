@@ -403,6 +403,11 @@ export interface CreateConversationInput {
   candidateId?: string;
 }
 
+export interface UpdateConversationInput {
+  title?: string;
+  candidateId?: string | null;
+}
+
 export interface MessageData {
   id: string;
   conversationId: string;

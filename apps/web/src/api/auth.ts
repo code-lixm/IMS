@@ -30,7 +30,7 @@ export const authApi = {
   complete(token: string, expiresAt: number, name?: string, email?: string) {
     return api("/api/auth/complete", {
       method: "POST",
-      body: JSON.stringify({ token, expiresAt, name, email }),
+      json: { token, expiresAt, name, email },
     });
   },
   baobaoQr() { return api<BaobaoLoginQrData>("/api/auth/baobao/qr"); },

@@ -64,7 +64,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import { Bot, Loader2, User } from "lucide-vue-next"
-import { marked } from "marked"
+import { renderSafeMarkdown } from "@/lib/render/render-safe-markdown"
 
 interface ChatMessageData {
   id: string
@@ -91,21 +91,7 @@ const displayedContent = computed(() => {
   return message.content.slice(0, typedLength.value)
 })
 
-const renderMarkdown = (content: string): string => {
-  const rawHtml = marked.parse(content, {
-    breaks: true,
-    gfm: true,
-  })
-
-  return sanitizeHtml(typeof rawHtml === "string" ? rawHtml : String(rawHtml))
-}
-
-const sanitizeHtml = (html: string): string => {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/\son\w+=("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/javascript:/gi, "")
-}
+const renderMarkdown = renderSafeMarkdown
 
 const stringifyTool = (tool: unknown): string => {
   if (typeof tool === "string") {
@@ -114,7 +100,7 @@ const stringifyTool = (tool: unknown): string => {
 
   try {
     return JSON.stringify(tool, null, 2)
-  } catch {
+  } catch (_error) {
     return String(tool)
   }
 }

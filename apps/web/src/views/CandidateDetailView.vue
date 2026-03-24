@@ -1,7 +1,6 @@
 <template>
-  <div class="min-h-screen bg-background">
-    <header class="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div class="flex h-16 items-center gap-3 px-4 sm:px-6">
+  <AppPageShell>
+    <AppPageHeader content-class="flex h-16 items-center gap-3 px-4 sm:px-6">
         <RouterLink to="/candidates">
           <Button variant="ghost" size="sm" class="gap-1.5 text-muted-foreground hover:text-foreground">
             <ArrowLeft class="h-4 w-4" />
@@ -22,8 +21,7 @@
           </Button>
           <AppUserActions />
         </div>
-      </div>
-    </header>
+    </AppPageHeader>
 
       <!-- Loading -->
       <div v-if="store.loading" class="flex items-center justify-center p-6">
@@ -43,7 +41,7 @@
       </div>
 
       <!-- Content -->
-      <main v-else class="p-4 sm:p-6">
+      <AppPageContent v-else>
         <!-- Top row: Basic info + AI workspace -->
         <div class="grid gap-4 mb-4 lg:grid-cols-2">
           <!-- Basic info card -->
@@ -169,8 +167,8 @@
             </TabsContent>
           </Tabs>
         </Card>
-      </main>
-  </div>
+      </AppPageContent>
+  </AppPageShell>
 </template>
 
 <script setup lang="ts">
@@ -189,7 +187,12 @@ import {
 } from "lucide-vue-next";
 import { useCandidatesStore } from "@/stores/candidates";
 import { opencodeApi } from "@/api/opencode";
+import { useAppNotifications } from "@/composables/use-app-notifications";
+import { reportAppError } from "@/lib/errors/normalize";
 import AppUserActions from "@/components/app-user-actions.vue";
+import AppPageContent from "@/components/layout/app-page-content.vue";
+import AppPageHeader from "@/components/layout/app-page-header.vue";
+import AppPageShell from "@/components/layout/app-page-shell.vue";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
@@ -202,6 +205,7 @@ import EmptyState from "@/components/ui/empty-state.vue";
 
 const route = useRoute();
 const store = useCandidatesStore();
+const { notifyError, notifySuccess } = useAppNotifications();
 
 onMounted(() => store.fetchOne(route.params.id as string));
 
@@ -221,8 +225,13 @@ async function openWorkspace() {
     const ws = await opencodeApi.workspace(id);
     window.open(ws.url, "_blank");
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "未知错误";
-    alert("启动工作台失败: " + message);
+    notifyError(reportAppError("candidate-detail/open-workspace", err, {
+      title: "启动工作台失败",
+      fallbackMessage: "暂时无法打开工作台",
+    }));
+    return;
   }
+
+  notifySuccess("工作台已在新窗口打开", { title: "启动成功" });
 }
 </script>

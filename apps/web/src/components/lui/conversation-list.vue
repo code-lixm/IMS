@@ -78,9 +78,10 @@ import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
 import DropdownMenuItem from "@/components/ui/dropdown-menu-item.vue";
 import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue";
 import ScrollArea from "@/components/ui/scroll-area.vue";
-import { useLuiStore, type Conversation } from "@/stores/lui";
+import type { Conversation } from "@/stores/lui";
 
 interface ConversationListProps {
+  conversations: Conversation[];
   selectedId?: string | null;
 }
 
@@ -91,13 +92,11 @@ const props = withDefaults(defineProps<ConversationListProps>(), {
 const emit = defineEmits<{
   (e: "select", id: string): void;
   (e: "delete", id: string): void;
-  (e: "create", conversation: Conversation): void;
+  (e: "create"): void;
 }>();
 
-const luiStore = useLuiStore();
-
-const conversations = computed(() => luiStore.conversations);
-const activeId = computed(() => props.selectedId ?? luiStore.selectedId);
+const conversations = computed(() => props.conversations);
+const activeId = computed(() => props.selectedId ?? null);
 
 const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
   month: "2-digit",
@@ -111,17 +110,14 @@ function formatTime(value: Date) {
 }
 
 function handleSelect(id: string) {
-  luiStore.selectConversation(id);
   emit("select", id);
 }
 
-async function handleCreate() {
-  const conversation = await luiStore.createConversation();
-  emit("create", conversation);
+function handleCreate() {
+  emit("create");
 }
 
 function handleDelete(id: string) {
-  luiStore.deleteConversation(id);
   emit("delete", id);
 }
 </script>

@@ -7,14 +7,20 @@ export const useCandidatesStore = defineStore("candidates", () => {
   const list = ref<CandidateListData["items"]>([]);
   const loading = ref(false);
   const current = ref<CandidateDetailData | null>(null);
+  let listRequestId = 0;
 
-  async function fetchList(params?: { search?: string; source?: string }) {
+  async function fetchList(params?: { search?: string; source?: string }, options?: { signal?: AbortSignal }) {
+    const requestId = ++listRequestId;
     loading.value = true;
     try {
-      const data = await candidatesApi.list(params);
-      list.value = data.items;
+      const data = await candidatesApi.list(params, options);
+      if (requestId === listRequestId) {
+        list.value = data.items;
+      }
     } finally {
-      loading.value = false;
+      if (requestId === listRequestId) {
+        loading.value = false;
+      }
     }
   }
 

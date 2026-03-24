@@ -131,8 +131,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import { storeToRefs } from "pinia"
-import { marked } from "marked"
-import DOMPurify from "dompurify"
 import {
   Download,
   Eye,
@@ -145,6 +143,7 @@ import Badge from "@/components/ui/badge.vue"
 import Button from "@/components/ui/button.vue"
 import Dialog from "@/components/ui/dialog.vue"
 import ScrollArea from "@/components/ui/scroll-area.vue"
+import { renderSafeMarkdown } from "@/lib/render/render-safe-markdown"
 import { useLuiStore, type FileResource } from "@/stores/lui"
 
 type FileResourceType = FileResource["type"]
@@ -162,6 +161,7 @@ const { currentFiles } = storeToRefs(luiStore)
 
 const previewOpen = ref(false)
 const previewFile = ref<FileResource | null>(null)
+const renderMarkdown = renderSafeMarkdown
 
 const totalCount = computed(() => currentFiles.value.length)
 
@@ -199,11 +199,6 @@ function isMarkdownFile(file: FileResource): boolean {
   return file.name.toLowerCase().endsWith(".md") || 
          file.name.toLowerCase().endsWith(".markdown") ||
          file.language === "markdown"
-}
-
-function renderMarkdown(content: string): string {
-  const rawHtml = marked.parse(content, { async: false }) as string
-  return DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } })
 }
 
 function openPreview(file: FileResource) {
