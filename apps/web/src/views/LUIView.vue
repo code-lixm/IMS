@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-screen w-full overflow-hidden bg-background">
+  <div class="flex h-screen w-full overflow-hidden bg-background" :data-user-phone="userPhone ?? undefined">
     <!-- 左边栏：会话列表 -->
     <div class="w-72 shrink-0 border-r">
       <ConversationList
@@ -52,9 +52,8 @@
         :providers="store.providers"
         :selected-model-id="store.selectedModelId"
         :authorized-providers="authorizedProviders"
-        :temperature="temperature"
+        :temperature="store.temperature"
         @select-agent="onSelectAgent"
-        @create-agent="onCreateAgent"
         @select-model="onSelectModel"
         @authorize="onAuthorizeProvider"
         @update:temperature="onTemperatureChange"
@@ -93,8 +92,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { Bot } from 'lucide-vue-next'
 import { useLuiStore } from '@/stores/lui'
+import { useAuthStore } from '@/stores/auth'
 import ConversationList from '@/components/lui/conversation-list.vue'
 import ChatMessage from '@/components/lui/chat-message.vue'
 import PromptInput from '@/components/lui/prompt-input.vue'
@@ -105,12 +106,18 @@ import TaskQueueIndicator from '@/components/lui/task-queue-indicator.vue'
 import AuthDialog from '@/components/lui/auth-dialog.vue'
 
 const store = useLuiStore()
+const route = useRoute()
+const authStore = useAuthStore()
+
+// Get phone from route query or auth status - used as unique user identifier
+const userPhone = computed(() => {
+  return (route.query.phone as string) || authStore.user?.phone || null
+})
 
 const inputText = ref('')
 const showAuthDialog = ref(false)
 const authProvider = ref('')
 const authProviderName = ref('')
-const temperature = ref(0.5)
 
 // 计算已授权的 providers
 const authorizedProviders = computed(() => {
@@ -160,16 +167,16 @@ async function onFileUpload(files: File[]) {
   }
 }
 
-function onSelectAgent(agentId: string | null) {
+async function onSelectAgent(agentId: string | null) {
   store.selectedAgentId = agentId
+  if (!store.selectedId) return
+  await store.updateConversationAiConfig({ agentId })
 }
 
-function onCreateAgent() {
-  // TODO: Open agent creation dialog
-}
-
-function onSelectModel(modelId: string | null) {
+async function onSelectModel(modelId: string | null) {
   store.selectedModelId = modelId
+  if (!store.selectedId) return
+  await store.updateConversationAiConfig({ modelId })
 }
 
 function onAuthorizeProvider(provider: string) {
@@ -186,8 +193,10 @@ async function onAuthConfirm(payload: { provider: string; apiKey: string }) {
   showAuthDialog.value = false
 }
 
-function onTemperatureChange(value: number) {
-  temperature.value = value
+async function onTemperatureChange(value: number) {
+  store.temperature = value
+  if (!store.selectedId) return
+  await store.updateConversationAiConfig({ temperature: value })
 }
 
 onMounted(async () => {

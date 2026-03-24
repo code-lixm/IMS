@@ -4,7 +4,6 @@
       <AgentSelector
         :model-value="selectedAgentId"
         @select="handleAgentSelect"
-        @create="handleAgentCreate"
       />
     </div>
 
@@ -18,7 +17,7 @@
       />
 
       <TemperatureControl
-        v-model="temperature"
+        :model-value="temperature"
         @update:model-value="handleTemperatureChange"
       />
     </div>
@@ -58,7 +57,6 @@ withDefaults(defineProps<AIGatewayToolbarProps>(), {
 
 const emit = defineEmits<{
   (e: "select-agent", agentId: string | null): void
-  (e: "create-agent"): void
   (e: "select-model", modelId: string | null): void
   (e: "authorize", provider: string): void
   (e: "update:temperature", value: number): void
@@ -66,10 +64,6 @@ const emit = defineEmits<{
 
 function handleAgentSelect(agent: AgentInfo | null) {
   emit("select-agent", agent?.id ?? null)
-}
-
-function handleAgentCreate() {
-  emit("create-agent")
 }
 
 function handleModelSelect(model: ModelConfig | null) {

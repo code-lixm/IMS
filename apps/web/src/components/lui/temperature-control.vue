@@ -39,7 +39,7 @@
               :class="preset === p.value ? 'border-primary bg-primary/5' : ''"
               @click="handlePresetChange(p.value)"
             >
-              <component :is="p.icon" class="mr-1 h-3 w-3" /
+              <component :is="p.icon" class="mr-1 h-3 w-3" />
               {{ p.label }}
             </Button>
           </div>

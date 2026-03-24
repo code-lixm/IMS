@@ -1,0 +1,809 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e33]:
+    - banner [ref=e34]:
+      - generic [ref=e35]:
+        - link "IMS" [ref=e37] [cursor=pointer]:
+          - /url: /candidates
+          - img [ref=e39]
+          - generic [ref=e42]: IMS
+        - generic [ref=e43]:
+          - img [ref=e44]
+          - combobox "搜索姓名、岗位..." [ref=e47]
+        - generic [ref=e48]:
+          - button "新建" [ref=e49] [cursor=pointer]:
+            - img
+            - text: 新建
+          - button "导入" [ref=e50] [cursor=pointer]:
+            - img
+            - text: 导入
+          - button "任务" [ref=e52] [cursor=pointer]:
+            - img
+            - text: 任务
+          - generic [ref=e53]:
+            - button "切换到深色模式" [ref=e54] [cursor=pointer]
+            - button "明" [ref=e56] [cursor=pointer]:
+              - generic [ref=e57]: 明
+    - main [ref=e59]:
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - generic [ref=e64]: 数据同步状态
+          - paragraph [ref=e65]: 上次同步：03/24 21:41
+        - button "立即同步" [ref=e67] [cursor=pointer]:
+          - img
+          - text: 立即同步
+      - generic [ref=e70]:
+        - table [ref=e72]:
+          - rowgroup [ref=e84]:
+            - row "姓名 应聘部门 应聘岗位 面试信息 形式 结果 来源 负责人 状态 操作" [ref=e85]:
+              - columnheader "姓名" [ref=e86]
+              - columnheader "应聘部门" [ref=e87]
+              - columnheader "应聘岗位" [ref=e88]
+              - columnheader "面试信息" [ref=e89]
+              - columnheader "形式" [ref=e90]
+              - columnheader "结果" [ref=e91]
+              - columnheader "来源" [ref=e92]
+              - columnheader "负责人" [ref=e93]
+              - columnheader "状态" [ref=e94]
+              - columnheader "操作" [ref=e95]
+          - rowgroup [ref=e96]:
+            - row "胡佳 15926774205 云深事业部 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 02/10 17:00 腾讯会议 · 486-079-4350 视频面试 B BOSS直聘 郑楠 HRBP：汪文琼 淘汰 工作台 导出" [ref=e97] [cursor=pointer]:
+              - cell "胡佳 15926774205" [ref=e98]:
+                - generic [ref=e99]:
+                  - button "胡佳" [ref=e100]
+                  - paragraph [ref=e101]: "15926774205"
+              - cell "云深事业部 云深 / 公共服务事业群（PSG）" [ref=e102]:
+                - generic [ref=e103]:
+                  - paragraph [ref=e104]: 云深事业部
+                  - paragraph [ref=e105]: 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e106]:
+                - generic [ref=e107]:
+                  - paragraph [ref=e108]: 前端开发工程师
+                  - paragraph [ref=e109]: 经验未填写
+              - cell "02/10 17:00 腾讯会议 · 486-079-4350" [ref=e110]:
+                - generic [ref=e111]:
+                  - paragraph [ref=e112]: 02/10 17:00
+                  - paragraph [ref=e113]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e114]:
+                - generic [ref=e115]: 视频面试
+              - cell "B" [ref=e116]:
+                - generic [ref=e117]: B
+              - cell "BOSS直聘" [ref=e118]:
+                - generic [ref=e119]: BOSS直聘
+              - cell "郑楠 HRBP：汪文琼" [ref=e120]:
+                - generic [ref=e121]:
+                  - paragraph [ref=e122]: 郑楠
+                  - paragraph [ref=e123]: HRBP：汪文琼
+              - cell "淘汰" [ref=e124]:
+                - generic [ref=e125]: 淘汰
+              - cell "工作台 导出" [ref=e126]:
+                - generic [ref=e127]:
+                  - button "工作台" [ref=e128]:
+                    - img [ref=e129]
+                    - text: 工作台
+                  - button "导出" [ref=e131]:
+                    - img [ref=e132]
+                    - text: 导出
+            - row "李竑达 17735462873 云深技术中心 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 02/08 17:00 腾讯会议 · 486-079-4350 视频面试 C BOSS直聘 郑楠 HRBP：汪文琼 淘汰 工作台 导出" [ref=e135] [cursor=pointer]:
+              - cell "李竑达 17735462873" [ref=e136]:
+                - generic [ref=e137]:
+                  - button "李竑达" [ref=e138]
+                  - paragraph [ref=e139]: "17735462873"
+              - cell "云深技术中心 公共服务事业群（PSG） / 云深事业部" [ref=e140]:
+                - generic [ref=e141]:
+                  - paragraph [ref=e142]: 云深技术中心
+                  - paragraph [ref=e143]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e144]:
+                - generic [ref=e145]:
+                  - paragraph [ref=e146]: 前端开发工程师
+                  - paragraph [ref=e147]: 经验未填写
+              - cell "02/08 17:00 腾讯会议 · 486-079-4350" [ref=e148]:
+                - generic [ref=e149]:
+                  - paragraph [ref=e150]: 02/08 17:00
+                  - paragraph [ref=e151]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e152]:
+                - generic [ref=e153]: 视频面试
+              - cell "C" [ref=e154]:
+                - generic [ref=e155]: C
+              - cell "BOSS直聘" [ref=e156]:
+                - generic [ref=e157]: BOSS直聘
+              - cell "郑楠 HRBP：汪文琼" [ref=e158]:
+                - generic [ref=e159]:
+                  - paragraph [ref=e160]: 郑楠
+                  - paragraph [ref=e161]: HRBP：汪文琼
+              - cell "淘汰" [ref=e162]:
+                - generic [ref=e163]: 淘汰
+              - cell "工作台 导出" [ref=e164]:
+                - generic [ref=e165]:
+                  - button "工作台" [ref=e166]:
+                    - img [ref=e167]
+                    - text: 工作台
+                  - button "导出" [ref=e169]:
+                    - img [ref=e170]
+                    - text: 导出
+            - row "俞伦端 17858956982 云深技术中心 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 02/13 20:00 腾讯会议 · 486-079-4350 视频面试 B BOSS直聘 汤炜炜 HRBP：汪文琼 淘汰 工作台 导出" [ref=e173] [cursor=pointer]:
+              - cell "俞伦端 17858956982" [ref=e174]:
+                - generic [ref=e175]:
+                  - button "俞伦端" [ref=e176]
+                  - paragraph [ref=e177]: "17858956982"
+              - cell "云深技术中心 公共服务事业群（PSG） / 云深事业部" [ref=e178]:
+                - generic [ref=e179]:
+                  - paragraph [ref=e180]: 云深技术中心
+                  - paragraph [ref=e181]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e182]:
+                - generic [ref=e183]:
+                  - paragraph [ref=e184]: 前端开发工程师
+                  - paragraph [ref=e185]: 经验未填写
+              - cell "02/13 20:00 腾讯会议 · 486-079-4350" [ref=e186]:
+                - generic [ref=e187]:
+                  - paragraph [ref=e188]: 02/13 20:00
+                  - paragraph [ref=e189]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e190]:
+                - generic [ref=e191]: 视频面试
+              - cell "B" [ref=e192]:
+                - generic [ref=e193]: B
+              - cell "BOSS直聘" [ref=e194]:
+                - generic [ref=e195]: BOSS直聘
+              - cell "汤炜炜 HRBP：汪文琼" [ref=e196]:
+                - generic [ref=e197]:
+                  - paragraph [ref=e198]: 汤炜炜
+                  - paragraph [ref=e199]: HRBP：汪文琼
+              - cell "淘汰" [ref=e200]:
+                - generic [ref=e201]: 淘汰
+              - cell "工作台 导出" [ref=e202]:
+                - generic [ref=e203]:
+                  - button "工作台" [ref=e204]:
+                    - img [ref=e205]
+                    - text: 工作台
+                  - button "导出" [ref=e207]:
+                    - img [ref=e208]
+                    - text: 导出
+            - row "邢亚森 17826826933 云深技术中心 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 02/10 19:00 腾讯会议 · 486-079-4350 视频面试 B BOSS直聘 郑楠 HRBP：汪文琼 淘汰 工作台 导出" [ref=e211] [cursor=pointer]:
+              - cell "邢亚森 17826826933" [ref=e212]:
+                - generic [ref=e213]:
+                  - button "邢亚森" [ref=e214]
+                  - paragraph [ref=e215]: "17826826933"
+              - cell "云深技术中心 公共服务事业群（PSG） / 云深事业部" [ref=e216]:
+                - generic [ref=e217]:
+                  - paragraph [ref=e218]: 云深技术中心
+                  - paragraph [ref=e219]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e220]:
+                - generic [ref=e221]:
+                  - paragraph [ref=e222]: 前端开发工程师
+                  - paragraph [ref=e223]: 经验未填写
+              - cell "02/10 19:00 腾讯会议 · 486-079-4350" [ref=e224]:
+                - generic [ref=e225]:
+                  - paragraph [ref=e226]: 02/10 19:00
+                  - paragraph [ref=e227]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e228]:
+                - generic [ref=e229]: 视频面试
+              - cell "B" [ref=e230]:
+                - generic [ref=e231]: B
+              - cell "BOSS直聘" [ref=e232]:
+                - generic [ref=e233]: BOSS直聘
+              - cell "郑楠 HRBP：汪文琼" [ref=e234]:
+                - generic [ref=e235]:
+                  - paragraph [ref=e236]: 郑楠
+                  - paragraph [ref=e237]: HRBP：汪文琼
+              - cell "淘汰" [ref=e238]:
+                - generic [ref=e239]: 淘汰
+              - cell "工作台 导出" [ref=e240]:
+                - generic [ref=e241]:
+                  - button "工作台" [ref=e242]:
+                    - img [ref=e243]
+                    - text: 工作台
+                  - button "导出" [ref=e245]:
+                    - img [ref=e246]
+                    - text: 导出
+            - row "冯啸 13164351260 公共服务事业群（PSG）-云深 每日互动股份有限公司 / 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 07/04 18:30 腾讯会议 · 486-079-4350 视频面试 B+ BOSS直聘 罗昊 HRBP：汪蓓 淘汰 工作台 导出" [ref=e249] [cursor=pointer]:
+              - cell "冯啸 13164351260" [ref=e250]:
+                - generic [ref=e251]:
+                  - button "冯啸" [ref=e252]
+                  - paragraph [ref=e253]: "13164351260"
+              - cell "公共服务事业群（PSG）-云深 每日互动股份有限公司 / 云深 / 公共服务事业群（PSG）" [ref=e254]:
+                - generic [ref=e255]:
+                  - paragraph [ref=e256]: 公共服务事业群（PSG）-云深
+                  - paragraph [ref=e257]: 每日互动股份有限公司 / 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e258]:
+                - generic [ref=e259]:
+                  - paragraph [ref=e260]: 前端开发工程师
+                  - paragraph [ref=e261]: 经验未填写
+              - cell "07/04 18:30 腾讯会议 · 486-079-4350" [ref=e262]:
+                - generic [ref=e263]:
+                  - paragraph [ref=e264]: 07/04 18:30
+                  - paragraph [ref=e265]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e266]:
+                - generic [ref=e267]: 视频面试
+              - cell "B+" [ref=e268]:
+                - generic [ref=e269]: B+
+              - cell "BOSS直聘" [ref=e270]:
+                - generic [ref=e271]: BOSS直聘
+              - cell "罗昊 HRBP：汪蓓" [ref=e272]:
+                - generic [ref=e273]:
+                  - paragraph [ref=e274]: 罗昊
+                  - paragraph [ref=e275]: HRBP：汪蓓
+              - cell "淘汰" [ref=e276]:
+                - generic [ref=e277]: 淘汰
+              - cell "工作台 导出" [ref=e278]:
+                - generic [ref=e279]:
+                  - button "工作台" [ref=e280]:
+                    - img [ref=e281]
+                    - text: 工作台
+                  - button "导出" [ref=e283]:
+                    - img [ref=e284]
+                    - text: 导出
+            - row "申茹嘉 17764592379 研发2组 智数业务部 / 范式创新组 前端开发工程师 经验未填写 02/16 19:00 腾讯会议 · 486-079-4350 视频面试 A BOSS直聘 郑楠 HRBP：汪文琼 拒绝入职 工作台 导出" [ref=e287] [cursor=pointer]:
+              - cell "申茹嘉 17764592379" [ref=e288]:
+                - generic [ref=e289]:
+                  - button "申茹嘉" [ref=e290]
+                  - paragraph [ref=e291]: "17764592379"
+              - cell "研发2组 智数业务部 / 范式创新组" [ref=e292]:
+                - generic [ref=e293]:
+                  - paragraph [ref=e294]: 研发2组
+                  - paragraph [ref=e295]: 智数业务部 / 范式创新组
+              - cell "前端开发工程师 经验未填写" [ref=e296]:
+                - generic [ref=e297]:
+                  - paragraph [ref=e298]: 前端开发工程师
+                  - paragraph [ref=e299]: 经验未填写
+              - cell "02/16 19:00 腾讯会议 · 486-079-4350" [ref=e300]:
+                - generic [ref=e301]:
+                  - paragraph [ref=e302]: 02/16 19:00
+                  - paragraph [ref=e303]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e304]:
+                - generic [ref=e305]: 视频面试
+              - cell "A" [ref=e306]:
+                - generic [ref=e307]: A
+              - cell "BOSS直聘" [ref=e308]:
+                - generic [ref=e309]: BOSS直聘
+              - cell "郑楠 HRBP：汪文琼" [ref=e310]:
+                - generic [ref=e311]:
+                  - paragraph [ref=e312]: 郑楠
+                  - paragraph [ref=e313]: HRBP：汪文琼
+              - cell "拒绝入职" [ref=e314]:
+                - generic [ref=e315]: 拒绝入职
+              - cell "工作台 导出" [ref=e316]:
+                - generic [ref=e317]:
+                  - button "工作台" [ref=e318]:
+                    - img [ref=e319]
+                    - text: 工作台
+                  - button "导出" [ref=e321]:
+                    - img [ref=e322]
+                    - text: 导出
+            - row "史硕 15680150268 公共服务事业群（PSG）-云深 每日互动股份有限公司 / 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 11/24 18:30 腾讯会议 · 486-079-4350 视频面试 B+ BOSS 吴禹璇 HRBP：汪蓓 淘汰 工作台 导出" [ref=e325] [cursor=pointer]:
+              - cell "史硕 15680150268" [ref=e326]:
+                - generic [ref=e327]:
+                  - button "史硕" [ref=e328]
+                  - paragraph [ref=e329]: "15680150268"
+              - cell "公共服务事业群（PSG）-云深 每日互动股份有限公司 / 云深 / 公共服务事业群（PSG）" [ref=e330]:
+                - generic [ref=e331]:
+                  - paragraph [ref=e332]: 公共服务事业群（PSG）-云深
+                  - paragraph [ref=e333]: 每日互动股份有限公司 / 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e334]:
+                - generic [ref=e335]:
+                  - paragraph [ref=e336]: 前端开发工程师
+                  - paragraph [ref=e337]: 经验未填写
+              - cell "11/24 18:30 腾讯会议 · 486-079-4350" [ref=e338]:
+                - generic [ref=e339]:
+                  - paragraph [ref=e340]: 11/24 18:30
+                  - paragraph [ref=e341]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e342]:
+                - generic [ref=e343]: 视频面试
+              - cell "B+" [ref=e344]:
+                - generic [ref=e345]: B+
+              - cell "BOSS" [ref=e346]:
+                - generic [ref=e347]: BOSS
+              - cell "吴禹璇 HRBP：汪蓓" [ref=e348]:
+                - generic [ref=e349]:
+                  - paragraph [ref=e350]: 吴禹璇
+                  - paragraph [ref=e351]: HRBP：汪蓓
+              - cell "淘汰" [ref=e352]:
+                - generic [ref=e353]: 淘汰
+              - cell "工作台 导出" [ref=e354]:
+                - generic [ref=e355]:
+                  - button "工作台" [ref=e356]:
+                    - img [ref=e357]
+                    - text: 工作台
+                  - button "导出" [ref=e359]:
+                    - img [ref=e360]
+                    - text: 导出
+            - row "杨宗花 19591571168 云通数达智慧交通研发部 云通数达 / 云通数达技术中心 前端开发工程师 经验未填写 11/21 18:30 腾讯会议 · 486-079-4350 视频面试 C BOSS 柴一雯 HRBP：汪文琼 淘汰 工作台 导出" [ref=e363] [cursor=pointer]:
+              - cell "杨宗花 19591571168" [ref=e364]:
+                - generic [ref=e365]:
+                  - button "杨宗花" [ref=e366]
+                  - paragraph [ref=e367]: "19591571168"
+              - cell "云通数达智慧交通研发部 云通数达 / 云通数达技术中心" [ref=e368]:
+                - generic [ref=e369]:
+                  - paragraph [ref=e370]: 云通数达智慧交通研发部
+                  - paragraph [ref=e371]: 云通数达 / 云通数达技术中心
+              - cell "前端开发工程师 经验未填写" [ref=e372]:
+                - generic [ref=e373]:
+                  - paragraph [ref=e374]: 前端开发工程师
+                  - paragraph [ref=e375]: 经验未填写
+              - cell "11/21 18:30 腾讯会议 · 486-079-4350" [ref=e376]:
+                - generic [ref=e377]:
+                  - paragraph [ref=e378]: 11/21 18:30
+                  - paragraph [ref=e379]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e380]:
+                - generic [ref=e381]: 视频面试
+              - cell "C" [ref=e382]:
+                - generic [ref=e383]: C
+              - cell "BOSS" [ref=e384]:
+                - generic [ref=e385]: BOSS
+              - cell "柴一雯 HRBP：汪文琼" [ref=e386]:
+                - generic [ref=e387]:
+                  - paragraph [ref=e388]: 柴一雯
+                  - paragraph [ref=e389]: HRBP：汪文琼
+              - cell "淘汰" [ref=e390]:
+                - generic [ref=e391]: 淘汰
+              - cell "工作台 导出" [ref=e392]:
+                - generic [ref=e393]:
+                  - button "工作台" [ref=e394]:
+                    - img [ref=e395]
+                    - text: 工作台
+                  - button "导出" [ref=e397]:
+                    - img [ref=e398]
+                    - text: 导出
+            - row "张国栋 13758248970 云深事业部 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 11/15 16:00 腾讯会议 · 486-079-4350 视频面试 B BOSS 柴一雯 HRBP：汪蓓 淘汰 工作台 导出" [ref=e401] [cursor=pointer]:
+              - cell "张国栋 13758248970" [ref=e402]:
+                - generic [ref=e403]:
+                  - button "张国栋" [ref=e404]
+                  - paragraph [ref=e405]: "13758248970"
+              - cell "云深事业部 云深 / 公共服务事业群（PSG）" [ref=e406]:
+                - generic [ref=e407]:
+                  - paragraph [ref=e408]: 云深事业部
+                  - paragraph [ref=e409]: 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e410]:
+                - generic [ref=e411]:
+                  - paragraph [ref=e412]: 前端开发工程师
+                  - paragraph [ref=e413]: 经验未填写
+              - cell "11/15 16:00 腾讯会议 · 486-079-4350" [ref=e414]:
+                - generic [ref=e415]:
+                  - paragraph [ref=e416]: 11/15 16:00
+                  - paragraph [ref=e417]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e418]:
+                - generic [ref=e419]: 视频面试
+              - cell "B" [ref=e420]:
+                - generic [ref=e421]: B
+              - cell "BOSS" [ref=e422]:
+                - generic [ref=e423]: BOSS
+              - cell "柴一雯 HRBP：汪蓓" [ref=e424]:
+                - generic [ref=e425]:
+                  - paragraph [ref=e426]: 柴一雯
+                  - paragraph [ref=e427]: HRBP：汪蓓
+              - cell "淘汰" [ref=e428]:
+                - generic [ref=e429]: 淘汰
+              - cell "工作台 导出" [ref=e430]:
+                - generic [ref=e431]:
+                  - button "工作台" [ref=e432]:
+                    - img [ref=e433]
+                    - text: 工作台
+                  - button "导出" [ref=e435]:
+                    - img [ref=e436]
+                    - text: 导出
+            - row "臧紫薇 15304035010 云深事业部 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 11/28 19:00 腾讯会议 · 486-079-4350 视频面试 B BOSS 吴禹璇 HRBP：汪蓓 淘汰 工作台 导出" [ref=e439] [cursor=pointer]:
+              - cell "臧紫薇 15304035010" [ref=e440]:
+                - generic [ref=e441]:
+                  - button "臧紫薇" [ref=e442]
+                  - paragraph [ref=e443]: "15304035010"
+              - cell "云深事业部 云深 / 公共服务事业群（PSG）" [ref=e444]:
+                - generic [ref=e445]:
+                  - paragraph [ref=e446]: 云深事业部
+                  - paragraph [ref=e447]: 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e448]:
+                - generic [ref=e449]:
+                  - paragraph [ref=e450]: 前端开发工程师
+                  - paragraph [ref=e451]: 经验未填写
+              - cell "11/28 19:00 腾讯会议 · 486-079-4350" [ref=e452]:
+                - generic [ref=e453]:
+                  - paragraph [ref=e454]: 11/28 19:00
+                  - paragraph [ref=e455]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e456]:
+                - generic [ref=e457]: 视频面试
+              - cell "B" [ref=e458]:
+                - generic [ref=e459]: B
+              - cell "BOSS" [ref=e460]:
+                - generic [ref=e461]: BOSS
+              - cell "吴禹璇 HRBP：汪蓓" [ref=e462]:
+                - generic [ref=e463]:
+                  - paragraph [ref=e464]: 吴禹璇
+                  - paragraph [ref=e465]: HRBP：汪蓓
+              - cell "淘汰" [ref=e466]:
+                - generic [ref=e467]: 淘汰
+              - cell "工作台 导出" [ref=e468]:
+                - generic [ref=e469]:
+                  - button "工作台" [ref=e470]:
+                    - img [ref=e471]
+                    - text: 工作台
+                  - button "导出" [ref=e473]:
+                    - img [ref=e474]
+                    - text: 导出
+            - row "徐志强 18085034239 云深技术中心 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 11/26 19:00 腾讯会议 · 486-079-4350 视频面试 B+ BOSS 吴禹璇 HRBP：汪文琼 淘汰 工作台 导出" [ref=e477] [cursor=pointer]:
+              - cell "徐志强 18085034239" [ref=e478]:
+                - generic [ref=e479]:
+                  - button "徐志强" [ref=e480]
+                  - paragraph [ref=e481]: "18085034239"
+              - cell "云深技术中心 公共服务事业群（PSG） / 云深事业部" [ref=e482]:
+                - generic [ref=e483]:
+                  - paragraph [ref=e484]: 云深技术中心
+                  - paragraph [ref=e485]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e486]:
+                - generic [ref=e487]:
+                  - paragraph [ref=e488]: 前端开发工程师
+                  - paragraph [ref=e489]: 经验未填写
+              - cell "11/26 19:00 腾讯会议 · 486-079-4350" [ref=e490]:
+                - generic [ref=e491]:
+                  - paragraph [ref=e492]: 11/26 19:00
+                  - paragraph [ref=e493]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e494]:
+                - generic [ref=e495]: 视频面试
+              - cell "B+" [ref=e496]:
+                - generic [ref=e497]: B+
+              - cell "BOSS" [ref=e498]:
+                - generic [ref=e499]: BOSS
+              - cell "吴禹璇 HRBP：汪文琼" [ref=e500]:
+                - generic [ref=e501]:
+                  - paragraph [ref=e502]: 吴禹璇
+                  - paragraph [ref=e503]: HRBP：汪文琼
+              - cell "淘汰" [ref=e504]:
+                - generic [ref=e505]: 淘汰
+              - cell "工作台 导出" [ref=e506]:
+                - generic [ref=e507]:
+                  - button "工作台" [ref=e508]:
+                    - img [ref=e509]
+                    - text: 工作台
+                  - button "导出" [ref=e511]:
+                    - img [ref=e512]
+                    - text: 导出
+            - row "隋文娟 15694129685 云深事业部 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 12/08 20:00 腾讯会议 · 486-079-4350 视频面试 B+ BOSS 吴禹璇 HRBP：汪蓓 淘汰 工作台 导出" [ref=e515] [cursor=pointer]:
+              - cell "隋文娟 15694129685" [ref=e516]:
+                - generic [ref=e517]:
+                  - button "隋文娟" [ref=e518]
+                  - paragraph [ref=e519]: "15694129685"
+              - cell "云深事业部 云深 / 公共服务事业群（PSG）" [ref=e520]:
+                - generic [ref=e521]:
+                  - paragraph [ref=e522]: 云深事业部
+                  - paragraph [ref=e523]: 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e524]:
+                - generic [ref=e525]:
+                  - paragraph [ref=e526]: 前端开发工程师
+                  - paragraph [ref=e527]: 经验未填写
+              - cell "12/08 20:00 腾讯会议 · 486-079-4350" [ref=e528]:
+                - generic [ref=e529]:
+                  - paragraph [ref=e530]: 12/08 20:00
+                  - paragraph [ref=e531]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e532]:
+                - generic [ref=e533]: 视频面试
+              - cell "B+" [ref=e534]:
+                - generic [ref=e535]: B+
+              - cell "BOSS" [ref=e536]:
+                - generic [ref=e537]: BOSS
+              - cell "吴禹璇 HRBP：汪蓓" [ref=e538]:
+                - generic [ref=e539]:
+                  - paragraph [ref=e540]: 吴禹璇
+                  - paragraph [ref=e541]: HRBP：汪蓓
+              - cell "淘汰" [ref=e542]:
+                - generic [ref=e543]: 淘汰
+              - cell "工作台 导出" [ref=e544]:
+                - generic [ref=e545]:
+                  - button "工作台" [ref=e546]:
+                    - img [ref=e547]
+                    - text: 工作台
+                  - button "导出" [ref=e549]:
+                    - img [ref=e550]
+                    - text: 导出
+            - row "孙悦 19852853799 云深事业部 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 12/08 19:00 腾讯会议 · 486-079-4350 视频面试 / BOSS 吴禹璇 HRBP：汪蓓 淘汰 工作台 导出" [ref=e553] [cursor=pointer]:
+              - cell "孙悦 19852853799" [ref=e554]:
+                - generic [ref=e555]:
+                  - button "孙悦" [ref=e556]
+                  - paragraph [ref=e557]: "19852853799"
+              - cell "云深事业部 云深 / 公共服务事业群（PSG）" [ref=e558]:
+                - generic [ref=e559]:
+                  - paragraph [ref=e560]: 云深事业部
+                  - paragraph [ref=e561]: 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e562]:
+                - generic [ref=e563]:
+                  - paragraph [ref=e564]: 前端开发工程师
+                  - paragraph [ref=e565]: 经验未填写
+              - cell "12/08 19:00 腾讯会议 · 486-079-4350" [ref=e566]:
+                - generic [ref=e567]:
+                  - paragraph [ref=e568]: 12/08 19:00
+                  - paragraph [ref=e569]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e570]:
+                - generic [ref=e571]: 视频面试
+              - cell / [ref=e572]:
+                - generic [ref=e573]: /
+              - cell "BOSS" [ref=e574]:
+                - generic [ref=e575]: BOSS
+              - cell "吴禹璇 HRBP：汪蓓" [ref=e576]:
+                - generic [ref=e577]:
+                  - paragraph [ref=e578]: 吴禹璇
+                  - paragraph [ref=e579]: HRBP：汪蓓
+              - cell "淘汰" [ref=e580]:
+                - generic [ref=e581]: 淘汰
+              - cell "工作台 导出" [ref=e582]:
+                - generic [ref=e583]:
+                  - button "工作台" [ref=e584]:
+                    - img [ref=e585]
+                    - text: 工作台
+                  - button "导出" [ref=e587]:
+                    - img [ref=e588]
+                    - text: 导出
+            - row "崔张豪 15612066705 云深事业部 云深 / 公共服务事业群（PSG） 前端开发工程师 经验未填写 12/05 19:00 腾讯会议 · 486-079-4350 视频面试 B BOSS 吴禹璇 HRBP：汪蓓 淘汰 工作台 导出" [ref=e591] [cursor=pointer]:
+              - cell "崔张豪 15612066705" [ref=e592]:
+                - generic [ref=e593]:
+                  - button "崔张豪" [ref=e594]
+                  - paragraph [ref=e595]: "15612066705"
+              - cell "云深事业部 云深 / 公共服务事业群（PSG）" [ref=e596]:
+                - generic [ref=e597]:
+                  - paragraph [ref=e598]: 云深事业部
+                  - paragraph [ref=e599]: 云深 / 公共服务事业群（PSG）
+              - cell "前端开发工程师 经验未填写" [ref=e600]:
+                - generic [ref=e601]:
+                  - paragraph [ref=e602]: 前端开发工程师
+                  - paragraph [ref=e603]: 经验未填写
+              - cell "12/05 19:00 腾讯会议 · 486-079-4350" [ref=e604]:
+                - generic [ref=e605]:
+                  - paragraph [ref=e606]: 12/05 19:00
+                  - paragraph [ref=e607]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e608]:
+                - generic [ref=e609]: 视频面试
+              - cell "B" [ref=e610]:
+                - generic [ref=e611]: B
+              - cell "BOSS" [ref=e612]:
+                - generic [ref=e613]: BOSS
+              - cell "吴禹璇 HRBP：汪蓓" [ref=e614]:
+                - generic [ref=e615]:
+                  - paragraph [ref=e616]: 吴禹璇
+                  - paragraph [ref=e617]: HRBP：汪蓓
+              - cell "淘汰" [ref=e618]:
+                - generic [ref=e619]: 淘汰
+              - cell "工作台 导出" [ref=e620]:
+                - generic [ref=e621]:
+                  - button "工作台" [ref=e622]:
+                    - img [ref=e623]
+                    - text: 工作台
+                  - button "导出" [ref=e625]:
+                    - img [ref=e626]
+                    - text: 导出
+            - row "侯世纪 18735900277 云深重点办 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 03/19 19:00 腾讯会议 · 486-079-4350 视频面试 B+ BOSS 黄家星 HRBP：汪文琼 面试中 工作台 导出" [ref=e629] [cursor=pointer]:
+              - cell "侯世纪 18735900277" [ref=e630]:
+                - generic [ref=e631]:
+                  - button "侯世纪" [ref=e632]
+                  - paragraph [ref=e633]: "18735900277"
+              - cell "云深重点办 公共服务事业群（PSG） / 云深事业部" [ref=e634]:
+                - generic [ref=e635]:
+                  - paragraph [ref=e636]: 云深重点办
+                  - paragraph [ref=e637]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e638]:
+                - generic [ref=e639]:
+                  - paragraph [ref=e640]: 前端开发工程师
+                  - paragraph [ref=e641]: 经验未填写
+              - cell "03/19 19:00 腾讯会议 · 486-079-4350" [ref=e642]:
+                - generic [ref=e643]:
+                  - paragraph [ref=e644]: 03/19 19:00
+                  - paragraph [ref=e645]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e646]:
+                - generic [ref=e647]: 视频面试
+              - cell "B+" [ref=e648]:
+                - generic [ref=e649]: B+
+              - cell "BOSS" [ref=e650]:
+                - generic [ref=e651]: BOSS
+              - cell "黄家星 HRBP：汪文琼" [ref=e652]:
+                - generic [ref=e653]:
+                  - paragraph [ref=e654]: 黄家星
+                  - paragraph [ref=e655]: HRBP：汪文琼
+              - cell "面试中" [ref=e656]:
+                - generic [ref=e657]: 面试中
+              - cell "工作台 导出" [ref=e658]:
+                - generic [ref=e659]:
+                  - button "工作台" [ref=e660]:
+                    - img [ref=e661]
+                    - text: 工作台
+                  - button "导出" [ref=e663]:
+                    - img [ref=e664]
+                    - text: 导出
+            - row "付晨 15227820208 云深重点办 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 03/18 20:00 腾讯会议 · 486-079-4350 视频面试 B+ BOSS 黄家星 HRBP：汪文琼 面试中 工作台 导出" [ref=e667] [cursor=pointer]:
+              - cell "付晨 15227820208" [ref=e668]:
+                - generic [ref=e669]:
+                  - button "付晨" [ref=e670]
+                  - paragraph [ref=e671]: "15227820208"
+              - cell "云深重点办 公共服务事业群（PSG） / 云深事业部" [ref=e672]:
+                - generic [ref=e673]:
+                  - paragraph [ref=e674]: 云深重点办
+                  - paragraph [ref=e675]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e676]:
+                - generic [ref=e677]:
+                  - paragraph [ref=e678]: 前端开发工程师
+                  - paragraph [ref=e679]: 经验未填写
+              - cell "03/18 20:00 腾讯会议 · 486-079-4350" [ref=e680]:
+                - generic [ref=e681]:
+                  - paragraph [ref=e682]: 03/18 20:00
+                  - paragraph [ref=e683]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e684]:
+                - generic [ref=e685]: 视频面试
+              - cell "B+" [ref=e686]:
+                - generic [ref=e687]: B+
+              - cell "BOSS" [ref=e688]:
+                - generic [ref=e689]: BOSS
+              - cell "黄家星 HRBP：汪文琼" [ref=e690]:
+                - generic [ref=e691]:
+                  - paragraph [ref=e692]: 黄家星
+                  - paragraph [ref=e693]: HRBP：汪文琼
+              - cell "面试中" [ref=e694]:
+                - generic [ref=e695]: 面试中
+              - cell "工作台 导出" [ref=e696]:
+                - generic [ref=e697]:
+                  - button "工作台" [ref=e698]:
+                    - img [ref=e699]
+                    - text: 工作台
+                  - button "导出" [ref=e701]:
+                    - img [ref=e702]
+                    - text: 导出
+            - row "李晓娜 13060898264 云深重点办 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 03/21 09:30 腾讯会议 · 486-079-4350 视频面试 / BOSS 黄家星 HRBP：汪文琼 面试中 工作台 导出" [ref=e705] [cursor=pointer]:
+              - cell "李晓娜 13060898264" [ref=e706]:
+                - generic [ref=e707]:
+                  - button "李晓娜" [ref=e708]
+                  - paragraph [ref=e709]: "13060898264"
+              - cell "云深重点办 公共服务事业群（PSG） / 云深事业部" [ref=e710]:
+                - generic [ref=e711]:
+                  - paragraph [ref=e712]: 云深重点办
+                  - paragraph [ref=e713]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e714]:
+                - generic [ref=e715]:
+                  - paragraph [ref=e716]: 前端开发工程师
+                  - paragraph [ref=e717]: 经验未填写
+              - cell "03/21 09:30 腾讯会议 · 486-079-4350" [ref=e718]:
+                - generic [ref=e719]:
+                  - paragraph [ref=e720]: 03/21 09:30
+                  - paragraph [ref=e721]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e722]:
+                - generic [ref=e723]: 视频面试
+              - cell / [ref=e724]:
+                - generic [ref=e725]: /
+              - cell "BOSS" [ref=e726]:
+                - generic [ref=e727]: BOSS
+              - cell "黄家星 HRBP：汪文琼" [ref=e728]:
+                - generic [ref=e729]:
+                  - paragraph [ref=e730]: 黄家星
+                  - paragraph [ref=e731]: HRBP：汪文琼
+              - cell "面试中" [ref=e732]:
+                - generic [ref=e733]: 面试中
+              - cell "工作台 导出" [ref=e734]:
+                - generic [ref=e735]:
+                  - button "工作台" [ref=e736]:
+                    - img [ref=e737]
+                    - text: 工作台
+                  - button "导出" [ref=e739]:
+                    - img [ref=e740]
+                    - text: 导出
+            - row "黄壮壮 17320008207 云深重点办 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 03/21 09:30 腾讯会议 · 486-079-4350 视频面试 B BOSS 黄家星 HRBP：汪文琼 面试中 工作台 导出" [ref=e743] [cursor=pointer]:
+              - cell "黄壮壮 17320008207" [ref=e744]:
+                - generic [ref=e745]:
+                  - button "黄壮壮" [ref=e746]
+                  - paragraph [ref=e747]: "17320008207"
+              - cell "云深重点办 公共服务事业群（PSG） / 云深事业部" [ref=e748]:
+                - generic [ref=e749]:
+                  - paragraph [ref=e750]: 云深重点办
+                  - paragraph [ref=e751]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e752]:
+                - generic [ref=e753]:
+                  - paragraph [ref=e754]: 前端开发工程师
+                  - paragraph [ref=e755]: 经验未填写
+              - cell "03/21 09:30 腾讯会议 · 486-079-4350" [ref=e756]:
+                - generic [ref=e757]:
+                  - paragraph [ref=e758]: 03/21 09:30
+                  - paragraph [ref=e759]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e760]:
+                - generic [ref=e761]: 视频面试
+              - cell "B" [ref=e762]:
+                - generic [ref=e763]: B
+              - cell "BOSS" [ref=e764]:
+                - generic [ref=e765]: BOSS
+              - cell "黄家星 HRBP：汪文琼" [ref=e766]:
+                - generic [ref=e767]:
+                  - paragraph [ref=e768]: 黄家星
+                  - paragraph [ref=e769]: HRBP：汪文琼
+              - cell "面试中" [ref=e770]:
+                - generic [ref=e771]: 面试中
+              - cell "工作台 导出" [ref=e772]:
+                - generic [ref=e773]:
+                  - button "工作台" [ref=e774]:
+                    - img [ref=e775]
+                    - text: 工作台
+                  - button "导出" [ref=e777]:
+                    - img [ref=e778]
+                    - text: 导出
+            - row "马慧超 18018951145 云深重点办 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 03/21 10:00 腾讯会议 · 486-079-4350 视频面试 / BOSS 黄家星 HRBP：汪文琼 面试中 工作台 导出" [ref=e781] [cursor=pointer]:
+              - cell "马慧超 18018951145" [ref=e782]:
+                - generic [ref=e783]:
+                  - button "马慧超" [ref=e784]
+                  - paragraph [ref=e785]: "18018951145"
+              - cell "云深重点办 公共服务事业群（PSG） / 云深事业部" [ref=e786]:
+                - generic [ref=e787]:
+                  - paragraph [ref=e788]: 云深重点办
+                  - paragraph [ref=e789]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e790]:
+                - generic [ref=e791]:
+                  - paragraph [ref=e792]: 前端开发工程师
+                  - paragraph [ref=e793]: 经验未填写
+              - cell "03/21 10:00 腾讯会议 · 486-079-4350" [ref=e794]:
+                - generic [ref=e795]:
+                  - paragraph [ref=e796]: 03/21 10:00
+                  - paragraph [ref=e797]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e798]:
+                - generic [ref=e799]: 视频面试
+              - cell / [ref=e800]:
+                - generic [ref=e801]: /
+              - cell "BOSS" [ref=e802]:
+                - generic [ref=e803]: BOSS
+              - cell "黄家星 HRBP：汪文琼" [ref=e804]:
+                - generic [ref=e805]:
+                  - paragraph [ref=e806]: 黄家星
+                  - paragraph [ref=e807]: HRBP：汪文琼
+              - cell "面试中" [ref=e808]:
+                - generic [ref=e809]: 面试中
+              - cell "工作台 导出" [ref=e810]:
+                - generic [ref=e811]:
+                  - button "工作台" [ref=e812]:
+                    - img [ref=e813]
+                    - text: 工作台
+                  - button "导出" [ref=e815]:
+                    - img [ref=e816]
+                    - text: 导出
+            - row "李淑民 17611560166 云深重点办 公共服务事业群（PSG） / 云深事业部 前端开发工程师 经验未填写 03/21 10:30 腾讯会议 · 486-079-4350 视频面试 B 举才 黄家星 HRBP：汪文琼 面试中 工作台 导出" [ref=e819] [cursor=pointer]:
+              - cell "李淑民 17611560166" [ref=e820]:
+                - generic [ref=e821]:
+                  - button "李淑民" [ref=e822]
+                  - paragraph [ref=e823]: "17611560166"
+              - cell "云深重点办 公共服务事业群（PSG） / 云深事业部" [ref=e824]:
+                - generic [ref=e825]:
+                  - paragraph [ref=e826]: 云深重点办
+                  - paragraph [ref=e827]: 公共服务事业群（PSG） / 云深事业部
+              - cell "前端开发工程师 经验未填写" [ref=e828]:
+                - generic [ref=e829]:
+                  - paragraph [ref=e830]: 前端开发工程师
+                  - paragraph [ref=e831]: 经验未填写
+              - cell "03/21 10:30 腾讯会议 · 486-079-4350" [ref=e832]:
+                - generic [ref=e833]:
+                  - paragraph [ref=e834]: 03/21 10:30
+                  - paragraph [ref=e835]: 腾讯会议 · 486-079-4350
+              - cell "视频面试" [ref=e836]:
+                - generic [ref=e837]: 视频面试
+              - cell "B" [ref=e838]:
+                - generic [ref=e839]: B
+              - cell "举才" [ref=e840]:
+                - generic [ref=e841]: 举才
+              - cell "黄家星 HRBP：汪文琼" [ref=e842]:
+                - generic [ref=e843]:
+                  - paragraph [ref=e844]: 黄家星
+                  - paragraph [ref=e845]: HRBP：汪文琼
+              - cell "面试中" [ref=e846]:
+                - generic [ref=e847]: 面试中
+              - cell "工作台 导出" [ref=e848]:
+                - generic [ref=e849]:
+                  - button "工作台" [ref=e850]:
+                    - img [ref=e851]
+                    - text: 工作台
+                  - button "导出" [ref=e853]:
+                    - img [ref=e854]
+                    - text: 导出
+        - generic [ref=e858]:
+          - generic [ref=e859]: 共 25 位候选人，第 1 / 2 页
+          - generic [ref=e860]:
+            - generic [ref=e861]:
+              - text: 每页
+              - combobox "每页 条" [ref=e862]:
+                - option "20" [selected]
+                - option "50"
+                - option "100"
+              - text: 条
+            - navigation "分页导航" [ref=e863]:
+              - generic [ref=e864]:
+                - button "上一页" [disabled]
+                - button "1" [ref=e865] [cursor=pointer]
+                - button "2" [ref=e866] [cursor=pointer]
+                - button "下一页" [ref=e867] [cursor=pointer]
+  - generic [ref=e21]:
+    - generic "Toggle devtools panel" [ref=e22] [cursor=pointer]:
+      - img [ref=e23]
+    - generic "Toggle Component Inspector" [ref=e28] [cursor=pointer]:
+      - img [ref=e29]

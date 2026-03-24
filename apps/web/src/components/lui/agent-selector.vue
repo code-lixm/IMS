@@ -30,7 +30,7 @@
             <div v-else-if="agents.length === 0" class="py-8 text-center text-sm text-muted-foreground">
               <Bot class="mx-auto mb-2 h-8 w-8 opacity-20" />
               <p>暂无 Agent</p>
-              <p class="text-xs">请先创建一个 Agent</p>
+              <p class="text-xs">请先在设置中创建 Agent</p>
             </div>
 
             <ul v-else class="space-y-1 p-1">
