@@ -46,6 +46,23 @@
         </div>
       </div>
 
+      <!-- AI Gateway Toolbar -->
+      <AIGatewayToolbar
+        :selected-agent-id="store.selectedAgentId"
+        :providers="store.providers"
+        :selected-model-id="store.selectedModelId"
+        :authorized-providers="authorizedProviders"
+        :temperature="temperature"
+        @select-agent="onSelectAgent"
+        @create-agent="onCreateAgent"
+        @select-model="onSelectModel"
+        @authorize="onAuthorizeProvider"
+        @update:temperature="onTemperatureChange"
+      />
+
+      <!-- 任务队列指示器 -->
+      <TaskQueueIndicator :tasks="store.tasks" />
+
       <!-- 底部输入框 -->
       <div class="border-t p-4">
         <PromptInput
@@ -57,6 +74,14 @@
           @file-upload="onFileUpload"
         />
       </div>
+
+      <!-- 授权对话框 -->
+      <AuthDialog
+        v-model="showAuthDialog"
+        :provider="authProvider"
+        :provider-name="authProviderName"
+        @authorize="onAuthConfirm"
+      />
     </main>
 
     <!-- 右边栏：文件资源 -->
@@ -67,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Bot } from 'lucide-vue-next'
 import { useLuiStore } from '@/stores/lui'
 import ConversationList from '@/components/lui/conversation-list.vue'
@@ -75,10 +100,24 @@ import ChatMessage from '@/components/lui/chat-message.vue'
 import PromptInput from '@/components/lui/prompt-input.vue'
 import FileResources from '@/components/lui/file-resources.vue'
 import CandidateSelector from '@/components/lui/candidate-selector.vue'
+import AIGatewayToolbar from '@/components/lui/ai-gateway-toolbar.vue'
+import TaskQueueIndicator from '@/components/lui/task-queue-indicator.vue'
+import AuthDialog from '@/components/lui/auth-dialog.vue'
 
 const store = useLuiStore()
 
 const inputText = ref('')
+const showAuthDialog = ref(false)
+const authProvider = ref('')
+const authProviderName = ref('')
+const temperature = ref(0.5)
+
+// 计算已授权的 providers
+const authorizedProviders = computed(() => {
+  return store.providers
+    .filter((p: { id: string }) => store.isAuthorized(p.id))
+    .map((p: { id: string }) => p.id)
+})
 
 async function onConversationSelect(id: string) {
   await store.selectConversation(id)
@@ -119,6 +158,36 @@ async function onFileUpload(files: File[]) {
   for (const file of files) {
     await store.addFileResource(store.selectedId, file)
   }
+}
+
+function onSelectAgent(agentId: string | null) {
+  store.selectedAgentId = agentId
+}
+
+function onCreateAgent() {
+  // TODO: Open agent creation dialog
+}
+
+function onSelectModel(modelId: string | null) {
+  store.selectedModelId = modelId
+}
+
+function onAuthorizeProvider(provider: string) {
+  const providerConfig = store.providers.find((p: { id: string; name: string }) => p.id === provider)
+  if (providerConfig) {
+    authProvider.value = provider
+    authProviderName.value = providerConfig.name
+    showAuthDialog.value = true
+  }
+}
+
+async function onAuthConfirm(payload: { provider: string; apiKey: string }) {
+  await store.authorize(payload.provider, payload.apiKey)
+  showAuthDialog.value = false
+}
+
+function onTemperatureChange(value: number) {
+  temperature.value = value
 }
 
 onMounted(async () => {

@@ -1,0 +1,101 @@
+# Candidate List Redesign Requirements
+
+## Introduction
+
+Candidate List Redesign 用于将当前候选人页面从“低信息密度的大卡片流”升级为“适合浏览、筛选、分页和状态判断的主列表页面”。该特性重点解决当前页面占用空间大、列表信息过少、缺少分页能力、缺少简历/流程状态语义的问题，使技术面试官、招聘负责人和招聘协调同学能够更快完成候选人筛选与进度跟踪。
+
+## Alignment with Product Vision
+
+该特性直接支撑 `product.md` 中的“候选人管理”“简历导入流水线”与“候选人工作台”能力：
+
+- 它强化主列表作为候选人管理入口的效率，使用户可以快速浏览 1000+ 候选人。
+- 它把远程同步数据、本地导入数据和流程状态汇总到同一个列表视图中，更符合“统一远程数据、本地导入数据与 AI 产物”的产品目标。
+- 它通过更明确的状态颜色和阶段字段降低用户理解成本，帮助招聘流程闭环。
+
+## Requirements
+
+### Requirement 1: 主列表必须使用高信息密度的列表化展示
+
+**User Story:** As a hiring user, I want the candidates page to show a dense list instead of oversized cards, so that I can scan more candidates in less space.
+
+#### Acceptance Criteria
+
+1. WHEN a user opens the candidates page THEN the system SHALL render candidates in a compact list or table layout optimized for desktop browsing.
+2. WHEN the list is rendered THEN each row SHALL avoid full-width oversized card spacing and SHALL present multiple comparable fields in a single horizontal row.
+3. WHEN the viewport shows the main candidates list THEN the number of visible candidates per screen SHALL be higher than the current large-card layout.
+
+### Requirement 2: 主列表必须支持分页浏览
+
+**User Story:** As a hiring user, I want pagination on the candidates page, so that I can navigate large candidate pools predictably.
+
+#### Acceptance Criteria
+
+1. WHEN the candidate dataset exceeds one page THEN the system SHALL provide pagination controls on the candidates page.
+2. WHEN a user changes page or page size THEN the system SHALL request the corresponding slice of candidate data from the backend.
+3. WHEN the backend returns paging metadata THEN the frontend SHALL preserve and display current page, page size, and total result count.
+4. IF search or filter conditions change THEN the system SHALL reset to the first page before loading updated results.
+
+### Requirement 3: 主列表必须展示候选人流程摘要字段
+
+**User Story:** As a recruiter or interviewer, I want the candidates list to show resume and interview progress summaries, so that I can judge candidate status without opening each detail page.
+
+#### Acceptance Criteria
+
+1. WHEN the candidates page loads THEN each list item SHALL include core identity fields and workflow summary fields suitable for quick comparison.
+2. WHEN candidate summary data is returned THEN the list SHALL display at least resume status, current pipeline stage, and interview state in addition to basic candidate identity.
+3. IF a candidate has no corresponding resume or interview record THEN the system SHALL display a clear neutral fallback status rather than leaving the field ambiguous.
+
+### Requirement 4: 状态与阶段必须通过颜色语义区分
+
+**User Story:** As a hiring user, I want resume and pipeline states to use clear color differentiation, so that I can understand candidate progress at a glance.
+
+#### Acceptance Criteria
+
+1. WHEN a candidate row shows resume status or pipeline stage THEN the system SHALL render the status with a consistent badge or visual state style.
+2. WHEN different workflow states are displayed THEN the system SHALL use distinct semantic visual variants for positive, in-progress, neutral, and failed/rejected states.
+3. WHEN the same state appears in multiple rows THEN the system SHALL use the same label and color semantics consistently.
+
+### Requirement 5: 候选人列表接口必须返回列表摘要所需的数据契约
+
+**User Story:** As a frontend developer, I want the candidate list API to include list-summary workflow fields, so that the list page can render complete status information without fetching every detail page.
+
+#### Acceptance Criteria
+
+1. WHEN the frontend requests the candidates list THEN the backend SHALL return paging metadata and per-candidate summary fields required by the list view.
+2. WHEN a candidate has associated resume or interview records THEN the backend SHALL derive the current list-summary status from the latest relevant records according to a documented rule.
+3. WHEN the backend returns total result count THEN it SHALL represent the full filtered dataset count, not only the current page length.
+
+### Requirement 6: 改版后仍需保留现有主列表核心操作
+
+**User Story:** As a hiring user, I want the redesigned list to keep the existing core actions, so that my workflow is improved rather than disrupted.
+
+#### Acceptance Criteria
+
+1. WHEN the candidates list is redesigned THEN candidate selection, AI workspace entry, and export actions SHALL remain available from the list view.
+2. WHEN search is used on the candidates page THEN the redesign SHALL preserve the current search capability and work correctly with pagination.
+3. WHEN a candidate row is activated THEN the user SHALL still be able to navigate to the candidate detail page.
+
+## Non-Functional Requirements
+
+### Code Architecture and Modularity
+- Candidate list UI, pagination state, and workflow status formatting SHALL be separated into focused modules rather than mixed into a single large component.
+- Shared candidate list summary types SHALL be defined in `packages/shared` and consumed consistently by server and web.
+- Backend list-summary aggregation SHALL extend the existing candidates list endpoint rather than introduce redundant per-row detail fetching.
+
+### Performance
+- The redesigned list SHALL remain usable for datasets of 1000+ candidates as stated in `product.md`.
+- Pagination and summary-field aggregation SHALL avoid requiring one detail request per candidate row.
+- Candidate page search and page changes SHOULD keep perceived response times within the existing sub-500ms search goal where data volume allows.
+
+### Security
+- The redesign SHALL not expose any new sensitive token or credential data to the candidates list UI.
+- Candidate summary fields returned by the list API SHALL be limited to data needed for browsing and workflow decisions.
+
+### Reliability
+- If summary status data cannot be derived for a candidate THEN the list SHALL fall back to deterministic neutral states rather than breaking row rendering.
+- Pagination metadata and row summaries SHALL remain consistent across refreshes and sync updates.
+
+### Usability
+- The candidates page SHALL prioritize desktop readability and dense scanning over decorative card presentation.
+- Visual differentiation for statuses SHALL remain understandable under the existing theme system.
+- The redesign SHALL make it easier to identify stale, pending, active, and completed candidates without opening details.

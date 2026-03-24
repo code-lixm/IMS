@@ -17,7 +17,37 @@ import type {
   AgentListData,
   CreateAgentInput,
   UpdateAgentInput,
+  LuiCredentialStatusData,
+  SetLuiCredentialInput,
 } from "@ims/shared";
+
+interface LuiModelData {
+  id: string;
+  provider: string;
+  name: string;
+  displayName: string;
+  maxTokens: number;
+  supportsStreaming: boolean;
+  supportsTools: boolean;
+  requiresAuth: boolean;
+}
+
+interface LuiModelProviderData {
+  id: string;
+  name: string;
+  icon: string;
+  models: LuiModelData[];
+}
+
+interface LuiModelProviderListData {
+  providers: LuiModelProviderData[];
+}
+
+type LuiSendMessageInput = SendMessageInput & {
+  agentId?: string;
+  modelId?: string;
+  temperature?: number;
+};
 
 export const luiApi = {
   // Conversations
@@ -30,7 +60,7 @@ export const luiApi = {
   },
 
   create(input?: CreateConversationInput) {
-    return api<{ id: string; title: string; candidateId: string | null }>("/api/lui/conversations", {
+    return api<ConversationData>("/api/lui/conversations", {
       method: "POST",
       json: input ?? {},
     });
@@ -50,7 +80,7 @@ export const luiApi = {
   },
 
   // Messages
-  sendMessage(conversationId: string, input: SendMessageInput) {
+  sendMessage(conversationId: string, input: LuiSendMessageInput) {
     return api<MessageData>(`/api/lui/conversations/${conversationId}/messages`, {
       method: "POST",
       json: input,
@@ -59,7 +89,7 @@ export const luiApi = {
 
   async streamMessage(
     conversationId: string,
-    input: SendMessageInput,
+    input: LuiSendMessageInput,
     options: LuiStreamCallbacks & { signal?: AbortSignal } = {}
   ): Promise<LuiStreamMessageState> {
     const response = await requestStream(`/api/lui/conversations/${conversationId}/messages`, {
@@ -69,6 +99,29 @@ export const luiApi = {
     });
 
     return consumeLuiMessageStream(response, options);
+  },
+
+  // Models
+  listModels() {
+    return api<LuiModelProviderListData>("/api/lui/models");
+  },
+
+  // Credentials
+  getCredentialStatus(provider: string) {
+    return api<LuiCredentialStatusData>(`/api/lui/credentials/${provider}/status`);
+  },
+
+  setCredential(provider: string, input: SetLuiCredentialInput) {
+    return api<LuiCredentialStatusData>(`/api/lui/credentials/${provider}`, {
+      method: "PUT",
+      json: input,
+    });
+  },
+
+  deleteCredential(provider: string) {
+    return api<LuiCredentialStatusData>(`/api/lui/credentials/${provider}`, {
+      method: "DELETE",
+    });
   },
 
   // Files

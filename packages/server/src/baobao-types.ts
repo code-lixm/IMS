@@ -57,15 +57,31 @@ export interface BaobaoInterviewCountResponse {
 }
 
 export interface BaobaoApplicant {
-  id: string;
+  id: number;
+  interviewId?: number;
+  testNo?: number;
+  interviewType?: number;
+  interviewResult?: number | null;
+  interviewResultString?: string | null;
   name: string;
-  phone: string;
-  email: string;
-  applyPosition: string;
-  organizationId: string;
-  organizationName: string;
-  interviewTime: string;
+  organizationName?: string | null;
+  orgAllParentName?: string | null;
+  applyPosition?: string | null;
+  applyPositionName?: string | null;
+  phone?: string | null;
+  phoneNumber?: string | null;
+  email?: string | null;
+  interviewPlace?: string | null;
+  interviewUrl?: string | null;
+  interviewTime?: string | number | null;
+  dockingHrName?: string | null;
+  dockingHrbpName?: string | null;
   status: "待面试" | "已面试" | "已取消" | string;
+  resumeId?: string | null;
+  recruitmentSourceName?: string | null;
+  checkInTime?: number | null;
+  eliminateReasonString?: string | null;
+  arrivalDate?: string | null;
   remark?: string;
   resumeUrl?: string;
   interviewerNames?: string;

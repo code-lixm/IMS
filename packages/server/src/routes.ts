@@ -1,4 +1,10 @@
-import { and, desc, eq, like, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import {
+  APPLICATION_STATUS_LABELS,
+  INTERVIEW_TYPE_LABELS,
+  lookupLabelOrDefault,
+  resolveApplicationStatusCode,
+} from "@ims/shared";
 import { syncManager } from "./services/sync-manager";
 import { processFile } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
@@ -8,12 +14,12 @@ import { sendToDevice } from "./services/share/transfer";
 import { BaobaoClient, setBaobaoClient, getBaobaoClient } from "./services/baobao-client";
 import { clearBaobaoLoginSession, fetchBaobaoLoginQrCode, getBaobaoLoginSessionStatus } from "./services/baobao-login";
 import { config } from "./config";
-import { db } from "./db";
+import { db, rawDb } from "./db";
 import { corsHeaders, ok, fail } from "./utils/http";
 import {
   users, candidates, resumes, interviews, artifacts, artifactVersions,
   candidateWorkspaces, importBatches, importFileTasks, shareRecords, notifications,
-  remoteUsers, conversations, messages, fileResources, agents,
+  remoteUsers, conversations, messages, fileResources, agents, providerCredentials,
 } from "./schema";
 import type { OpenCodeManager } from "./services/opencode-manager";
 import { streamText } from "ai";
@@ -25,6 +31,77 @@ function logBaobaoAuth(stage: string, details?: Record<string, unknown>, importa
   if (!important && !DEBUG_BAOBAO) return;
   console.log("[baobao-auth]", stage, details ?? {});
 }
+
+type LuiSupportedModel = {
+  id: string;
+  provider: string;
+  name: string;
+  displayName: string;
+  maxTokens: number;
+  supportsStreaming: boolean;
+  supportsTools: boolean;
+  requiresAuth: boolean;
+  runtimeModel: string;
+};
+
+const LUI_MODEL_PROVIDERS: Array<{ id: string; name: string; icon: string; models: LuiSupportedModel[] }> = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    icon: "OpenAI",
+    models: [
+      {
+        id: "gpt-4o",
+        provider: "openai",
+        name: "gpt-4o",
+        displayName: "GPT-4o",
+        maxTokens: 128000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: true,
+        runtimeModel: "openai/gpt-4o",
+      },
+      {
+        id: "gpt-4o-mini",
+        provider: "openai",
+        name: "gpt-4o-mini",
+        displayName: "GPT-4o Mini",
+        maxTokens: 128000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: true,
+        runtimeModel: "openai/gpt-4o-mini",
+      },
+    ],
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    icon: "Anthropic",
+    models: [
+      {
+        id: "claude-3-5-sonnet",
+        provider: "anthropic",
+        name: "claude-3-5-sonnet-20241022",
+        displayName: "Claude 3.5 Sonnet",
+        maxTokens: 200000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: true,
+        runtimeModel: "anthropic/claude-3-5-sonnet-20241022",
+      },
+    ],
+  },
+];
+
+const LUI_MODEL_RUNTIME_BY_ID = new Map(
+  LUI_MODEL_PROVIDERS.flatMap((provider) => provider.models.map((model) => [model.id, model.runtimeModel] as const)),
+);
+
+const LUI_MODEL_PROVIDERS_RESPONSE = LUI_MODEL_PROVIDERS.map((provider) => ({
+  ...provider,
+  models: provider.models.map(({ runtimeModel: _runtimeModel, ...model }) => model),
+}));
 
 function parseJson<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
@@ -116,6 +193,277 @@ async function persistBaobaoAuth(
   }, true);
 }
 
+function triggerInitialSync(reason: string) {
+  void syncManager.runOnce()
+    .then((result) => {
+      console.log(`[sync] initial sync (${reason}) done, syncedCandidates=${result.syncedCandidates} syncedInterviews=${result.syncedInterviews}`);
+    })
+    .catch((error) => {
+      if (isBaobaoAuthExpiredError(error)) {
+        void markBaobaoAuthExpired();
+      }
+      console.error(`[sync] initial sync (${reason}) failed: ${(error as Error).message}`);
+    });
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string") return error;
+  return "Unknown error";
+}
+
+function isBaobaoAuthExpiredError(error: unknown) {
+  const message = getErrorMessage(error);
+  return message.includes("请重新刷新页面")
+    || message.includes("Invalid baobao token")
+    || message.includes("token expired")
+    || message.includes("401 Unauthorized");
+}
+
+async function markBaobaoAuthExpired() {
+  const now = Date.now();
+  await db.update(users).set({ tokenStatus: "expired", lastSyncAt: now });
+  await db.update(remoteUsers)
+    .set({ tokenExpAt: now, updatedAt: now })
+    .where(eq(remoteUsers.provider, "baobao"));
+  setBaobaoClient(null);
+  await clearBaobaoLoginSession();
+}
+
+async function resolveBaobaoAuthStatus() {
+  const remote = await db.select().from(remoteUsers).where(eq(remoteUsers.provider, "baobao")).limit(1);
+  const row = await db.select().from(users).limit(1);
+  const localUser = row[0] ?? null;
+
+  if (!remote.length) {
+    if (localUser && localUser.tokenStatus !== "unauthenticated") {
+      return {
+        status: localUser.tokenStatus as "valid" | "expired" | "unauthenticated",
+        user: { id: localUser.id, name: localUser.name, email: localUser.email },
+        lastValidatedAt: localUser.lastSyncAt,
+      };
+    }
+
+    return { status: "unauthenticated" as const, user: null, lastValidatedAt: null };
+  }
+
+  const item = remote[0];
+  const expired = item.tokenExpAt ? Date.now() > item.tokenExpAt : true;
+
+  if (expired) {
+    const session = await getBaobaoLoginSessionStatus();
+
+    if (session.authenticated) {
+      await persistBaobaoAuth(
+        session.authenticated.token,
+        session.authenticated.user,
+        session.authenticated.tokenExpAt,
+        JSON.stringify(session.authenticated.cookies),
+      );
+
+      return {
+        status: "valid" as const,
+        user: {
+          id: session.authenticated.user.id,
+          name: session.authenticated.user.name,
+          email: session.authenticated.user.email,
+          phone: (session.authenticated.user as { phone?: string; phoneNumber?: string }).phone ?? (session.authenticated.user as { phone?: string; phoneNumber?: string }).phoneNumber ?? null,
+        },
+        lastValidatedAt: Date.now(),
+      };
+    }
+  }
+
+  const nextStatus = expired ? "expired" : "valid";
+
+  if (localUser && localUser.tokenStatus !== nextStatus) {
+    await db.update(users)
+      .set({ tokenStatus: nextStatus, lastSyncAt: Date.now() })
+      .where(eq(users.id, localUser.id));
+  }
+
+  return {
+    status: nextStatus as "valid" | "expired",
+    user: { id: item.remoteId ?? item.id, name: item.name, email: item.email, phone: (() => { const ud = item.userDataJson ? JSON.parse(item.userDataJson) : null; return ud?.phone ?? ud?.phoneNumber ?? null; })() },
+    lastValidatedAt: item.updatedAt,
+  };
+}
+
+type CandidateListRow = {
+  id: string;
+  source: string;
+  remoteId: string | null;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  position: string | null;
+  organizationName: string | null;
+  orgAllParentName: string | null;
+  recruitmentSourceName: string | null;
+  yearsOfExperience: number | null;
+  tagsJson: string | null;
+  deletedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type CandidateListCountRow = {
+  total: number;
+};
+
+type CandidateLatestResumeRow = {
+  candidateId: string;
+  parsedDataJson: string | null;
+  createdAt: number;
+};
+
+type CandidateLatestInterviewRow = {
+  candidateId: string;
+  status: string;
+  statusRaw: string | null;
+  interviewType: number | null;
+  interviewResult: number | null;
+  interviewResultString: string | null;
+  scheduledAt: number | null;
+  interviewPlace: string | null;
+  meetingLink: string | null;
+  dockingHrName: string | null;
+  dockingHrbpName: string | null;
+  checkInTime: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type CandidateLatestImportTaskRow = {
+  candidateId: string;
+  status: string;
+  updatedAt: number;
+};
+
+function buildCandidateListWhereClause(search?: string, source?: string) {
+  const clauses = ["deleted_at IS NULL"];
+  const params: Array<string | number> = [];
+
+  if (search) {
+    clauses.push("name LIKE ?");
+    params.push(`%${search}%`);
+  }
+
+  if (source) {
+    clauses.push("source = ?");
+    params.push(source);
+  }
+
+  return {
+    whereClause: clauses.join(" AND "),
+    params,
+  };
+}
+
+function makeInClauseParams(ids: string[]) {
+  return ids.map(() => "?").join(", ");
+}
+
+function parseCandidateTags(tagsJson: string | null) {
+  if (!tagsJson) return [] as string[];
+
+  try {
+    const parsed = JSON.parse(tagsJson);
+    return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === "string") : [];
+  } catch (error) {
+    console.warn("[candidates] failed to parse tags_json", error);
+    return [];
+  }
+}
+
+function deriveResumeStatus(resume?: CandidateLatestResumeRow, importTask?: CandidateLatestImportTaskRow) {
+  if (importTask?.status === "failed") return "failed" as const;
+  if (!resume) return "missing" as const;
+  return resume.parsedDataJson ? "parsed" as const : "uploaded" as const;
+}
+
+function deriveInterviewState(interview?: CandidateLatestInterviewRow) {
+  if (!interview) return "none" as const;
+  if (interview.status === "completed") return "completed" as const;
+  if (interview.status === "cancelled" || interview.status === "no_show") return "cancelled" as const;
+  return "scheduled" as const;
+}
+
+function derivePipelineStage(
+  resumeStatus: ReturnType<typeof deriveResumeStatus>,
+  interview?: CandidateLatestInterviewRow,
+) {
+  if (interview) return "interview" as const;
+  if (resumeStatus !== "missing") return "screening" as const;
+  return "new" as const;
+}
+
+function deriveLastActivityAt(
+  candidate: CandidateListRow,
+  resume?: CandidateLatestResumeRow,
+  interview?: CandidateLatestInterviewRow,
+  importTask?: CandidateLatestImportTaskRow,
+) {
+  return Math.max(
+    candidate.updatedAt,
+    resume?.createdAt ?? 0,
+    interview?.updatedAt ?? interview?.createdAt ?? 0,
+    importTask?.updatedAt ?? 0,
+  );
+}
+
+function deriveInterviewTypeLabel(interviewType?: number | null): string | null {
+  if (interviewType === null || interviewType === undefined) return null;
+  return lookupLabelOrDefault(INTERVIEW_TYPE_LABELS, interviewType);
+}
+
+function deriveInterviewOwnerName(interview?: CandidateLatestInterviewRow) {
+  return interview?.dockingHrName ?? interview?.dockingHrbpName ?? null;
+}
+
+function deriveApplicationStatusText(interview?: CandidateLatestInterviewRow): string | null {
+  if (!interview) return null;
+
+  const rawStatus = interview.statusRaw;
+
+  // 中文标签直接返回（已是可读文案）
+  if (typeof rawStatus === "string" && rawStatus.trim()) {
+    const trimmed = rawStatus.trim();
+    if (/[\u4e00-\u9fff]/.test(trimmed)) {
+      return trimmed;
+    }
+    // 纯数字字符串，尝试用字典解析
+    const numericCode = Number(trimmed);
+    if (Number.isFinite(numericCode)) {
+      const label = lookupLabelOrDefault(APPLICATION_STATUS_LABELS, numericCode);
+      if (!label.startsWith("未知(")) {
+        return label;
+      }
+    }
+    // 解析不了，加前缀保留原始值
+    return `状态 ${trimmed}`;
+  }
+
+  // 兜底到面试进度状态
+  if (interview.status === "completed") return "已面试";
+  if (interview.status === "cancelled" || interview.status === "no_show") return "已取消";
+  if (interview.status === "scheduled") return "待面试";
+
+  return null;
+}
+
+function pickLatestByCandidate<T extends { candidateId: string }>(rows: T[]) {
+  const latestByCandidate = new Map<string, T>();
+
+  for (const row of rows) {
+    if (!latestByCandidate.has(row.candidateId)) {
+      latestByCandidate.set(row.candidateId, row);
+    }
+  }
+
+  return latestByCandidate;
+}
+
 export async function route(request: Request, opencode: OpenCodeManager): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
@@ -129,24 +477,7 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
 
   // Auth
   if (path === "/api/auth/status" && request.method === "GET") {
-    const row = await db.select().from(users).limit(1);
-    const u = row[0];
-    if (u && u.tokenStatus !== "unauthenticated") {
-      return ok({ status: u.tokenStatus as "valid" | "expired" | "unauthenticated", user: { id: u.id, name: u.name, email: u.email }, lastValidatedAt: u.lastSyncAt });
-    }
-
-    const remote = await db.select().from(remoteUsers).where(eq(remoteUsers.provider, "baobao")).limit(1);
-    if (remote.length) {
-      const item = remote[0];
-      const expired = item.tokenExpAt ? Date.now() > item.tokenExpAt : true;
-      return ok({
-        status: expired ? "expired" as const : "valid" as const,
-        user: { id: item.remoteId ?? item.id, name: item.name, email: item.email },
-        lastValidatedAt: item.updatedAt,
-      });
-    }
-
-    return ok({ status: "unauthenticated" as const, user: null, lastValidatedAt: null });
+    return ok(await resolveBaobaoAuthStatus());
   }
 
   if (path === "/api/auth/start" && request.method === "POST") {
@@ -207,6 +538,7 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
 
       await persistBaobaoAuth(body.token, baobaoUser, tokenExpAt, null);
       setBaobaoClient(client);
+      triggerInitialSync("auth-connect");
 
       return ok({
         status: "valid" as const,
@@ -233,6 +565,7 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
           qrCode.authenticated.tokenExpAt,
           JSON.stringify(qrCode.authenticated.cookies),
         );
+        triggerInitialSync("auth-qr");
       }
       logBaobaoAuth("route:qr:done", {
         currentUrl: qrCode.currentUrl,
@@ -268,6 +601,7 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
         session.authenticated.tokenExpAt,
         JSON.stringify(session.authenticated.cookies),
       );
+      triggerInitialSync("auth-login-status");
     }
 
     logBaobaoAuth("route:login-status:done", {
@@ -314,7 +648,13 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
 
   if (path === "/api/sync/run" && request.method === "POST") {
     try { const result = await syncManager.runOnce(); return ok({ ...result, syncAt: syncManager.getLastSyncAt() ?? Date.now() }); }
-    catch (err) { return fail("REMOTE_SYNC_FAILED", (err as Error).message, 502); }
+    catch (err) {
+      if (isBaobaoAuthExpiredError(err)) {
+        await markBaobaoAuthExpired();
+        return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
+      }
+      return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
+    }
   }
 
   // Candidates
@@ -324,11 +664,125 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
     const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
     const pageSize = Math.min(100, Math.max(1, parseInt(url.searchParams.get("pageSize") ?? "20", 10)));
     const offset = (page - 1) * pageSize;
-    const filters = [isNull(candidates.deletedAt)];
-    if (search) filters.push(like(candidates.name, `%${search}%`) as any);
-    if (source) filters.push(eq(candidates.source, source) as any);
-    const items = await db.select().from(candidates).where(and(...filters)).orderBy(desc(candidates.updatedAt)).limit(pageSize).offset(offset);
-    return ok({ items: items.map(c => ({ ...c, tags: c.tagsJson ? JSON.parse(c.tagsJson) : [] })), total: items.length, page, pageSize });
+    const { whereClause, params } = buildCandidateListWhereClause(search, source);
+    const [countRow] = rawDb.query(`SELECT COUNT(*) as total FROM candidates WHERE ${whereClause}`).all(...params) as CandidateListCountRow[];
+    // Order by interview scheduled time (Baobao default order), fall back to candidate updated_at
+    const items = rawDb.query(`
+      SELECT
+        c.id,
+        c.source,
+        c.remote_id as remoteId,
+        c.name,
+        c.phone,
+        c.email,
+        c.position,
+        c.organization_name as organizationName,
+        c.org_all_parent_name as orgAllParentName,
+        c.recruitment_source_name as recruitmentSourceName,
+        c.years_of_experience as yearsOfExperience,
+        c.tags_json as tagsJson,
+        c.deleted_at as deletedAt,
+        c.created_at as createdAt,
+        c.updated_at as updatedAt,
+        (
+          SELECT MAX(i.scheduled_at) FROM interviews i WHERE i.candidate_id = c.id
+        ) as lastActivityAt
+      FROM candidates c
+      WHERE ${whereClause}
+      ORDER BY lastActivityAt DESC NULLS LAST, c.updated_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, pageSize, offset) as (CandidateListRow & { lastActivityAt: number })[];
+
+    if (!items.length) {
+      return ok({ items: [], total: countRow?.total ?? 0, page, pageSize });
+    }
+
+    const candidateIds = items.map((candidate) => candidate.id);
+    const inClause = makeInClauseParams(candidateIds);
+    const resumeRows = rawDb.query(`
+      SELECT
+        candidate_id as candidateId,
+        parsed_data_json as parsedDataJson,
+        created_at as createdAt
+      FROM resumes
+      WHERE candidate_id IN (${inClause})
+      ORDER BY candidate_id ASC, created_at DESC
+    `).all(...candidateIds) as CandidateLatestResumeRow[];
+    const interviewRows = rawDb.query(`
+      SELECT
+        candidate_id as candidateId,
+        status,
+        status_raw as statusRaw,
+        interview_type as interviewType,
+        interview_result as interviewResult,
+        interview_result_string as interviewResultString,
+        scheduled_at as scheduledAt,
+        interview_place as interviewPlace,
+        meeting_link as meetingLink,
+        docking_hr_name as dockingHrName,
+        docking_hrbp_name as dockingHrbpName,
+        check_in_time as checkInTime,
+        created_at as createdAt,
+        updated_at as updatedAt
+      FROM interviews
+      WHERE candidate_id IN (${inClause})
+      ORDER BY candidate_id ASC, scheduled_at DESC, updated_at DESC, created_at DESC
+    `).all(...candidateIds) as CandidateLatestInterviewRow[];
+    const importTaskRows = rawDb.query(`
+      SELECT
+        candidate_id as candidateId,
+        status,
+        updated_at as updatedAt
+      FROM import_file_tasks
+      WHERE candidate_id IN (${inClause})
+      ORDER BY candidate_id ASC, updated_at DESC
+    `).all(...candidateIds) as CandidateLatestImportTaskRow[];
+
+    const latestResumeByCandidate = pickLatestByCandidate(resumeRows);
+    const latestInterviewByCandidate = pickLatestByCandidate(interviewRows);
+    const latestImportTaskByCandidate = pickLatestByCandidate(importTaskRows);
+
+    // SQL already sorted by lastActivityAt DESC, no in-memory resort needed
+
+    return ok({
+      items: items.map((candidate) => {
+        const latestResume = latestResumeByCandidate.get(candidate.id);
+        const latestInterview = latestInterviewByCandidate.get(candidate.id);
+        const latestImportTask = latestImportTaskByCandidate.get(candidate.id);
+        const resumeStatus = deriveResumeStatus(latestResume, latestImportTask);
+        const interviewState = deriveInterviewState(latestInterview);
+        const pipelineStage = derivePipelineStage(resumeStatus, latestInterview);
+
+        return {
+          ...candidate,
+          tags: parseCandidateTags(candidate.tagsJson),
+          applyPositionName: candidate.position,
+          organizationName: candidate.organizationName,
+          orgAllParentName: candidate.orgAllParentName,
+          interviewTime: latestInterview?.scheduledAt ?? null,
+          interviewType: latestInterview?.interviewType ?? null,
+          interviewTypeLabel: deriveInterviewTypeLabel(latestInterview?.interviewType ?? null),
+          interviewResult: latestInterview?.interviewResult ?? null,
+          interviewResultString: latestInterview?.interviewResultString ?? null,
+          interviewPlace: latestInterview?.interviewPlace ?? null,
+          interviewUrl: latestInterview?.meetingLink ?? null,
+          recruitmentSourceName: candidate.recruitmentSourceName,
+          dockingHrName: latestInterview?.dockingHrName ?? null,
+          dockingHrbpName: latestInterview?.dockingHrbpName ?? null,
+          interviewOwnerName: deriveInterviewOwnerName(latestInterview),
+      applicationStatusText: deriveApplicationStatusText(latestInterview),
+          applicationStatus: resolveApplicationStatusCode(latestInterview?.statusRaw),
+          checkInTime: latestInterview?.checkInTime ?? null,
+          resumeStatus,
+          interviewState,
+          pipelineStage,
+          lastActivityAt: deriveLastActivityAt(candidate, latestResume, latestInterview, latestImportTask),
+        };
+      }),
+      total: countRow?.total ?? 0,
+      page,
+      pageSize,
+    });
   }
 
   if (path === "/api/candidates" && request.method === "POST") {
@@ -664,17 +1118,40 @@ Always be concise and helpful in your responses.`,
 
   // POST /api/lui/conversations - Create conversation
   if (path === "/api/lui/conversations" && request.method === "POST") {
-    const body = await parseJson<{ title?: string; candidateId?: string }>(request);
+    const body = await parseJson<{
+      title?: string;
+      candidateId?: string;
+      agentId?: string | null;
+      modelId?: string | null;
+      temperature?: number | null;
+    }>(request);
     const now = new Date();
     const id = `conv_${crypto.randomUUID()}`;
+    const normalizedTitle = body.title?.trim();
+    const title = normalizedTitle || `新会话 ${Date.now()}`;
+    const agentId = body.agentId?.trim() || null;
+    const modelId = body.modelId?.trim() || null;
+    const temperature = typeof body.temperature === "number" ? body.temperature : null;
     await db.insert(conversations).values({
       id,
-      title: body.title?.trim() || `新会话 ${Date.now()}`,
+      title: normalizedTitle || "新会话",
       candidateId: body.candidateId || null,
+      agentId,
+      modelId,
+      temperature,
       createdAt: now,
       updatedAt: now,
     });
-    return ok({ id, title: body.title?.trim() || `新会话`, candidateId: body.candidateId || null, createdAt: now.getTime(), updatedAt: now.getTime() }, { status: 201 });
+    return ok({
+      id,
+      title,
+      candidateId: body.candidateId || null,
+      agentId,
+      modelId,
+      temperature,
+      createdAt: now.getTime(),
+      updatedAt: now.getTime(),
+    }, { status: 201 });
   }
 
   // GET /api/lui/conversations/:id - Get conversation with messages and files
@@ -731,7 +1208,13 @@ Always be concise and helpful in your responses.`,
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
     if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
 
-    const body = await parseJson<{ title?: string; candidateId?: string | null }>(request);
+    const body = await parseJson<{
+      title?: string;
+      candidateId?: string | null;
+      agentId?: string | null;
+      modelId?: string | null;
+      temperature?: number | null;
+    }>(request);
     if (body.candidateId) {
       const [candidate] = await db.select({ id: candidates.id }).from(candidates).where(eq(candidates.id, body.candidateId)).limit(1);
       if (!candidate) return fail("NOT_FOUND", "candidate not found", 404);
@@ -747,6 +1230,15 @@ Always be concise and helpful in your responses.`,
     }
     if (body.candidateId !== undefined) {
       updates.candidateId = body.candidateId || null;
+    }
+    if (body.agentId !== undefined) {
+      updates.agentId = body.agentId?.trim() || null;
+    }
+    if (body.modelId !== undefined) {
+      updates.modelId = body.modelId?.trim() || null;
+    }
+    if (body.temperature !== undefined) {
+      updates.temperature = typeof body.temperature === "number" ? body.temperature : null;
     }
 
     await db.update(conversations).set(updates).where(eq(conversations.id, id));
@@ -768,8 +1260,31 @@ Always be concise and helpful in your responses.`,
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, convId)).limit(1);
     if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
 
-    const body = await parseJson<{ content: string; fileIds?: string[] }>(request);
+    const body = await parseJson<{
+      content: string;
+      fileIds?: string[];
+      agentId?: string;
+      modelId?: string;
+      temperature?: number;
+    }>(request);
     if (!body.content?.trim()) return fail("VALIDATION_ERROR", "content is required", 422);
+
+    const convConfigUpdates: Partial<typeof conversations.$inferInsert> = {};
+    if (body.agentId !== undefined) {
+      convConfigUpdates.agentId = body.agentId?.trim() || null;
+    }
+    if (body.modelId !== undefined) {
+      convConfigUpdates.modelId = body.modelId?.trim() || null;
+    }
+    if (body.temperature !== undefined) {
+      convConfigUpdates.temperature = body.temperature;
+    }
+    if (Object.keys(convConfigUpdates).length > 0) {
+      await db
+        .update(conversations)
+        .set({ ...convConfigUpdates, updatedAt: new Date() })
+        .where(eq(conversations.id, convId));
+    }
 
     // Save user message
     const now = new Date();
@@ -789,8 +1304,8 @@ Always be concise and helpful in your responses.`,
     // Build AI response using streamText
     const historyRows = await db.select().from(messages).where(eq(messages.conversationId, convId)).orderBy(messages.createdAt);
 
-    // Build system prompt with candidate context if available
-    let systemPrompt = `You are a helpful AI assistant for an Interview Management System. 
+    // Get agent configuration if specified
+    let systemPrompt = `You are a helpful AI assistant for an Interview Management System.
 You help recruiters manage candidates, schedule interviews, and analyze candidate information.
 When appropriate, you can help with:
 - Searching and filtering candidates
@@ -798,12 +1313,23 @@ When appropriate, you can help with:
 - Analyzing candidate resumes
 - Generating candidate evaluation reports
 Always be concise and helpful in your responses.`;
+    let temperature = body.temperature ?? conv.temperature ?? 0.5;
+
+    if (body.agentId) {
+      const [agent] = await db.select().from(agents).where(eq(agents.id, body.agentId)).limit(1);
+      if (agent?.systemPrompt) {
+        systemPrompt = agent.systemPrompt;
+      }
+      if (agent?.temperature !== undefined && agent.temperature !== null) {
+        temperature = agent.temperature;
+      }
+    }
 
     if (conv.candidateId) {
       const candidateContext = await buildCandidateContext(conv.candidateId);
       if (candidateContext) {
         const contextPrompt = `\n\n## Candidate Context\nYou are currently helping with candidate: ${candidateContext.candidateName}.\n${formatCandidateContextForPrompt(candidateContext)}`;
-        systemPrompt = `You are a helpful AI assistant for an Interview Management System. You are currently working with a specific candidate.\n${contextPrompt}\n\nWhen answering questions about this candidate, use the context above. Be specific and reference the candidate's information in your responses.`;
+        systemPrompt = `${systemPrompt}\n${contextPrompt}\n\nWhen answering questions about this candidate, use the context above. Be specific and reference the candidate's information in your responses.`;
       }
     }
 
@@ -812,12 +1338,19 @@ Always be concise and helpful in your responses.`;
       content: m.content,
     }));
 
+    const modelId = body.modelId?.trim() || conv.modelId || "gpt-4o";
+    const model = LUI_MODEL_RUNTIME_BY_ID.get(modelId);
+    if (!model) {
+      return fail("VALIDATION_ERROR", `unsupported modelId: ${modelId}`, 422);
+    }
+
     // Note: Tool calling will be enabled in a future iteration
     // For now, store tool execution results manually when AI calls tools
     const result = streamText({
-      model: "openai/gpt-4o",
+      model,
       messages: historyMessages,
       system: systemPrompt,
+      temperature,
     });
 
     // Note: In a production app, you'd want to save the AI response to DB after streaming completes
@@ -942,6 +1475,69 @@ Always be concise and helpful in your responses.`;
 
     await db.delete(agents).where(eq(agents.id, id));
     return ok({ id });
+  }
+
+  // GET /api/lui/models - List available AI models
+  if (path === "/api/lui/models" && request.method === "GET") {
+    return ok({ providers: LUI_MODEL_PROVIDERS_RESPONSE });
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Provider Credentials
+  // ---------------------------------------------------------------------------
+
+  const credentialStatusMatch = path.match(/^\/api\/lui\/credentials\/([^/]+)\/status$/);
+  if (credentialStatusMatch && request.method === "GET") {
+    const provider = credentialStatusMatch[1].trim();
+    if (!provider) return fail("VALIDATION_ERROR", "provider is required", 422);
+
+    const row = await db
+      .select({ id: providerCredentials.id })
+      .from(providerCredentials)
+      .where(eq(providerCredentials.provider, provider))
+      .limit(1);
+
+    return ok({ provider, isAuthorized: row.length > 0 });
+  }
+
+  const credentialMatch = path.match(/^\/api\/lui\/credentials\/([^/]+)$/);
+  if (credentialMatch && request.method === "PUT") {
+    const provider = credentialMatch[1].trim();
+    if (!provider) return fail("VALIDATION_ERROR", "provider is required", 422);
+
+    const body = await parseJson<{ apiKey: string }>(request);
+    const apiKey = body.apiKey?.trim();
+    if (!apiKey || apiKey.length < 10) {
+      return fail("VALIDATION_ERROR", "apiKey is invalid", 422);
+    }
+
+    const now = Date.now();
+    await db
+      .insert(providerCredentials)
+      .values({
+        id: `cred_${crypto.randomUUID()}`,
+        provider,
+        apiKey,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: providerCredentials.provider,
+        set: {
+          apiKey,
+          updatedAt: now,
+        },
+      });
+
+    return ok({ provider, isAuthorized: true });
+  }
+
+  if (credentialMatch && request.method === "DELETE") {
+    const provider = credentialMatch[1].trim();
+    if (!provider) return fail("VALIDATION_ERROR", "provider is required", 422);
+
+    await db.delete(providerCredentials).where(eq(providerCredentials.provider, provider));
+    return ok({ provider, isAuthorized: false });
   }
 
   // ---------------------------------------------------------------------------

@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS candidates (
   phone TEXT,
   email TEXT,
   position TEXT,
+  organization_name TEXT,
+  org_all_parent_name TEXT,
+  recruitment_source_name TEXT,
   years_of_experience INTEGER,
   tags_json TEXT,
   deleted_at INTEGER,
@@ -50,8 +53,19 @@ CREATE TABLE IF NOT EXISTS interviews (
   remote_id TEXT,
   "round" INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'scheduled',
+  status_raw TEXT,
+  interview_type INTEGER,
+  interview_result INTEGER,
+  interview_result_string TEXT,
   scheduled_at INTEGER,
+  interview_place TEXT,
   meeting_link TEXT,
+  docking_hr_name TEXT,
+  docking_hrbp_name TEXT,
+  check_in_time INTEGER,
+  arrival_date TEXT,
+  eliminate_reason_string TEXT,
+  remark TEXT,
   interviewer_ids_json TEXT,
   manual_evaluation_json TEXT,
   created_at INTEGER NOT NULL,
@@ -158,10 +172,21 @@ CREATE TABLE IF NOT EXISTS remote_users (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS provider_credentials (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL UNIQUE,
+  api_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `);
 
 function ensureColumn(table: string, column: string, definition: string) {
   const rows = sqlite.query(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>;
+  if (rows.length === 0) {
+    return;
+  }
   const exists = rows.some((row) => row.name === column);
   if (!exists) {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
@@ -169,6 +194,23 @@ function ensureColumn(table: string, column: string, definition: string) {
 }
 
 ensureColumn("remote_users", "cookie_json", "TEXT");
+ensureColumn("conversations", "agent_id", "TEXT");
+ensureColumn("conversations", "model_id", "TEXT");
+ensureColumn("conversations", "temperature", "REAL");
+ensureColumn("candidates", "organization_name", "TEXT");
+ensureColumn("candidates", "org_all_parent_name", "TEXT");
+ensureColumn("candidates", "recruitment_source_name", "TEXT");
+ensureColumn("interviews", "status_raw", "TEXT");
+ensureColumn("interviews", "interview_type", "INTEGER");
+ensureColumn("interviews", "interview_result", "INTEGER");
+ensureColumn("interviews", "interview_result_string", "TEXT");
+ensureColumn("interviews", "interview_place", "TEXT");
+ensureColumn("interviews", "docking_hr_name", "TEXT");
+ensureColumn("interviews", "docking_hrbp_name", "TEXT");
+ensureColumn("interviews", "check_in_time", "INTEGER");
+ensureColumn("interviews", "arrival_date", "TEXT");
+ensureColumn("interviews", "eliminate_reason_string", "TEXT");
+ensureColumn("interviews", "remark", "TEXT");
 
 export const db = drizzle(sqlite);
 export const rawDb = sqlite;

@@ -1,0 +1,22 @@
+{
+  "filePath": ".spec-workflow/specs/candidate-list-redesign/design.md",
+  "currentVersion": 2,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-03-24T08:46:07.127Z",
+      "trigger": "initial",
+      "approvalId": "approval_1774341967110_vlj9bwr2z",
+      "approvalTitle": "Approve design for candidate-list-redesign"
+    },
+    {
+      "version": 2,
+      "filename": "snapshot-002.json",
+      "timestamp": "2026-03-24T08:50:54.587Z",
+      "trigger": "approved",
+      "approvalId": "approval_1774341967110_vlj9bwr2z",
+      "approvalTitle": "Approve design for candidate-list-redesign"
+    }
+  ]
+}

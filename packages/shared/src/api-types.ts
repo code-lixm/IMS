@@ -87,7 +87,7 @@ export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
 
 export interface AuthStatusData {
   status: "valid" | "expired" | "unauthenticated";
-  user: { id: string; name: string; email: string | null } | null;
+  user: { id: string; name: string; email: string | null; phone?: string | null } | null;
   lastValidatedAt: number | null;
 }
 
@@ -172,8 +172,36 @@ export interface SyncRunData {
 // Candidates
 // ---------------------------------------------------------------------------
 
+export type CandidateResumeStatus = "missing" | "uploaded" | "parsed" | "failed";
+
+export type CandidatePipelineStage = "new" | "screening" | "interview" | "offer" | "rejected";
+
+export type CandidateInterviewState = "none" | "scheduled" | "completed" | "cancelled";
+
+export interface CandidateListItemSummary extends Candidate {
+  tags: string[];
+  applyPositionName?: string | null;
+  interviewTime?: number | null;
+  interviewType?: number | null;
+  interviewTypeLabel?: string | null;
+  interviewResult?: number | null;
+  interviewResultString?: string | null;
+  interviewPlace?: string | null;
+  interviewUrl?: string | null;
+  dockingHrName?: string | null;
+  dockingHrbpName?: string | null;
+  interviewOwnerName?: string | null;
+  applicationStatusText?: string | null;
+  applicationStatus?: number | null;
+  checkInTime?: number | null;
+  resumeStatus?: CandidateResumeStatus;
+  pipelineStage?: CandidatePipelineStage;
+  interviewState?: CandidateInterviewState;
+  lastActivityAt?: number | null;
+}
+
 export interface CandidateListData {
-  items: (Candidate & { tags: string[] })[];
+  items: CandidateListItemSummary[];
   total: number;
   page: number;
   pageSize: number;
@@ -384,6 +412,9 @@ export interface ConversationData {
   id: string;
   title: string;
   candidateId: string | null;
+  agentId?: string | null;
+  modelId?: string | null;
+  temperature?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -401,11 +432,17 @@ export interface ConversationDetailData {
 export interface CreateConversationInput {
   title?: string;
   candidateId?: string;
+  agentId?: string | null;
+  modelId?: string | null;
+  temperature?: number | null;
 }
 
 export interface UpdateConversationInput {
   title?: string;
   candidateId?: string | null;
+  agentId?: string | null;
+  modelId?: string | null;
+  temperature?: number | null;
 }
 
 export interface MessageData {
@@ -422,6 +459,9 @@ export interface MessageData {
 export interface SendMessageInput {
   content: string;
   fileIds?: string[];
+  agentId?: string;
+  modelId?: string;
+  temperature?: number;
 }
 
 export interface FileResourceData {
@@ -445,6 +485,15 @@ export interface UploadFileData {
   type: "code" | "document" | "image";
   size: number;
   content: string;
+}
+
+export interface LuiCredentialStatusData {
+  provider: string;
+  isAuthorized: boolean;
+}
+
+export interface SetLuiCredentialInput {
+  apiKey: string;
 }
 
 // ---------------------------------------------------------------------------

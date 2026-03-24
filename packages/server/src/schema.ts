@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 // ---------------------------------------------------------------------------
 // User
@@ -23,6 +23,9 @@ export const candidates = sqliteTable("candidates", {
   phone: text("phone"),
   email: text("email"),
   position: text("position"),
+  organizationName: text("organization_name"),
+  orgAllParentName: text("org_all_parent_name"),
+  recruitmentSourceName: text("recruitment_source_name"),
   yearsOfExperience: integer("years_of_experience"),
   tagsJson: text("tags_json"),
   deletedAt: integer("deleted_at"),
@@ -55,8 +58,19 @@ export const interviews = sqliteTable("interviews", {
   remoteId: text("remote_id"),
   round: integer("round").notNull().default(1),
   status: text("status").notNull().default("scheduled"),
+  statusRaw: text("status_raw"),
+  interviewType: integer("interview_type"),
+  interviewResult: integer("interview_result"),
+  interviewResultString: text("interview_result_string"),
   scheduledAt: integer("scheduled_at"),
+  interviewPlace: text("interview_place"),
   meetingLink: text("meeting_link"),
+  dockingHrName: text("docking_hr_name"),
+  dockingHrbpName: text("docking_hrbp_name"),
+  checkInTime: integer("check_in_time"),
+  arrivalDate: text("arrival_date"),
+  eliminateReasonString: text("eliminate_reason_string"),
+  remark: text("remark"),
   interviewerIdsJson: text("interviewer_ids_json"),
   manualEvaluationJson: text("manual_evaluation_json"),
   createdAt: integer("created_at").notNull(),
@@ -177,6 +191,9 @@ export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   candidateId: text("candidate_id").references(() => candidates.id),
+  agentId: text("agent_id"),
+  modelId: text("model_id"),
+  temperature: real("temperature"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -223,6 +240,17 @@ export const agents = sqliteTable("agents", {
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// LUI - ProviderCredential
+// ---------------------------------------------------------------------------
+export const providerCredentials = sqliteTable("provider_credentials", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull().unique(),
+  apiKey: text("api_key").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });
 
 // ---------------------------------------------------------------------------

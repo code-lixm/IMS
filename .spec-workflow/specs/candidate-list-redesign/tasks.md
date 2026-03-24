@@ -1,0 +1,63 @@
+# Tasks Document
+
+- [x] 1. 扩展候选人列表共享类型为分页摘要模型
+  - File: `packages/shared/src/api-types.ts`
+  - 为 `CandidateListData.items[]` 增加候选人列表摘要字段：`resumeStatus`、`pipelineStage`、`interviewState`、`lastActivityAt`
+  - 保持字段渐进兼容，优先使用可选字段避免破坏现有调用方
+  - Purpose: 为前后端提供统一的候选人列表摘要契约
+  - _Leverage: `packages/shared/src/api-types.ts`, `packages/shared/src/db-schema.ts`_
+  - _Requirements: Requirement 3, Requirement 5_
+  - _Prompt: Implement the task for spec candidate-list-redesign, first run spec-workflow-guide to get the workflow guide then implement the task: Role: TypeScript 共享契约工程师 | Task: 扩展候选人列表共享类型，使 `CandidateListData` 支持分页列表所需的摘要状态字段，并保持与现有候选人详情和创建/更新接口兼容 | Restrictions: 不要破坏现有 `CandidateDetailData`；不要引入模糊命名；不要使用危险断言绕过类型检查 | _Leverage: `packages/shared/src/api-types.ts`, `packages/shared/src/db-schema.ts` | _Requirements: Requirement 3, Requirement 5 | Success: 候选人列表摘要字段在 shared 类型中定义清晰；前后端都可复用；类型检查通过；完成后先记录实现日志，再把任务从 `[-]` 改为 `[x]`_
+
+- [x] 2. 增强候选人列表接口返回真实分页总数和摘要状态
+  - File: `packages/server/src/routes.ts`
+  - 为 `GET /api/candidates` 增加过滤后总数统计，并派生每位候选人的简历状态、流程阶段、面试状态与最近活动时间
+  - 采用最新简历/最新面试的轻量聚合策略，不新增独立 endpoint
+  - Purpose: 让候选人列表页一次请求拿到分页和状态摘要所需数据
+  - _Leverage: `packages/server/src/routes.ts`, `packages/server/src/schema.ts`, `packages/shared/src/api-types.ts`_
+  - _Requirements: Requirement 2, Requirement 3, Requirement 5_
+  - _Prompt: Implement the task for spec candidate-list-redesign, first run spec-workflow-guide to get the workflow guide then implement the task: Role: Bun/Drizzle 后端工程师 | Task: 增强 `GET /api/candidates`，在保留现有搜索和来源过滤的基础上返回真实分页总数与候选人列表摘要状态，包括简历状态、流程阶段、面试状态和最近活动时间 | Restrictions: 不要新增冗余接口；不要对每行发详情查询；不要破坏现有列表接口 envelope 结构；不要使用 `as any` 压制类型问题 | _Leverage: 当前 `routes.ts` 的候选人列表查询、`schema.ts` 中的 candidates/resumes/interviews 表 | _Requirements: Requirement 2, Requirement 3, Requirement 5 | Success: `/api/candidates` 返回完整分页元数据与摘要字段；总数语义正确；列表查询仍可按搜索与来源过滤；完成后记录实现日志并更新任务状态_
+
+- [x] 3. 重构 candidates store 以保存完整分页状态
+  - File: `apps/web/src/stores/candidates.ts`
+  - 扩展 store 保存 `total`、`page`、`pageSize`，并为搜索、翻页、改页大小和刷新提供统一入口
+  - 保留现有并发请求保护逻辑
+  - Purpose: 为候选人列表分页和刷新建立稳定状态源
+  - _Leverage: `apps/web/src/stores/candidates.ts`, `apps/web/src/api/candidates.ts`_
+  - _Requirements: Requirement 2, Requirement 6_
+  - _Prompt: Implement the task for spec candidate-list-redesign, first run spec-workflow-guide to get the workflow guide then implement the task: Role: Pinia 状态管理工程师 | Task: 重构 candidates store，使其保存候选人列表分页状态，并统一处理搜索、翻页、页大小切换和当前页刷新逻辑 | Restrictions: 不要新增并行 store；不要丢掉现有请求竞争保护；不要让页面直接自行维护分页核心状态 | _Leverage: 现有 `stores/candidates.ts` 与 `api/candidates.ts` | _Requirements: Requirement 2, Requirement 6 | Success: store 能完整保存并更新 `items/total/page/pageSize/loading/current`；页面可以通过 store 驱动分页；完成后记录实现日志并更新任务状态_
+
+- [x] 4. 新增候选人列表状态格式化器
+  - File: `apps/web/src/composables/candidates/formatters.ts` 或同领域格式化文件
+  - 为 `resumeStatus`、`pipelineStage`、`interviewState` 提供统一文案和 badge variant 映射
+  - 颜色语义复用现有 Badge 体系与导入页面状态风格
+  - Purpose: 让候选人列表状态展示一致且可复用
+  - _Leverage: `apps/web/src/composables/import/formatters.ts`, `apps/web/src/components/ui/badge.vue`_
+  - _Requirements: Requirement 4_
+  - _Prompt: Implement the task for spec candidate-list-redesign, first run spec-workflow-guide to get the workflow guide then implement the task: Role: 前端展示语义工程师 | Task: 为候选人列表摘要状态建立统一格式化器，把简历状态、流程阶段和面试状态映射为稳定的文案与 Badge 颜色语义 | Restrictions: 不要在模板里散落条件判断；不要引入与现有 Badge 体系冲突的新颜色系统；不要复用含糊状态名 | _Leverage: `ImportView` 对状态格式化的现有模式、`Badge` 变体语义 | _Requirements: Requirement 4 | Success: 候选人状态映射逻辑集中可复用；不同状态颜色和文案一致；完成后记录实现日志并更新任务状态_
+
+- [x] 5. 将候选人列表从大卡片流改为高密度表格
+  - File: `apps/web/src/components/candidates/candidate-list.vue`
+  - 使用现有 `ui/table*` 组件替换卡片式 `v-for`，展示姓名/来源、岗位、经验、简历状态、当前阶段、面试状态、最近活动和操作列
+  - 保留空态、加载态、选择候选人、AI 工作台、导出等现有交互
+  - Purpose: 提升主列表信息密度与横向比较能力
+  - _Leverage: `apps/web/src/components/candidates/candidate-list.vue`, `apps/web/src/components/ui/table*.vue`, `apps/web/src/components/ui/badge.vue`_
+  - _Requirements: Requirement 1, Requirement 3, Requirement 4, Requirement 6_
+  - _Prompt: Implement the task for spec candidate-list-redesign, first run spec-workflow-guide to get the workflow guide then implement the task: Role: Vue 桌面列表 UI 工程师 | Task: 将候选人列表组件从大卡片流改造成高密度表格，展示适合快速比较的候选人摘要字段，并保留现有操作入口和空/加载态 | Restrictions: 不要破坏详情跳转、AI 工作台、导出操作；不要继续使用整行大卡片布局；不要降低桌面端可读性；不要引入新的 UI 库 | _Leverage: 现有候选人列表组件、`ui/table*` 组件、`Badge` 组件 | _Requirements: Requirement 1, Requirement 3, Requirement 4, Requirement 6 | Success: 候选人页主体变为高密度表格；状态颜色清晰；现有关键操作仍可用；完成后记录实现日志并更新任务状态_
+
+- [x] 6. 在候选人页接入分页器与同步后的当前页刷新
+  - File: `apps/web/src/views/CandidatesView.vue`, 可能涉及 `apps/web/src/composables/candidates/use-candidate-search.ts`
+  - 接入页码切换、每页条数切换，并在搜索变化时回到第一页
+  - 保持“立即同步”后刷新当前筛选条件下的当前页列表
+  - Purpose: 让候选人页从长滚动流升级为可控的分页主列表
+  - _Leverage: `apps/web/src/views/CandidatesView.vue`, `apps/web/src/stores/candidates.ts`, `apps/web/src/composables/candidates/use-candidate-search.ts`, `apps/web/src/stores/sync.ts`_
+  - _Requirements: Requirement 2, Requirement 6_
+  - _Prompt: Implement the task for spec candidate-list-redesign, first run spec-workflow-guide to get the workflow guide then implement the task: Role: 前端页面交互工程师 | Task: 在候选人页接入分页器和页大小控制，使搜索、同步和翻页都围绕统一的分页状态运行，并保持现有同步状态卡与列表刷新逻辑一致 | Restrictions: 不要让分页状态散落在多个无关组件里；不要破坏现有搜索与立即同步入口；不要让搜索结果切页行为不稳定 | _Leverage: 当前 `CandidatesView.vue`、`use-candidate-search.ts`、`stores/candidates.ts`、`stores/sync.ts` | _Requirements: Requirement 2, Requirement 6 | Success: 用户可以稳定翻页、修改每页条数、搜索后自动回到第一页，并在同步后看到当前页刷新结果；完成后记录实现日志并更新任务状态_
+
+- [x] 7. 验证候选人列表重构链路并补充必要测试
+  - File: 受影响测试文件；如无现成候选人测试则优先补最小必要测试到前端 API/store 或格式化器相关文件
+  - 覆盖状态格式化、分页状态写入、列表接口返回结构与关键用户路径的验证
+  - Purpose: 防止分页和状态摘要改造后回归
+  - _Leverage: `apps/web/src/api/client.test.ts`, 现有前端测试模式, `packages/server/src/routes.ts` 附近已有实现_
+  - _Requirements: Requirement 1, Requirement 2, Requirement 3, Requirement 4, Requirement 5, Requirement 6_
+  - _Prompt: Implement the task for spec candidate-list-redesign, first run spec-workflow-guide to get the workflow guide then implement the task: Role: 前后端质量工程师 | Task: 为候选人列表重构补最小必要验证，重点覆盖分页元数据、摘要状态字段、状态格式化和关键交互路径，确保本次改造可持续维护 | Restrictions: 不要引入与当前项目不匹配的过重测试体系；不要只做表面快照测试；不要忽略接口总数字段与分页行为验证 | _Leverage: 现有 `api/client.test.ts` 与项目已有测试组织方式 | _Requirements: Requirement 1, Requirement 2, Requirement 3, Requirement 4, Requirement 5, Requirement 6 | Success: 关键改造点有可执行验证；类型检查和相关测试通过；完成后记录实现日志并更新任务状态_

@@ -89,6 +89,9 @@ importers:
       '@unocss/preset-icons':
         specifier: ^66.5.1
         version: 66.6.7
+      '@unocss/preset-wind3':
+        specifier: ^66.6.7
+        version: 66.6.7
       '@vitejs/plugin-vue':
         specifier: ^5.2.4
         version: 5.2.4(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))(vue@3.5.30(typescript@5.9.3))
@@ -98,6 +101,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.21
         version: 10.4.27(postcss@8.5.8)
+      bun-types:
+        specifier: ^1.3.0
+        version: 1.3.11
       postcss:
         specifier: ^8.5.6
         version: 8.5.8
@@ -108,8 +114,14 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
       unocss:
-        specifier: ^66.5.1
+        specifier: ^66.6.7
         version: 66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))
+      unocss-preset-animations:
+        specifier: ^1.3.0
+        version: 1.3.0(@unocss/preset-wind3@66.6.7)(unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0)))
+      unocss-preset-shadcn:
+        specifier: ^1.0.1
+        version: 1.0.1(unocss-preset-animations@1.3.0(@unocss/preset-wind3@66.6.7)(unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))))(unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0)))
       unplugin-auto-import:
         specifier: ^19.1.1
         version: 19.3.0(@vueuse/core@10.11.1(vue@3.5.30(typescript@5.9.3)))
@@ -3026,6 +3038,21 @@ packages:
     resolution: {integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==}
     engines: {node: '>= 10.0.0'}
 
+  unocss-preset-animations@1.3.0:
+    resolution: {integrity: sha512-NLsBzPB98Jc8b6+t8nwLItI12ZE/48IZVccZ2uA2owLoeAvhRaDoRvs6eLcJfIUZfRycL25xxOeQoOBMo1p/aw==}
+    peerDependencies:
+      '@unocss/preset-wind3': '>=0.56.0 < 101'
+      unocss: '>=0.56.0 < 101'
+    peerDependenciesMeta:
+      '@unocss/preset-wind3':
+        optional: true
+
+  unocss-preset-shadcn@1.0.1:
+    resolution: {integrity: sha512-/I39ZO2ntPyRHz+VA8pa+E/empR4sJU//zMjgI0ph5c5LttRs84gcm74pz/wO+sfqMjjN4SbSScD2n+TfE4FHw==}
+    peerDependencies:
+      unocss: '>=0.56.0 < 101'
+      unocss-preset-animations: ^1.1.1
+
   unocss@66.6.7:
     resolution: {integrity: sha512-TdZ/JnKhrqkknrMvLl0KOwrGzFThEspFIyYiylFYJki2JkMN/5EJIr+vIZEGRX69hFTjTLi6utIpbipueqzNbw==}
     engines: {node: '>=14'}
@@ -5939,6 +5966,17 @@ snapshots:
       unplugin-utils: 0.3.1
 
   universalify@2.0.1: {}
+
+  unocss-preset-animations@1.3.0(@unocss/preset-wind3@66.6.7)(unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))):
+    dependencies:
+      unocss: 66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))
+    optionalDependencies:
+      '@unocss/preset-wind3': 66.6.7
+
+  unocss-preset-shadcn@1.0.1(unocss-preset-animations@1.3.0(@unocss/preset-wind3@66.6.7)(unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))))(unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))):
+    dependencies:
+      unocss: 66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0))
+      unocss-preset-animations: 1.3.0(@unocss/preset-wind3@66.6.7)(unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0)))
 
   unocss@66.6.7(vite@6.4.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0)):
     dependencies:

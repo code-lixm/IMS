@@ -290,17 +290,32 @@ async function checkLoginStatus() {
       error: result.error,
       userId: result.user?.id ?? null,
     });
-    if (result.authenticated) {
+    if (result.authenticated && result.user) {
       qrState.loginDetected = true;
       qrState.redirecting = true;
       console.log("[login-view] checkLoginStatus:redirect", {
         target: redirectTarget(),
       });
-      await authStore.checkStatus();
+
+      authStore.status = "valid";
+      authStore.user = {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+      };
+      authStore.initialized = true;
+
       notifySuccess("登录成功，正在进入系统", { title: "欢迎回来" });
       await router.replace(redirectTarget());
+
+      if (router.currentRoute.value.path === "/login") {
+        window.location.assign(redirectTarget());
+      }
+
+      void authStore.checkStatus({ force: true });
     }
   } catch (error) {
+    qrState.redirecting = false;
     notifyError(reportAppError("login-view/check-login-status", error, {
       title: "登录状态确认失败",
       fallbackMessage: "正在重试登录状态检查",

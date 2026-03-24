@@ -13,7 +13,13 @@ export const useAuthStore = defineStore("auth", () => {
   let pendingCheck: Promise<void> | null = null;
   const { notifyError } = useAppNotifications();
 
-  async function checkStatus() {
+  async function checkStatus(options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+
+    if (force) {
+      pendingCheck = null;
+    }
+
     if (pendingCheck) return pendingCheck;
 
     loading.value = true;
@@ -43,9 +49,9 @@ export const useAuthStore = defineStore("auth", () => {
     return pendingCheck;
   }
 
-  async function ensureStatus() {
+  async function ensureStatus(): Promise<void> {
     if (initialized.value) return;
-    await checkStatus();
+    return checkStatus();
   }
 
   async function logout() {

@@ -7,6 +7,9 @@ import type { Message } from "./types";
 interface LuiMessageModuleOptions {
   selectedId: Ref<string | null>;
   messages: Ref<Record<string, Message[]>>;
+  selectedAgentId: Ref<string | null>;
+  selectedModelId: Ref<string | null>;
+  temperature: Ref<number>;
 }
 
 export interface LuiMessageModule {
@@ -17,7 +20,7 @@ export interface LuiMessageModule {
 }
 
 export function createLuiMessageModule(options: LuiMessageModuleOptions): LuiMessageModule {
-  const { selectedId, messages } = options;
+  const { selectedId, messages, selectedAgentId, selectedModelId, temperature } = options;
   const { notifyError } = useAppNotifications();
 
   const currentMessages = computed(() =>
@@ -72,7 +75,12 @@ export function createLuiMessageModule(options: LuiMessageModuleOptions): LuiMes
     addMessage(conversationId, assistantMessage);
 
     try {
-      await luiApi.streamMessage(conversationId, { content }, {
+      await luiApi.streamMessage(conversationId, {
+        content,
+        agentId: selectedAgentId.value ?? undefined,
+        modelId: selectedModelId.value ?? undefined,
+        temperature: temperature.value,
+      }, {
         onUpdate(state) {
           assistantMessage.content = state.content;
           assistantMessage.reasoning = state.reasoning;

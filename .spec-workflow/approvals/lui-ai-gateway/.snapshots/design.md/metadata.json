@@ -1,0 +1,22 @@
+{
+  "filePath": ".spec-workflow/specs/lui-ai-gateway/design.md",
+  "currentVersion": 2,
+  "snapshots": [
+    {
+      "version": 1,
+      "filename": "snapshot-001.json",
+      "timestamp": "2026-03-24T05:14:50.730Z",
+      "trigger": "initial",
+      "approvalId": "approval_1774329290706_9orshoz2y",
+      "approvalTitle": "LUI AI Gateway Design"
+    },
+    {
+      "version": 2,
+      "filename": "snapshot-002.json",
+      "timestamp": "2026-03-24T05:16:50.244Z",
+      "trigger": "approved",
+      "approvalId": "approval_1774329290706_9orshoz2y",
+      "approvalTitle": "LUI AI Gateway Design"
+    }
+  ]
+}

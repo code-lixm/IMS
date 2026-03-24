@@ -49,7 +49,7 @@
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button class="hidden gap-2 sm:flex" @click="emit('create')">
+        <Button variant="default" class="hidden gap-2 sm:flex" @click="emit('create')">
           <Plus class="h-4 w-4" />
           新建
         </Button>
@@ -59,9 +59,26 @@
         </Button>
 
         <div class="hidden h-9 items-center gap-1 border-l border-border pl-3 ml-1 lg:flex">
-          <Button variant="ghost" size="sm" class="gap-1.5" @click="emit('goto-import')">
+          <Button variant="secondary" size="sm" class="gap-1.5" @click="emit('goto-import')">
             <FileClock class="h-4 w-4" />
             任务
+          </Button>
+        </div>
+
+        <div class="hidden h-9 items-center gap-2 border-l border-border pl-3 ml-1 lg:flex">
+          <span v-if="props.syncEnabled" class="flex items-center gap-1.5 text-xs text-green-600">
+            <span class="h-1.5 w-1.5 rounded-full bg-green-500" />
+            自动同步中
+          </span>
+          <Button
+            :variant="props.syncError ? 'destructive' : 'secondary'"
+            size="sm"
+            class="gap-1.5"
+            :disabled="props.syncLoading"
+            @click="emit('sync')"
+          >
+            <RefreshCw class="h-4 w-4" :class="props.syncLoading ? 'animate-spin' : ''" />
+            同步
           </Button>
         </div>
 
@@ -71,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { FileClock, MoreHorizontal, Plus, Search, Upload } from "lucide-vue-next";
+import { FileClock, MoreHorizontal, Plus, RefreshCw, Search, Upload } from "lucide-vue-next";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
@@ -87,9 +104,12 @@ interface CandidatePageHeaderProps {
   search: string;
   searchSuggestions: string[];
   isImporting?: boolean;
+  syncLoading?: boolean;
+  syncError?: string | null;
+  syncEnabled?: boolean;
 }
 
-defineProps<CandidatePageHeaderProps>();
+const props = defineProps<CandidatePageHeaderProps>();
 
 const emit = defineEmits<{
   (e: "update:search", value: string): void;
@@ -97,6 +117,7 @@ const emit = defineEmits<{
   (e: "create"): void;
   (e: "import"): void;
   (e: "goto-import"): void;
+  (e: "sync"): void;
 }>();
 
 function handleSearchUpdate(value: string | number) {

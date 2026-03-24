@@ -13,6 +13,15 @@ import { syncManager } from "./services/sync-manager";
 
 const opencode = new OpenCodeManager();
 
+async function runInitialSync(reason: string) {
+  try {
+    const result = await syncManager.runOnce();
+    console.log(`[sync] initial sync (${reason}) done, syncedCandidates=${result.syncedCandidates} syncedInterviews=${result.syncedInterviews}`);
+  } catch (error) {
+    console.error(`[sync] initial sync (${reason}) failed: ${(error as Error).message}`);
+  }
+}
+
 const persistedRemote = await db
   .select()
   .from(remoteUsers)
@@ -24,6 +33,7 @@ const restoredRemote = persistedRemote[0];
 if (restoredRemote?.token) {
   setBaobaoClient(new BaobaoClient(restoredRemote.token));
   getDiscovery("Interview-Manager", config.port).setLocalUserInfo(restoredRemote.username, restoredRemote.name);
+  await runInitialSync("startup");
 }
 
 const server = Bun.serve({

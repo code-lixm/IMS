@@ -17,3 +17,6 @@ export * from "./baobao-types";
 
 // Shared constants
 export * from "./constants";
+
+// Baobao dictionary constants
+export * from "./dictionaries/baobao";

@@ -35,7 +35,7 @@ export function useCandidateSearch(store: ReturnType<typeof useCandidatesStore>)
     const keyword = search.value.trim();
     try {
       await store.fetchList(
-        { search: keyword || undefined },
+        { search: keyword || undefined, page: 1 },
         { signal: activeSearchController.signal },
       );
     } catch (error: unknown) {
@@ -57,7 +57,8 @@ export function useCandidateSearch(store: ReturnType<typeof useCandidatesStore>)
   }
 
   async function initialize() {
-    await store.fetchList();
+    search.value = store.search ?? "";
+    await store.refreshCurrentPage();
   }
 
   onBeforeUnmount(() => {

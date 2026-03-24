@@ -105,73 +105,141 @@ class SyncManager {
   }
 
   private async syncApplicantToLocal(applicant: {
-    id: string;
+    id: number;
     name: string;
-    phone?: string;
-    email?: string;
-    applyPosition?: string;
-    organizationName?: string;
-    interviewTime?: string;
+    phone?: string | null;
+    phoneNumber?: string | null;
+    email?: string | null;
+    applyPosition?: string | null;
+    applyPositionName?: string | null;
+    organizationName?: string | null;
+    orgAllParentName?: string | null;
+    interviewId?: number;
+    interviewType?: number;
+    interviewResult?: number | null;
+    interviewResultString?: string | null;
+    interviewTime?: string | number | null;
+    interviewPlace?: string | null;
+    interviewUrl?: string | null;
+    dockingHrName?: string | null;
+    dockingHrbpName?: string | null;
     status?: string;
+    recruitmentSourceName?: string | null;
+    checkInTime?: number | null;
+    arrivalDate?: string | null;
+    eliminateReasonString?: string | null;
+    remark?: string | null;
   }): Promise<void> {
     const now = Date.now();
+    const remoteCandidateId = String(applicant.id);
+    const positionName = applicant.applyPositionName ?? applicant.applyPosition ?? null;
+    const phoneNumber = applicant.phoneNumber ?? applicant.phone ?? null;
 
     // Check if candidate exists by remoteId
     const existing = await db.select({ id: candidates.id })
       .from(candidates)
-      .where(and(eq(candidates.remoteId, applicant.id), isNull(candidates.deletedAt)))
+      .where(and(eq(candidates.remoteId, remoteCandidateId), isNull(candidates.deletedAt)))
       .limit(1);
 
+    const candidateId = existing.length ? existing[0].id : `cand_${crypto.randomUUID()}`;
+
     if (existing.length) {
-      // Update existing candidate
       await db.update(candidates)
         .set({
           name: applicant.name,
-          phone: applicant.phone || null,
+          phone: phoneNumber,
           email: applicant.email || null,
-          position: applicant.applyPosition || null,
+          position: positionName,
+          organizationName: applicant.organizationName || null,
+          orgAllParentName: applicant.orgAllParentName || null,
+          recruitmentSourceName: applicant.recruitmentSourceName || null,
           source: "remote",
           updatedAt: now,
         })
-        .where(eq(candidates.id, existing[0].id));
+        .where(eq(candidates.id, candidateId));
     } else {
-      // Create new candidate
-      const candidateId = `cand_${crypto.randomUUID()}`;
       await db.insert(candidates).values({
         id: candidateId,
         source: "remote",
-        remoteId: applicant.id,
+        remoteId: remoteCandidateId,
         name: applicant.name,
-        phone: applicant.phone || null,
+        phone: phoneNumber,
         email: applicant.email || null,
-        position: applicant.applyPosition || null,
+        position: positionName,
+        organizationName: applicant.organizationName || null,
+        orgAllParentName: applicant.orgAllParentName || null,
+        recruitmentSourceName: applicant.recruitmentSourceName || null,
         createdAt: now,
         updatedAt: now,
       });
+    }
 
-      // Create interview record if interview time exists
-      if (applicant.interviewTime) {
-        const interviewId = `intv_${crypto.randomUUID()}`;
-        const scheduledAt = new Date(applicant.interviewTime).getTime();
+    if (applicant.interviewId || applicant.interviewTime) {
+      const remoteInterviewId = applicant.interviewId ? String(applicant.interviewId) : null;
+      const scheduledAt = this.parseInterviewTime(applicant.interviewTime);
+      const existingInterview = remoteInterviewId
+        ? await db.select({ id: interviews.id })
+          .from(interviews)
+          .where(eq(interviews.remoteId, remoteInterviewId))
+          .limit(1)
+        : [];
+
+      const interviewPayload = {
+        candidateId,
+        remoteId: remoteInterviewId,
+        round: 1,
+        status: this.mapInterviewStatus(applicant.status),
+        statusRaw: applicant.status ?? null,
+        interviewType: applicant.interviewType ?? null,
+        interviewResult: applicant.interviewResult ?? null,
+        interviewResultString: applicant.interviewResultString ?? null,
+        scheduledAt,
+        interviewPlace: applicant.interviewPlace ?? null,
+        meetingLink: applicant.interviewUrl ?? null,
+        dockingHrName: applicant.dockingHrName ?? null,
+        dockingHrbpName: applicant.dockingHrbpName ?? null,
+        checkInTime: applicant.checkInTime ?? null,
+        arrivalDate: applicant.arrivalDate ?? null,
+        eliminateReasonString: applicant.eliminateReasonString ?? null,
+        remark: applicant.remark ?? null,
+        updatedAt: now,
+      };
+
+      if (existingInterview.length) {
+        await db.update(interviews)
+          .set(interviewPayload)
+          .where(eq(interviews.id, existingInterview[0].id));
+      } else {
         await db.insert(interviews).values({
-          id: interviewId,
-          candidateId: candidateId,
-          remoteId: applicant.id,
-          round: 1,
-          status: this.mapInterviewStatus(applicant.status),
-          scheduledAt: scheduledAt,
+          id: `intv_${crypto.randomUUID()}`,
+          ...interviewPayload,
+          interviewerIdsJson: JSON.stringify([]),
+          manualEvaluationJson: null,
           createdAt: now,
-          updatedAt: now,
         });
       }
     }
   }
 
+  private parseInterviewTime(interviewTime?: string | number | null): number | null {
+    if (typeof interviewTime === "number") {
+      return Number.isFinite(interviewTime) ? interviewTime : null;
+    }
+
+    if (typeof interviewTime === "string" && interviewTime.trim()) {
+      const parsed = new Date(interviewTime).getTime();
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+  }
+
   private mapInterviewStatus(baobaoStatus?: string): string {
-    if (!baobaoStatus) return "scheduled";
-    if (baobaoStatus.includes("待面试")) return "scheduled";
-    if (baobaoStatus.includes("已面试")) return "completed";
-    if (baobaoStatus.includes("已取消")) return "cancelled";
+    const statusText = typeof baobaoStatus === "string" ? baobaoStatus : String(baobaoStatus ?? "");
+    if (!statusText) return "scheduled";
+    if (statusText.includes("待面试")) return "scheduled";
+    if (statusText.includes("已面试")) return "completed";
+    if (statusText.includes("已取消")) return "cancelled";
     return "scheduled";
   }
 }

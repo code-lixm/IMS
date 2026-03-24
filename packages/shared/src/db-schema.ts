@@ -70,6 +70,9 @@ export interface Candidate {
   phone: string | null;
   email: string | null;
   position: string | null;
+  organizationName: string | null;
+  orgAllParentName: string | null;
+  recruitmentSourceName: string | null;
   yearsOfExperience: number | null;
   tagsJson: string; // JSON string array
   deletedAt: number | null; // soft delete unix ms
@@ -96,8 +99,19 @@ export interface Interview {
   remoteId: string | null;
   round: number;
   status: InterviewStatus;
+  statusRaw: string | null;
+  interviewType: number | null;
+  interviewResult: number | null;
+  interviewResultString: string | null;
   scheduledAt: number | null;
+  interviewPlace: string | null;
   meetingLink: string | null;
+  dockingHrName: string | null;
+  dockingHrbpName: string | null;
+  checkInTime: number | null;
+  arrivalDate: string | null;
+  eliminateReasonString: string | null;
+  remark: string | null;
   interviewerIdsJson: string; // JSON string array
   manualEvaluationJson: string | null; // { rating, decision, comments }
   createdAt: number;
@@ -198,6 +212,9 @@ export interface Conversation {
   id: string;
   title: string;
   candidateId: string | null;
+  agentId: string | null;
+  modelId: string | null;
+  temperature: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -252,6 +269,18 @@ export interface Agent {
   systemPrompt: string | null;
   tools: string[];
   isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// LUI - Provider Credential
+// ---------------------------------------------------------------------------
+
+export interface ProviderCredential {
+  id: string;
+  provider: string;
+  apiKey: string;
   createdAt: number;
   updatedAt: number;
 }

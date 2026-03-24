@@ -1,9 +1,9 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Listener, Manager, Runtime,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
@@ -146,7 +146,10 @@ pub fn run() {
                 }
             });
 
-            println!("[tauri] Interview Manager v{} started", env!("CARGO_PKG_VERSION"));
+            println!(
+                "[tauri] Interview Manager v{} started",
+                env!("CARGO_PKG_VERSION")
+            );
             Ok(())
         })
         .on_window_event(|window, event| {

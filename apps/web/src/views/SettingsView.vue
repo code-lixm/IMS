@@ -83,6 +83,62 @@
           </Button>
         </Card>
 
+        <!-- Theme -->
+        <Card class="p-5">
+          <h2 class="text-sm font-semibold mb-4">外观</h2>
+          <Separator class="mb-4" />
+
+          <div class="space-y-5">
+            <!-- 颜色 -->
+            <div>
+              <p class="text-xs text-muted-foreground mb-1">主题</p>
+              <p class="mb-3 text-xs text-muted-foreground/80">使用 shadcn 内置的克制中性色方案，默认黑白极简风格。</p>
+              <div class="grid grid-cols-2 gap-2 xl:grid-cols-4">
+                <button
+                  v-for="c in themeColors"
+                  :key="c"
+                  :class="[
+                    'flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-colors',
+                    currentColor === c
+                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                      : 'border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground',
+                  ]"
+                  @click="setColor(c)"
+                >
+                  <span
+                    class="h-4 w-4 shrink-0 rounded-full border border-black/10 shadow-sm"
+                    :style="{ background: colorDotStyle[c] }"
+                  />
+                  <span class="flex flex-col items-start leading-none">
+                    <span>{{ colorLabel[c] }}</span>
+                    <span class="mt-1 text-[11px] opacity-70">{{ colorHint[c] }}</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 圆角 -->
+            <div>
+              <p class="text-xs text-muted-foreground mb-3">圆角</p>
+              <div class="flex gap-2">
+                <button
+                  v-for="r in themeRadii"
+                  :key="r"
+                  :class="[
+                    'flex items-center justify-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+                    currentRadius === r
+                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                      : 'border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground',
+                  ]"
+                  @click="setRadius(r)"
+                >
+                  {{ r === 0 ? '无' : `${r}rem` }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         <!-- OpenCode -->
         <Card class="p-5">
           <h2 class="text-sm font-semibold mb-4">OpenCode AI 引擎</h2>
@@ -137,6 +193,7 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { useSyncStore } from "@/stores/sync";
 import { opencodeApi } from "@/api/opencode";
+import { useTheme } from "@/composables/use-theme";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
@@ -149,8 +206,30 @@ import Separator from "@/components/ui/separator.vue";
 
 const authStore = useAuthStore();
 const syncStore = useSyncStore();
+const { color: currentColor, radius: currentRadius, setColor, setRadius, AVAILABLE_COLORS: themeColors, AVAILABLE_RADII: themeRadii } = useTheme();
 const syncEnabled = ref(false);
 const opencodeStatus = ref({ running: false, baseUrl: "", host: "", port: 0 });
+
+const colorLabel: Record<string, string> = {
+  neutral: "黑白",
+  zinc: "锌灰",
+  stone: "暖灰",
+  slate: "板岩",
+};
+
+const colorHint: Record<string, string> = {
+  neutral: "极简黑白",
+  zinc: "冷调灰黑",
+  stone: "暖调米灰",
+  slate: "蓝灰中性",
+};
+
+const colorDotStyle: Record<string, string> = {
+  neutral: "linear-gradient(135deg, hsl(0 0% 9%) 0%, hsl(0 0% 85%) 100%)",
+  zinc: "linear-gradient(135deg, hsl(240 5.9% 10%) 0%, hsl(240 5% 55%) 100%)",
+  stone: "linear-gradient(135deg, hsl(24 9.8% 10%) 0%, hsl(30 18% 70%) 100%)",
+  slate: "linear-gradient(135deg, hsl(222.2 47.4% 11.2%) 0%, hsl(214 30% 55%) 100%)",
+};
 
 onMounted(async () => {
   await authStore.checkStatus();
