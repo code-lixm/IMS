@@ -19,27 +19,58 @@
       </div>
     </div>
 
-    <div class="relative">
-      <DropdownMenu :open="slashMenuOpen" @update:open="onSlashMenuOpenChange">
-        <DropdownMenuTrigger as-child>
-          <button type="button" class="pointer-events-none absolute h-0 w-0 opacity-0" aria-hidden="true" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" class="mb-2 w-64">
-          <DropdownMenuItem
-            v-for="command in filteredCommands"
-            :key="command.value"
-            @select.prevent="selectSlashCommand(command.value)"
-          >
-            <span class="font-medium">{{ command.value }}</span>
-            <span class="ml-2 text-xs text-muted-foreground">{{ command.label }}</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled class="text-xs text-muted-foreground">
-            输入命令后按 Enter 发送
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+    <div class="flex items-center gap-1">
+      <!-- Agent Selector -->
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        :disabled="disabled"
+        class="h-7 text-xs text-muted-foreground"
+        @click="toggleAgentMenu"
+      >
+        <Bot class="mr-1 h-3.5 w-3.5" />
+        {{ selectedAgentId ? 'Agent' : 'Agent' }}
+      </Button>
 
+      <!-- Model Selector -->
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        :disabled="disabled"
+        class="h-7 text-xs text-muted-foreground"
+        @click="toggleModelMenu"
+      >
+        <span class="mr-1">⌘</span>
+        {{ selectedAgentId ? 'Model' : 'Model' }}
+      </Button>
+
+      <!-- Temperature -->
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        :disabled="disabled"
+        class="h-7 w-7 text-muted-foreground"
+        title="Temperature"
+      >
+        <Thermometer class="h-3.5 w-3.5" />
+      </Button>
+
+      <!-- File Upload -->
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        :disabled="disabled"
+        class="h-7 w-7 text-muted-foreground"
+        @click="triggerFileUpload"
+      >
+        <Plus class="h-3.5 w-3.5" />
+      </Button>
+
+      <!-- Textarea -->
       <textarea
         ref="textareaRef"
         :value="modelValue"
@@ -50,27 +81,13 @@
         @input="onInput"
         @keydown="onKeydown"
       />
-    </div>
 
-    <div class="mt-2 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          :disabled="disabled"
-          class="h-8 w-8"
-          @click="triggerFileUpload"
-        >
-          <Plus class="h-4 w-4" />
-        </Button>
-      </div>
-
+      <!-- Send Button -->
       <Button
         type="button"
         size="icon"
         :disabled="disabled || !canSend"
-        class="h-8 w-8"
+        class="h-8 w-8 shrink-0"
         @click="sendMessage"
       >
         <Send class="h-4 w-4" />
@@ -91,20 +108,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { Paperclip, Plus, Send, X } from "lucide-vue-next";
+import { Bot, Paperclip, Plus, Send, Thermometer, X } from "lucide-vue-next";
 import { useFileUpload } from "@/composables/use-file-upload";
 import Button from "@/components/ui/button.vue";
-import DropdownMenu from "@/components/ui/dropdown-menu.vue";
-import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
-import DropdownMenuItem from "@/components/ui/dropdown-menu-item.vue";
-import DropdownMenuSeparator from "@/components/ui/dropdown-menu-separator.vue";
-import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue";
 import Input from "@/components/ui/input.vue";
-
-interface SlashCommand {
-  value: string;
-  label: string;
-}
 
 interface PromptInputProps {
   modelValue?: string;
@@ -112,6 +119,9 @@ interface PromptInputProps {
   disabled?: boolean;
   accept?: string;
   multiple?: boolean;
+  selectedAgentId?: string | null;
+  authorizedProviders?: string[];
+  temperature?: number;
 }
 
 const props = withDefaults(defineProps<PromptInputProps>(), {
@@ -120,6 +130,9 @@ const props = withDefaults(defineProps<PromptInputProps>(), {
   disabled: false,
   accept: ".pdf,.png,.jpg,.jpeg,.webp,.zip,.imr",
   multiple: true,
+  selectedAgentId: null,
+  authorizedProviders: () => [],
+  temperature: 0.7,
 });
 
 const emit = defineEmits<{
@@ -127,28 +140,13 @@ const emit = defineEmits<{
   (e: "send", value: string): void;
   (e: "select-command", value: string): void;
   (e: "file-upload", files: File[]): void;
+  (e: "select-agent", agentId: string | null): void;
+  (e: "authorize", provider: string): void;
+  (e: "update:temperature", value: number): void;
 }>();
 
-const slashCommands: SlashCommand[] = [
-  { value: "/search", label: "搜索候选人" },
-  { value: "/import", label: "导入文件" },
-  { value: "/help", label: "获取帮助" },
-];
-
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const slashMenuOpen = ref(false);
 const pickedFiles = ref<File[]>([]);
-
-const commandKeyword = computed(() => {
-  const value = props.modelValue.trim();
-  if (!value.startsWith("/")) return "";
-  return value.toLowerCase();
-});
-
-const filteredCommands = computed(() => {
-  if (!commandKeyword.value) return slashCommands;
-  return slashCommands.filter((command) => command.value.startsWith(commandKeyword.value));
-});
 
 const canSend = computed(() => props.modelValue.trim().length > 0);
 
@@ -162,8 +160,7 @@ const { setFileInputRef, triggerFileUpload, handleFileChange } = useFileUpload({
 
 watch(
   () => props.modelValue,
-  async (value) => {
-    slashMenuOpen.value = value.trim().startsWith("/") && filteredCommands.value.length > 0;
+  async () => {
     await nextTick();
     resizeTextarea();
   },
@@ -174,7 +171,7 @@ watch(
   () => props.disabled,
   (disabled) => {
     if (disabled) {
-      slashMenuOpen.value = false;
+      pickedFiles.value = [];
     }
   },
 );
@@ -205,22 +202,15 @@ function sendMessage() {
   emit("send", value);
 }
 
-function selectSlashCommand(command: string) {
-  emit("update:modelValue", `${command} `);
-  emit("select-command", command);
-  slashMenuOpen.value = false;
-
-  nextTick(() => {
-    textareaRef.value?.focus();
-    resizeTextarea();
-  });
-}
-
 function removePickedFile(index: number) {
   pickedFiles.value.splice(index, 1);
 }
 
-function onSlashMenuOpenChange(value: boolean) {
-  slashMenuOpen.value = value;
+function toggleAgentMenu() {
+  emit("select-agent", null);
+}
+
+function toggleModelMenu() {
+  emit("authorize", "");
 }
 </script>

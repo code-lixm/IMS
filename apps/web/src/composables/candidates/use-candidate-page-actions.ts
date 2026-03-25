@@ -1,7 +1,8 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
+import type { WorkspaceData } from "@ims/shared";
+import { api } from "@/api/client";
 import { importApi } from "@/api/import";
-import { opencodeApi } from "@/api/opencode";
 import { shareApi } from "@/api/share";
 import { pickFiles } from "@/composables/use-file-picker";
 import type { CandidateActionFeedback } from "./types";
@@ -73,7 +74,9 @@ export function useCandidatePageActions() {
 
     workspaceLoadingId.value = candidateId;
     try {
-      const workspace = await opencodeApi.workspace(candidateId);
+      const workspace = await api<WorkspaceData>(`/api/candidates/${candidateId}/workspace`, {
+        method: "POST",
+      });
       window.open(workspace.url, "_blank", "noopener,noreferrer");
       setFeedback({
         tone: "info",

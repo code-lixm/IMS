@@ -7,6 +7,7 @@ import { createLuiFileModule } from "./lui/files";
 import { createLuiMessageModule } from "./lui/messages";
 import { createLuiModelModule } from "./lui/models";
 import { createLuiTaskQueueModule } from "./lui/task-queue";
+import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
 import type {
   Conversation,
   Credential,
@@ -44,6 +45,7 @@ export const useLuiStore = defineStore("lui", () => {
   const agents = ref<import("./lui/types").Agent[]>([]);
   const selectedAgentId = ref<string | null>(null);
   const providers = ref<ModelProvider[]>([]);
+  const customEndpoints = ref<GatewayEndpoint[]>([]);
   const selectedModelId = ref<string | null>(null);
   const credentials = ref<Record<string, Credential>>({});
   const tasks = ref<Task[]>([]);
@@ -98,6 +100,7 @@ export const useLuiStore = defineStore("lui", () => {
 
   const modelModule = createLuiModelModule({
     providers,
+    customEndpoints,
     selectedId: selectedModelId,
     isLoading,
   });

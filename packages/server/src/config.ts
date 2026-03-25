@@ -14,7 +14,6 @@ mkdirSync(FILES_DIR, { recursive: true });
 export const config = {
   host: "127.0.0.1",
   port: 3000,
-  opencodePort: 4096,
   runtimeDir: RUNTIME_DIR,
   dataDir: DATA_DIR,
   filesDir: FILES_DIR,

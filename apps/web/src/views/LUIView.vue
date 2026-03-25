@@ -46,19 +46,6 @@
         </div>
       </div>
 
-      <!-- AI Gateway Toolbar -->
-      <AIGatewayToolbar
-        :selected-agent-id="store.selectedAgentId"
-        :providers="store.providers"
-        :selected-model-id="store.selectedModelId"
-        :authorized-providers="authorizedProviders"
-        :temperature="store.temperature"
-        @select-agent="onSelectAgent"
-        @select-model="onSelectModel"
-        @authorize="onAuthorizeProvider"
-        @update:temperature="onTemperatureChange"
-      />
-
       <!-- 任务队列指示器 -->
       <TaskQueueIndicator :tasks="store.tasks" />
 
@@ -68,9 +55,15 @@
           v-model="inputText"
           placeholder="输入消息，输入 / 使用命令"
           :disabled="store.isLoadingMessages"
+          :selected-agent-id="store.selectedAgentId"
+          :authorized-providers="authorizedProviders"
+          :temperature="store.temperature"
           @send="onSend"
           @select-command="onSelectCommand"
           @file-upload="onFileUpload"
+          @select-agent="onSelectAgent"
+          @authorize="onAuthorizeProvider"
+          @update:temperature="onTemperatureChange"
         />
       </div>
 
@@ -101,7 +94,6 @@ import ChatMessage from '@/components/lui/chat-message.vue'
 import PromptInput from '@/components/lui/prompt-input.vue'
 import FileResources from '@/components/lui/file-resources.vue'
 import CandidateSelector from '@/components/lui/candidate-selector.vue'
-import AIGatewayToolbar from '@/components/lui/ai-gateway-toolbar.vue'
 import TaskQueueIndicator from '@/components/lui/task-queue-indicator.vue'
 import AuthDialog from '@/components/lui/auth-dialog.vue'
 
@@ -171,12 +163,6 @@ async function onSelectAgent(agentId: string | null) {
   store.selectedAgentId = agentId
   if (!store.selectedId) return
   await store.updateConversationAiConfig({ agentId })
-}
-
-async function onSelectModel(modelId: string | null) {
-  store.selectedModelId = modelId
-  if (!store.selectedId) return
-  await store.updateConversationAiConfig({ modelId })
 }
 
 function onAuthorizeProvider(provider: string) {

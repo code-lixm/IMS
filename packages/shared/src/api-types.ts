@@ -142,8 +142,6 @@ export interface MeData {
     settings: Record<string, unknown>;
   } | null;
   syncEnabled: boolean;
-  opencodeReady: boolean;
-  opencodeVersion: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,18 +388,6 @@ export type IndicatorStatus = "gray" | "green" | "yellow" | "red";
 export interface IndicatorData {
   status: IndicatorStatus;
   reasons: string[];
-}
-
-// ---------------------------------------------------------------------------
-// OpenCode System
-// ---------------------------------------------------------------------------
-
-export interface OpenCodeStatusData {
-  running: boolean;
-  baseUrl: string;
-  host: string;
-  port: number;
-  crashed?: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -8,10 +8,7 @@ import { remoteUsers } from "./schema";
 import { config } from "./config";
 import { BaobaoClient, setBaobaoClient } from "./services/baobao-client";
 import { getDiscovery } from "./services/share/discovery";
-import { OpenCodeManager } from "./services/opencode-manager";
 import { syncManager } from "./services/sync-manager";
-
-const opencode = new OpenCodeManager();
 
 async function runInitialSync(reason: string) {
   try {
@@ -42,7 +39,7 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
-      return route(request, opencode);
+      return route(request);
     }
     const htmlPath = join(process.cwd(), "web", "public", "index.html");
     if (existsSync(htmlPath)) {
@@ -55,7 +52,6 @@ const server = Bun.serve({
 const shutdown = async () => {
   syncManager.stop();
   server.stop();
-  await opencode.stop();
   process.exit(0);
 };
 

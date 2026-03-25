@@ -139,60 +139,77 @@
           </div>
         </Card>
 
-        <!-- OpenCode -->
         <Card class="p-5">
-          <h2 class="text-sm font-semibold mb-4">OpenCode AI 引擎</h2>
+          <h2 class="text-sm font-semibold mb-4">AI Gateway 自定义端点</h2>
           <Separator class="mb-4" />
-          <div class="flex items-center gap-3 mb-4">
-            <Badge :variant="opencodeStatus.running ? 'default' : 'outline'" class="gap-1.5">
-              <component :is="opencodeStatus.running ? Wifi : WifiOff" class="h-3 w-3" />
-              {{ opencodeStatus.running ? "运行中" : "未运行" }}
-            </Badge>
-            <span v-if="opencodeStatus.running" class="text-xs text-muted-foreground">
-              {{ opencodeStatus.baseUrl }}
-            </span>
-          </div>
-          <div class="flex gap-2">
-            <Button
-              v-if="!opencodeStatus.running"
-              size="sm"
-              class="gap-1.5"
-              @click="startOpencode"
-            >
-              <Power class="h-3.5 w-3.5" />
-              启动引擎
+
+          <div class="space-y-4">
+            <p class="text-xs text-muted-foreground">
+              添加自定义端点后，会在 LUI 模型选择器中显示为可选模型。
+            </p>
+
+            <div class="grid gap-2 sm:grid-cols-2">
+              <Input v-model="gatewayEndpointForm.id" placeholder="端点 ID（如 team-openai）" />
+              <Input v-model="gatewayEndpointForm.name" placeholder="显示名称" />
+              <Input v-model="gatewayEndpointForm.provider" placeholder="Provider（如 openai）" />
+              <Input v-model="gatewayEndpointForm.baseURL" placeholder="Base URL（https://...）" />
+            </div>
+
+            <Input
+              v-model="gatewayEndpointForm.apiKey"
+              type="password"
+              placeholder="API Key（可选，留空则使用凭证管理）"
+            />
+
+            <Button size="sm" class="gap-1.5" @click="addGatewayEndpoint">
+              添加端点
             </Button>
-            <Button
-              v-else
-              variant="outline"
-              size="sm"
-              class="gap-1.5"
-              @click="stopOpencode"
+
+            <div
+              v-if="luiStore.customEndpoints.length === 0"
+              class="rounded-md border border-dashed p-3 text-xs text-muted-foreground"
             >
-              <Power class="h-3.5 w-3.5" />
-              停止引擎
-            </Button>
+              暂无自定义端点
+            </div>
+
+            <div v-else class="space-y-2">
+              <div
+                v-for="endpoint in luiStore.customEndpoints"
+                :key="endpoint.id"
+                class="flex items-center justify-between rounded-md border p-3"
+              >
+                <div>
+                  <p class="text-sm font-medium">{{ endpoint.name }}</p>
+                  <p class="text-xs text-muted-foreground">
+                    {{ endpoint.provider }} · {{ endpoint.baseURL }}
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" @click="removeGatewayEndpoint(endpoint.id)">
+                  删除
+                </Button>
+              </div>
+            </div>
           </div>
         </Card>
+
       </AppPageContent>
   </AppPageShell>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { reactive, ref, onMounted } from "vue";
 import {
   CheckCircle,
   Power,
   RefreshCw,
   Upload,
   User,
-  Wifi,
-  WifiOff,
   XCircle,
 } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
+import { useLuiStore } from "@/stores/lui";
 import { useSyncStore } from "@/stores/sync";
-import { opencodeApi } from "@/api/opencode";
+import { useAppNotifications } from "@/composables/use-app-notifications";
 import { useTheme } from "@/composables/use-theme";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
@@ -202,13 +219,23 @@ import AppPageShell from "@/components/layout/app-page-shell.vue";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
+import Input from "@/components/ui/input.vue";
 import Separator from "@/components/ui/separator.vue";
+import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
 
 const authStore = useAuthStore();
+const luiStore = useLuiStore();
 const syncStore = useSyncStore();
+const { notifySuccess, notifyWarning } = useAppNotifications();
 const { color: currentColor, radius: currentRadius, setColor, setRadius, AVAILABLE_COLORS: themeColors, AVAILABLE_RADII: themeRadii } = useTheme();
 const syncEnabled = ref(false);
-const opencodeStatus = ref({ running: false, baseUrl: "", host: "", port: 0 });
+const gatewayEndpointForm = reactive({
+  id: "",
+  name: "",
+  provider: "openai",
+  baseURL: "",
+  apiKey: "",
+});
 
 const colorLabel: Record<string, string> = {
   neutral: "黑白",
@@ -235,11 +262,6 @@ onMounted(async () => {
   await authStore.checkStatus();
   await syncStore.fetchStatus();
   syncEnabled.value = syncStore.status.enabled;
-  try {
-    opencodeStatus.value = await opencodeApi.status();
-  } catch (_error) {
-    // service not ready
-  }
 });
 
 function fmtTime(ts: number) {
@@ -263,12 +285,34 @@ async function runSyncNow() {
   await syncStore.runNow();
 }
 
-async function startOpencode() {
-  opencodeStatus.value = await opencodeApi.start();
+function resetGatewayEndpointForm() {
+  gatewayEndpointForm.id = "";
+  gatewayEndpointForm.name = "";
+  gatewayEndpointForm.provider = "openai";
+  gatewayEndpointForm.baseURL = "";
+  gatewayEndpointForm.apiKey = "";
 }
 
-async function stopOpencode() {
-  await opencodeApi.stop();
-  opencodeStatus.value.running = false;
+function addGatewayEndpoint() {
+  const endpoint: GatewayEndpoint = {
+    id: gatewayEndpointForm.id.trim(),
+    name: gatewayEndpointForm.name.trim(),
+    provider: gatewayEndpointForm.provider.trim(),
+    baseURL: gatewayEndpointForm.baseURL.trim(),
+    ...(gatewayEndpointForm.apiKey.trim() ? { apiKey: gatewayEndpointForm.apiKey.trim() } : {}),
+  };
+
+  if (!endpoint.id || !endpoint.name || !endpoint.provider || !endpoint.baseURL) {
+    notifyWarning("请完整填写端点 ID、名称、Provider 和 Base URL");
+    return;
+  }
+
+  luiStore.registerCustomEndpoint(endpoint);
+  notifySuccess("已保存自定义端点");
+  resetGatewayEndpointForm();
+}
+
+function removeGatewayEndpoint(endpointId: string) {
+  luiStore.removeCustomEndpoint(endpointId);
 }
 </script>

@@ -98,7 +98,6 @@ CREATE TABLE IF NOT EXISTS artifact_versions (
 CREATE TABLE IF NOT EXISTS candidate_workspaces (
   id TEXT PRIMARY KEY,
   candidate_id TEXT NOT NULL REFERENCES candidates(id),
-  opencode_session_id TEXT NOT NULL UNIQUE,
   workspace_status TEXT NOT NULL DEFAULT 'active',
   last_accessed_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL

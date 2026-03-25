@@ -21,7 +21,6 @@ import {
   candidateWorkspaces, importBatches, importFileTasks, shareRecords, notifications,
   remoteUsers, conversations, messages, fileResources, agents, providerCredentials,
 } from "./schema";
-import type { OpenCodeManager } from "./services/opencode-manager";
 import { streamText } from "ai";
 import { buildCandidateContext, formatCandidateContextForPrompt } from "./services/lui-context";
 
@@ -464,7 +463,7 @@ function pickLatestByCandidate<T extends { candidateId: string }>(rows: T[]) {
   return latestByCandidate;
 }
 
-export async function route(request: Request, opencode: OpenCodeManager): Promise<Response> {
+export async function route(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
@@ -633,7 +632,7 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   if (path === "/api/me" && request.method === "GET") {
     const row = await db.select().from(users).limit(1);
     const u = row[0];
-    return ok({ user: u ? { id: u.id, name: u.name, email: u.email, tokenStatus: u.tokenStatus, lastSyncAt: u.lastSyncAt, settings: u.settingsJson ? JSON.parse(u.settingsJson) : {} } : null, syncEnabled: false, opencodeReady: opencode.status().running, opencodeVersion: null });
+    return ok({ user: u ? { id: u.id, name: u.name, email: u.email, tokenStatus: u.tokenStatus, lastSyncAt: u.lastSyncAt, settings: u.settingsJson ? JSON.parse(u.settingsJson) : {} } : null, syncEnabled: false, opencodeReady: false, opencodeVersion: null });
   }
 
   // Sync
@@ -908,8 +907,36 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   if (wsMatch && (request.method === "POST" || request.method === "GET")) {
     const cid = wsMatch[1];
     if (!(await candidateOrFail(cid))) return fail("NOT_FOUND", "candidate not found", 404);
-    try { const workspace = await opencode.ensureWorkspace(cid); return ok({ candidateId: cid, ...workspace }); }
-    catch (err) { return fail("WORKSPACE_CREATE_FAILED", (err as Error).message, 503); }
+    const now = Date.now();
+    const [existing] = await db.select().from(candidateWorkspaces).where(eq(candidateWorkspaces.candidateId, cid)).limit(1);
+
+    if (existing) {
+      await db.update(candidateWorkspaces)
+        .set({ lastAccessedAt: now })
+        .where(eq(candidateWorkspaces.id, existing.id));
+      return ok({
+        candidateId: cid,
+        sessionId: existing.id,
+        url: "",
+        status: existing.workspaceStatus,
+      });
+    }
+
+    const id = `ws_${crypto.randomUUID()}`;
+    await db.insert(candidateWorkspaces).values({
+      id,
+      candidateId: cid,
+      workspaceStatus: "inactive",
+      lastAccessedAt: now,
+      createdAt: now,
+    });
+
+    return ok({
+      candidateId: cid,
+      sessionId: id,
+      url: "",
+      status: "inactive",
+    });
   }
 
   // Artifacts
@@ -1078,8 +1105,7 @@ export async function route(request: Request, opencode: OpenCodeManager): Promis
   }
 
   if (path === "/api/indicator" && request.method === "GET") {
-    const opencodeRunning = opencode.status().running;
-    return ok({ status: opencodeRunning ? "green" : "gray", reasons: opencodeRunning ? ["opencode_ready"] : ["idle"] });
+    return ok({ status: "gray", reasons: ["idle"] });
   }
 
   // AI Chat (LUI)
@@ -1606,18 +1632,6 @@ Always be concise and helpful in your responses.`;
     await db.delete(fileResources).where(eq(fileResources.id, id));
     return ok({ id });
   }
-
-  // OpenCode System
-  if (path === "/api/system/opencode/status" && request.method === "GET") return ok(opencode.status());
-  if (path === "/api/system/opencode/start" && request.method === "POST") {
-    try { await opencode.start(); return ok(opencode.status()); }
-    catch (error) { return fail("SYSTEM_OPENCODE_NOT_READY", (error as Error).message, 503); }
-  }
-  if (path === "/api/system/opencode/restart" && request.method === "POST") {
-    try { await opencode.stop(); await opencode.start(); return ok(opencode.status()); }
-    catch (error) { return fail("SYSTEM_OPENCODE_NOT_READY", (error as Error).message, 503); }
-  }
-  if (path === "/api/system/opencode/stop" && request.method === "POST") { await opencode.stop(); return ok({ running: false }); }
 
   return fail("NOT_FOUND", "route not found", 404);
 }

@@ -112,7 +112,6 @@ export const artifactVersions = sqliteTable("artifact_versions", {
 export const candidateWorkspaces = sqliteTable("candidate_workspaces", {
   id: text("id").primaryKey(),
   candidateId: text("candidate_id").notNull().references(() => candidates.id),
-  opencodeSessionId: text("opencode_session_id").notNull().unique(),
   workspaceStatus: text("workspace_status").notNull().default("active"),
   lastAccessedAt: integer("last_accessed_at").notNull(),
   createdAt: integer("created_at").notNull(),

@@ -185,8 +185,9 @@ import {
   Upload,
   User,
 } from "lucide-vue-next";
+import type { WorkspaceData } from "@ims/shared";
+import { api } from "@/api/client";
 import { useCandidatesStore } from "@/stores/candidates";
-import { opencodeApi } from "@/api/opencode";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import AppUserActions from "@/components/app-user-actions.vue";
@@ -222,7 +223,9 @@ function fmtTime(ts: number | null) {
 async function openWorkspace() {
   const id = route.params.id as string;
   try {
-    const ws = await opencodeApi.workspace(id);
+    const ws = await api<WorkspaceData>(`/api/candidates/${id}/workspace`, {
+      method: "POST",
+    });
     window.open(ws.url, "_blank");
   } catch (err: unknown) {
     notifyError(reportAppError("candidate-detail/open-workspace", err, {

@@ -2,19 +2,28 @@ import { computed, type ComputedRef, type Ref } from "vue";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
+import {
+  loadGatewayEndpointsFromStorage,
+  saveGatewayEndpointsToStorage,
+  type GatewayEndpoint,
+} from "@/lib/ai-gateway-config";
 import type { ModelConfig, ModelProvider } from "./types";
 
 interface LuiModelModuleOptions {
   providers: Ref<ModelProvider[]>;
+  customEndpoints: Ref<GatewayEndpoint[]>;
   selectedId: Ref<string | null>;
   isLoading: Ref<boolean>;
 }
 
 export interface LuiModelModule {
+  customEndpoints: Ref<GatewayEndpoint[]>;
   models: ComputedRef<ModelConfig[]>;
   selectedModel: ComputedRef<ModelConfig | undefined>;
   getModelById: (id: string) => ModelConfig | undefined;
   loadModels: () => Promise<void>;
+  registerCustomEndpoint: (endpoint: GatewayEndpoint) => void;
+  removeCustomEndpoint: (endpointId: string) => void;
   selectModel: (id: string | null) => void;
 }
 
@@ -114,8 +123,84 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
 ];
 
 export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelModule {
-  const { providers, selectedId, isLoading } = options;
+  const { providers, customEndpoints, selectedId, isLoading } = options;
   const { notifyError } = useAppNotifications();
+  let baseProviders: ModelProvider[] = DEFAULT_PROVIDERS;
+
+  function toCustomProviderId(endpointId: string): string {
+    return `gateway:${endpointId}`;
+  }
+
+  function toCustomModel(endpoint: GatewayEndpoint): ModelConfig {
+    const customModelId = toCustomProviderId(endpoint.id);
+    return {
+      id: customModelId,
+      provider: endpoint.provider,
+      name: endpoint.id,
+      displayName: endpoint.name,
+      maxTokens: 128000,
+      supportsStreaming: true,
+      supportsTools: true,
+      requiresAuth: !endpoint.apiKey,
+    };
+  }
+
+  function toCustomProvider(endpoint: GatewayEndpoint): ModelProvider {
+    return {
+      id: toCustomProviderId(endpoint.id),
+      name: `${endpoint.name} (Gateway)`,
+      icon: "Gateway",
+      models: [toCustomModel(endpoint)],
+    };
+  }
+
+  function syncProviders() {
+    const customProviders = customEndpoints.value.map(toCustomProvider);
+    providers.value = [...baseProviders, ...customProviders];
+  }
+
+  function registerCustomEndpoint(endpoint: GatewayEndpoint) {
+    const normalized: GatewayEndpoint = {
+      id: endpoint.id.trim(),
+      name: endpoint.name.trim(),
+      baseURL: endpoint.baseURL.trim(),
+      provider: endpoint.provider.trim(),
+      ...(endpoint.apiKey?.trim() ? { apiKey: endpoint.apiKey.trim() } : {}),
+    };
+
+    if (!normalized.id || !normalized.name || !normalized.baseURL || !normalized.provider) {
+      return;
+    }
+
+    const index = customEndpoints.value.findIndex((item) => item.id === normalized.id);
+    if (index >= 0) {
+      customEndpoints.value[index] = normalized;
+    } else {
+      customEndpoints.value.push(normalized);
+    }
+
+    saveGatewayEndpointsToStorage(customEndpoints.value);
+    syncProviders();
+  }
+
+  function removeCustomEndpoint(endpointId: string) {
+    const normalizedEndpointId = endpointId.trim();
+    if (!normalizedEndpointId) {
+      return;
+    }
+
+    const nextEndpoints = customEndpoints.value.filter((item) => item.id !== normalizedEndpointId);
+    if (nextEndpoints.length === customEndpoints.value.length) {
+      return;
+    }
+
+    customEndpoints.value = nextEndpoints;
+    saveGatewayEndpointsToStorage(customEndpoints.value);
+    syncProviders();
+  }
+
+  customEndpoints.value = loadGatewayEndpointsFromStorage();
+  syncProviders();
 
   const models = computed(() =>
     providers.value.flatMap((provider) => provider.models)
@@ -134,19 +219,22 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
 
     try {
       const data = await luiApi.listModels();
-      providers.value = data.providers;
+      baseProviders = data.providers;
     } catch (err) {
       notifyError(reportAppError("lui/load-models", err, {
         title: "加载模型列表失败",
         fallbackMessage: "暂时无法获取模型列表，已使用本地默认模型",
       }));
-      providers.value = DEFAULT_PROVIDERS;
+      baseProviders = DEFAULT_PROVIDERS;
     } finally {
-      // 如果没有选中模型，选择第一个
+      syncProviders();
+    }
+
+    try {
       if (!selectedId.value && models.value[0]) {
         selectedId.value = models.value[0].id;
       }
-
+    } finally {
       isLoading.value = false;
     }
   }
@@ -156,10 +244,13 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
   }
 
   return {
+    customEndpoints,
     models,
     selectedModel,
     getModelById,
     loadModels,
+    registerCustomEndpoint,
+    removeCustomEndpoint,
     selectModel,
   };
 }

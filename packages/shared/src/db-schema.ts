@@ -144,7 +144,6 @@ export interface ArtifactVersion {
 export interface CandidateWorkspace {
   id: string;
   candidateId: string;
-  opencodeSessionId: string;
   workspaceStatus: WorkspaceStatus;
   lastAccessedAt: number;
   createdAt: number;
