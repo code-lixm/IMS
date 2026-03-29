@@ -8,6 +8,10 @@ function hasActiveBatch(items: ImportBatchListData["items"]) {
   return items.some((batch) => batch.status === "processing" || batch.status === "queued");
 }
 
+function getActiveBatchCount(items: ImportBatchListData["items"]) {
+  return items.filter((batch) => batch.status === "processing" || batch.status === "queued").length;
+}
+
 export function useImportBatches() {
   const batches = ref<ImportBatchListData["items"]>([]);
   const loading = ref(false);
@@ -16,6 +20,7 @@ export function useImportBatches() {
   const loadingFiles = ref<Record<string, boolean>>({});
 
   const hasProcessingBatches = computed(() => hasActiveBatch(batches.value));
+  const activeBatchCount = computed(() => getActiveBatchCount(batches.value));
 
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
@@ -110,12 +115,38 @@ export function useImportBatches() {
     ]);
   }
 
+  async function rerunScreening(batchId: string) {
+    await importApi.rerunScreening(batchId);
+    await Promise.all([
+      refresh(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, true) : Promise.resolve(),
+    ]);
+  }
+
   async function cancelBatch(batchId: string) {
     await importApi.cancel(batchId);
     await Promise.all([
       refresh(),
       expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, true) : Promise.resolve(),
     ]);
+  }
+
+  async function deleteBatch(batchId: string) {
+    await importApi.remove(batchId);
+
+    const nextExpanded = new Set(expandedBatches.value);
+    nextExpanded.delete(batchId);
+    expandedBatches.value = nextExpanded;
+
+    const nextBatchFiles = { ...batchFiles.value };
+    delete nextBatchFiles[batchId];
+    batchFiles.value = nextBatchFiles;
+
+    const nextLoadingFiles = { ...loadingFiles.value };
+    delete nextLoadingFiles[batchId];
+    loadingFiles.value = nextLoadingFiles;
+
+    await refresh();
   }
 
   onBeforeUnmount(() => {
@@ -130,10 +161,13 @@ export function useImportBatches() {
     batchFiles,
     loadingFiles,
     hasProcessingBatches,
+    activeBatchCount,
     initialize,
     refresh,
     toggleFiles,
     retryFailed,
+    rerunScreening,
     cancelBatch,
+    deleteBatch,
   };
 }

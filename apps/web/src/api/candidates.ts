@@ -1,10 +1,28 @@
-import { api } from "./client";
+import { api, requestStream } from "./client";
 import type {
   CandidateListData,
   CandidateDetailData,
   CreateCandidateInput,
   UpdateCandidateInput,
 } from "@ims/shared";
+
+export interface DownloadedResumeFile {
+  blob: Blob;
+  contentType: string | null;
+  fileName: string | null;
+}
+
+function parseContentDispositionFileName(contentDisposition: string | null): string | null {
+  if (!contentDisposition) return null;
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const asciiMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1] ?? null;
+}
 
 export const candidatesApi = {
   list(
@@ -21,6 +39,19 @@ export const candidatesApi = {
 
   get(id: string) {
     return api<CandidateDetailData>(`/api/candidates/${id}`);
+  },
+
+  async downloadResume(id: string): Promise<DownloadedResumeFile> {
+    const response = await requestStream(`/api/resumes/${id}/download`);
+    const blob = await response.blob();
+    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || blob.type || null;
+    const fileName = parseContentDispositionFileName(response.headers.get("content-disposition"));
+
+    return {
+      blob,
+      contentType,
+      fileName,
+    };
   },
 
   create(input: CreateCandidateInput) {

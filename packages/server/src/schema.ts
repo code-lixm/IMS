@@ -19,6 +19,7 @@ export const candidates = sqliteTable("candidates", {
   id: text("id").primaryKey(),
   source: text("source").notNull().default("local"),
   remoteId: text("remote_id"),
+  remoteResumeId: text("remote_resume_id"),
   name: text("name").notNull(),
   phone: text("phone"),
   email: text("email"),
@@ -191,6 +192,7 @@ export const conversations = sqliteTable("conversations", {
   title: text("title").notNull(),
   candidateId: text("candidate_id").references(() => candidates.id),
   agentId: text("agent_id"),
+  modelProvider: text("model_provider"),
   modelId: text("model_id"),
   temperature: real("temperature"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -220,6 +222,7 @@ export const fileResources = sqliteTable("file_resources", {
   name: text("name").notNull(),
   type: text("type", { enum: ["code", "document", "image"] }).notNull(),
   content: text("content").notNull(),
+  filePath: text("file_path"), // Local filesystem path
   language: text("language"),
   size: integer("size").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -232,7 +235,7 @@ export const agents = sqliteTable("agents", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
   description: text("description"),
-  mode: text("mode", { enum: ["all", "chat", "ask"] }).notNull().default("chat"),
+  mode: text("mode", { enum: ["all", "chat", "ask", "workflow"] }).notNull().default("chat"),
   temperature: integer("temperature").notNull().default(0),
   systemPrompt: text("system_prompt"),
   toolsJson: text("tools_json"),
@@ -268,4 +271,19 @@ export const remoteUsers = sqliteTable("remote_users", {
   userDataJson: text("user_data_json"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// LUI - Workflow State (Agent Mode Stage Management)
+// ---------------------------------------------------------------------------
+export const luiWorkflows = sqliteTable("lui_workflows", {
+  id: text("id").primaryKey(),
+  candidateId: text("candidate_id").notNull().references(() => candidates.id),
+  conversationId: text("conversation_id").references(() => conversations.id),
+  currentStage: text("current_stage", { enum: ["S0", "S1", "S2", "completed"] }).notNull().default("S0"),
+  stageDataJson: text("stage_data_json"), // stage-specific data
+  documentsJson: text("documents_json"), // { S0: {...}, S1: {...}, S2: {...} }
+  status: text("status", { enum: ["active", "paused", "completed", "error"] }).notNull().default("active"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

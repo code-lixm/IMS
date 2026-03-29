@@ -325,7 +325,11 @@ export class BaobaoClient {
   /**
    * Download resume binary data
    */
-  async downloadResume(fileId: string): Promise<ArrayBuffer> {
+  async downloadResumeFile(fileId: string): Promise<{
+    buffer: ArrayBuffer;
+    fileName: string | null;
+    contentType: string | null;
+  }> {
     const url = this.getResumeDownloadUrl(fileId);
     const response = await fetch(url, {
       method: "GET",
@@ -339,7 +343,71 @@ export class BaobaoClient {
       throw new Error(`Failed to download resume: ${response.status}`);
     }
 
-    return response.arrayBuffer();
+    const buffer = await response.arrayBuffer();
+    const contentDisposition = response.headers.get("content-disposition");
+    const fileName = parseFileNameFromContentDisposition(contentDisposition);
+    const contentType = response.headers.get("content-type");
+
+    const fileError = detectBaobaoFileError(buffer, contentType, fileName);
+    if (fileError) {
+      throw new Error(fileError);
+    }
+
+    return {
+      buffer,
+      fileName,
+      contentType,
+    };
+  }
+
+  async downloadResume(fileId: string): Promise<ArrayBuffer> {
+    const result = await this.downloadResumeFile(fileId);
+    return result.buffer;
+  }
+}
+
+function parseFileNameFromContentDisposition(contentDisposition: string | null): string | null {
+  if (!contentDisposition) {
+    return null;
+  }
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ?? null;
+}
+
+function detectBaobaoFileError(
+  buffer: ArrayBuffer,
+  contentType: string | null,
+  fileName: string | null,
+): string | null {
+  const text = Buffer.from(buffer).toString("utf-8").trim();
+  const looksLikeText = (contentType?.includes("json") || contentType?.includes("text") || fileName?.endsWith(".txt"))
+    && text.startsWith("{")
+    && text.endsWith("}");
+
+  if (!looksLikeText) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(text) as { errno?: number | string; errmsg?: string; message?: string };
+    const code = payload.errno ?? "unknown";
+    const message = payload.errmsg?.trim() || payload.message?.trim();
+    if (!message) {
+      return null;
+    }
+    return `Baobao file download failed (${code}): ${message}`;
+  } catch {
+    return null;
   }
 }
 

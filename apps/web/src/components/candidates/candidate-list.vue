@@ -181,10 +181,9 @@
                 <div class="flex min-h-[32px] items-center justify-center gap-3 text-[12px] leading-5">
                   <button
                     class="whitespace-nowrap text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline"
-                    :disabled="workspaceLoadingId === candidate.id"
                     @click.stop="emit('open-workspace', candidate.id)"
                   >
-                    {{ workspaceLoadingId === candidate.id ? '启动中…' : '工作台' }}
+                    工作台
                   </button>
                   <button
                     class="whitespace-nowrap text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline"
@@ -192,6 +191,13 @@
                     @click.stop="emit('export', candidate.id)"
                   >
                     {{ exportLoadingId === candidate.id ? '导出中…' : '导出' }}
+                  </button>
+                  <button
+                    class="whitespace-nowrap text-red-600 hover:underline disabled:opacity-50 disabled:no-underline"
+                    :disabled="deleteLoadingId === candidate.id"
+                    @click.stop="emit('delete', candidate.id)"
+                  >
+                    {{ deleteLoadingId === candidate.id ? '删除中…' : '删除' }}
                   </button>
                 </div>
               </TableCell>
@@ -287,8 +293,8 @@ interface CandidateListProps {
   total: number;
   page: number;
   pageSize: number;
-  workspaceLoadingId?: string | null;
   exportLoadingId?: string | null;
+  deleteLoadingId?: string | null;
 }
 
 const props = defineProps<CandidateListProps>();
@@ -319,6 +325,7 @@ const emit = defineEmits<{
   (e: "select", candidateId: string): void;
   (e: "open-workspace", candidateId: string): void;
   (e: "export", candidateId: string): void;
+  (e: "delete", candidateId: string): void;
   (e: "page-change", page: number): void;
   (e: "page-size-change", pageSize: number): void;
 }>();

@@ -1,7 +1,11 @@
 <template>
-  <Dialog :open="open" @update:open="onUpdateOpen">
-    <template #default>
-      <div class="fixed left-1/2 top-1/2 z-50 grid w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-4 border bg-background p-6 shadow-lg sm:rounded-lg max-h-[85vh] overflow-hidden flex flex-col">
+  <Dialog
+    :open="open"
+    content-class="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
+    @update:open="onUpdateOpen"
+  >
+    <template #content>
+      <div class="flex-1 grid gap-4 overflow-hidden">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">候选人信息冲突</h2>
           <Button variant="ghost" size="icon" class="h-8 w-8" @click="emit('update:open', false)">

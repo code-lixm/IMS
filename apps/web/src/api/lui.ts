@@ -19,6 +19,9 @@ import type {
   UpdateAgentInput,
   LuiCredentialStatusData,
   SetLuiCredentialInput,
+  LuiSettingsData,
+  UpdateLuiSettingsInput,
+  LuiPresetProviderListData,
 } from "@ims/shared";
 
 interface LuiModelData {
@@ -43,9 +46,19 @@ interface LuiModelProviderListData {
   providers: LuiModelProviderData[];
 }
 
+interface LuiTranscriptionData {
+  sessionId: string;
+  transcript: string;
+  final: boolean;
+}
+
 type LuiSendMessageInput = SendMessageInput & {
   agentId?: string;
+  modelProvider?: string;
   modelId?: string;
+  customModelName?: string;
+  endpointBaseURL?: string;
+  endpointApiKey?: string;
   temperature?: number;
 };
 
@@ -102,8 +115,32 @@ export const luiApi = {
   },
 
   // Models
-  listModels() {
+  listModels(config?: { providerId?: string; baseURL?: string; apiKey?: string; provider?: string; strict?: boolean }) {
+    // Send config to backend if providerId or baseURL is provided
+    if (config?.providerId || config?.baseURL) {
+      return api<LuiModelProviderListData>("/api/lui/models", {
+        method: "POST",
+        json: config,
+      });
+    }
     return api<LuiModelProviderListData>("/api/lui/models");
+  },
+
+  // Preset Providers
+  listPresetProviders() {
+    return api<LuiPresetProviderListData>("/api/lui/providers");
+  },
+
+  // Settings
+  getSettings() {
+    return api<LuiSettingsData>("/api/lui/settings");
+  },
+
+  updateSettings(input: UpdateLuiSettingsInput) {
+    return api<LuiSettingsData>("/api/lui/settings", {
+      method: "PUT",
+      json: input,
+    });
   },
 
   // Credentials
@@ -143,6 +180,31 @@ export const luiApi = {
     });
   },
 
+  transcribeListenerAudio(input: {
+    sessionId: string;
+    audioFile?: Blob;
+    isFinal?: boolean;
+    sampleRate?: number;
+  }) {
+    const formData = new FormData();
+    formData.append("sessionId", input.sessionId);
+    formData.append("isFinal", input.isFinal ? "true" : "false");
+    formData.append("sampleRate", String(input.sampleRate ?? 16000));
+    if (input.audioFile) {
+      formData.append(
+        "file",
+        input.audioFile,
+        input.isFinal ? "listener-final.wav" : "listener-chunk.wav",
+      );
+    }
+
+    return requestForm<LuiTranscriptionData>("/api/lui/transcribe", {
+      method: "POST",
+      formData,
+      timeoutMs: 120_000,
+    });
+  },
+
   deleteFile(id: string) {
     return api<{ id: string }>(`/api/lui/files/${id}`, {
       method: "DELETE",
@@ -177,4 +239,83 @@ export const luiApi = {
       method: "DELETE",
     });
   },
+
+  // Workflows
+  listWorkflows(candidateId?: string) {
+    const url = candidateId
+      ? `/api/lui/workflows?candidateId=${encodeURIComponent(candidateId)}`
+      : "/api/lui/workflows";
+    return api<{ items: WorkflowState[] }>(url);
+  },
+
+  getWorkflow(id: string) {
+    return api<WorkflowState>(`/api/lui/workflows/${id}`);
+  },
+
+  updateWorkflow(id: string, input: { currentStage?: WorkflowState["currentStage"]; status?: WorkflowState["status"] }) {
+    return api<WorkflowState>(`/api/lui/workflows/${id}`, {
+      method: "PUT",
+      json: input,
+    });
+  },
+
+  getWorkflowByCandidate(candidateId: string) {
+    return api<WorkflowState>(`/api/lui/workflows/by-candidate/${candidateId}`);
+  },
+
+  createWorkflow(input: { candidateId: string; conversationId: string }) {
+    return api<WorkflowState>("/api/lui/workflows", {
+      method: "POST",
+      json: input,
+    });
+  },
+
+  advanceWorkflow(id: string) {
+    return api<{ stage: string }>(`/api/lui/workflows/${id}/advance`, {
+      method: "POST",
+    });
+  },
+
+  resetWorkflow(id: string) {
+    return api<{ success: boolean }>(`/api/lui/workflows/${id}/reset`, {
+      method: "POST",
+    });
+  },
+
+  // Generate conversation title based on message content
+  generateTitle(content: string, modelId?: string, modelProvider?: string) {
+    return api<{ title: string }>("/api/lui/generate-title", {
+      method: "POST",
+      json: {
+        content,
+        modelId,
+        modelProvider,
+      },
+    });
+  },
 };
+
+// Workflow types
+export interface WorkflowState {
+  id: string;
+  candidateId: string;
+  conversationId: string | null;
+  currentStage: "S0" | "S1" | "S2" | "completed";
+  stageData: Record<string, unknown>;
+  documents: {
+    S0?: StageDocument;
+    S1?: StageDocument & { roundFiles?: Record<number, string> };
+    S2?: StageDocument;
+  };
+  status: "active" | "paused" | "completed" | "error";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StageDocument {
+  filePath?: string;
+  content?: string;
+  round?: number;
+  summary?: string;
+  generatedAt: string;
+}

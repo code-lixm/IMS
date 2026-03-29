@@ -369,7 +369,18 @@ class BaobaoLoginSessionManager {
 
     this.pending = (async () => {
       logStage("browser:create:start");
-      this.browser = await chromium.launch({ headless: true });
+      // Add timeout for browser launch to prevent hanging
+      const launchTimeout = setTimeout(() => {
+        logStage("browser:create:timeout", { timeout: 20000 });
+        throw new Error("Browser launch timeout after 20s");
+      }, 20000);
+
+      try {
+        this.browser = await chromium.launch({ headless: true });
+      } finally {
+        clearTimeout(launchTimeout);
+      }
+
       this.context = await this.browser.newContext({ viewport: { width: 1440, height: 1024 } });
       const persistedAuth = await loadPersistedRemoteAuth();
       if (persistedAuth?.token) {
@@ -391,7 +402,10 @@ class BaobaoLoginSessionManager {
         }
       }
       this.page = await this.context.newPage();
-      await this.page.goto(LOGIN_URL, { waitUntil: "networkidle", timeout: QR_WAIT_MS });
+      // Use domcontentloaded instead of networkidle to avoid hanging on persistent network requests
+      await this.page.goto(LOGIN_URL, { waitUntil: "domcontentloaded", timeout: QR_WAIT_MS });
+      // Wait a bit for QR code to render
+      await this.page.waitForTimeout(1000);
       logStage("browser:create:success", { url: this.page.url() });
     })();
 

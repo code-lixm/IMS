@@ -1,9 +1,9 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
-import type { WorkspaceData } from "@ims/shared";
-import { api } from "@/api/client";
+import { candidatesApi } from "@/api/candidates";
 import { importApi } from "@/api/import";
 import { shareApi } from "@/api/share";
+import { useImportPreferences } from "@/composables/import/use-import-preferences";
 import { pickFiles } from "@/composables/use-file-picker";
 import type { CandidateActionFeedback } from "./types";
 
@@ -15,10 +15,11 @@ function getErrorMessage(error: unknown) {
 
 export function useCandidatePageActions() {
   const router = useRouter();
+  const { autoScreen } = useImportPreferences();
   const feedback = ref<CandidateActionFeedback | null>(null);
   const isImporting = ref(false);
-  const workspaceLoadingId = ref<string | null>(null);
   const exportLoadingId = ref<string | null>(null);
+  const deleteLoadingId = ref<string | null>(null);
 
   const hasFeedback = computed(() => feedback.value !== null);
 
@@ -44,17 +45,16 @@ export function useCandidatePageActions() {
     }
 
     const files = await pickFiles({ accept: IMPORT_ACCEPT, multiple: true });
-    const paths = files.map((file) => file.path).filter(Boolean);
-    if (!paths.length) {
+    if (!files.length) {
       return;
     }
 
     isImporting.value = true;
     try {
-      await importApi.create(paths);
+      await importApi.upload(files.map((file) => file.file), autoScreen.value);
       setFeedback({
         tone: "success",
-        message: `已创建 ${paths.length} 个导入任务，正在跳转到导入页。`,
+        message: `已创建 ${files.length} 个导入任务，正在跳转到导入页。`,
       });
       goToImportPage();
     } catch (error: unknown) {
@@ -67,29 +67,12 @@ export function useCandidatePageActions() {
     }
   }
 
-  async function openWorkspace(candidateId: string) {
-    if (workspaceLoadingId.value) {
-      return;
-    }
-
-    workspaceLoadingId.value = candidateId;
-    try {
-      const workspace = await api<WorkspaceData>(`/api/candidates/${candidateId}/workspace`, {
-        method: "POST",
-      });
-      window.open(workspace.url, "_blank", "noopener,noreferrer");
-      setFeedback({
-        tone: "info",
-        message: "AI 工作台已在新窗口打开。",
-      });
-    } catch (error: unknown) {
-      setFeedback({
-        tone: "error",
-        message: `启动工作台失败：${getErrorMessage(error)}`,
-      });
-    } finally {
-      workspaceLoadingId.value = null;
-    }
+  function openWorkspace(candidateId: string) {
+    // Navigate to LUI with candidateId pre-selected
+    router.push({
+      path: "/lui",
+      query: { candidateId },
+    });
   }
 
   async function exportCandidate(candidateId: string) {
@@ -114,17 +97,40 @@ export function useCandidatePageActions() {
     }
   }
 
+  async function deleteCandidate(candidateId: string) {
+    if (deleteLoadingId.value) {
+      return;
+    }
+
+    deleteLoadingId.value = candidateId;
+    try {
+      await candidatesApi.delete(candidateId);
+      setFeedback({
+        tone: "success",
+        message: "删除成功",
+      });
+    } catch (error: unknown) {
+      setFeedback({
+        tone: "error",
+        message: `删除失败：${getErrorMessage(error)}`,
+      });
+    } finally {
+      deleteLoadingId.value = null;
+    }
+  }
+
   return {
     feedback,
     hasFeedback,
     isImporting,
-    workspaceLoadingId,
     exportLoadingId,
+    deleteLoadingId,
     clearFeedback,
     goToCandidateDetail,
     goToImportPage,
     triggerImport,
     openWorkspace,
     exportCandidate,
+    deleteCandidate,
   };
 }

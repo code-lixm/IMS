@@ -45,9 +45,19 @@ export const useSyncStore = defineStore("sync", () => {
   }
 
   async function toggle(enabled: boolean) {
-    const result = await syncApi.toggle(enabled);
-    status.value.enabled = result.enabled;
-    status.value.intervalMs = result.intervalMs;
+    try {
+      const result = await syncApi.toggle(enabled);
+      status.value.enabled = result.enabled;
+      status.value.intervalMs = result.intervalMs;
+      await fetchStatus();
+    } catch (error) {
+      if (isBaobaoAuthExpiredError(error)) {
+        status.value.enabled = false;
+        await redirectToLogin();
+        return;
+      }
+      throw error;
+    }
   }
 
   async function runNow() {

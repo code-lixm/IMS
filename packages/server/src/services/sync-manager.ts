@@ -115,6 +115,7 @@ class SyncManager {
     organizationName?: string | null;
     orgAllParentName?: string | null;
     interviewId?: number;
+    resumeId?: string | null;
     interviewType?: number;
     interviewResult?: number | null;
     interviewResultString?: string | null;
@@ -154,6 +155,7 @@ class SyncManager {
           orgAllParentName: applicant.orgAllParentName || null,
           recruitmentSourceName: applicant.recruitmentSourceName || null,
           source: "remote",
+          remoteResumeId: applicant.resumeId ?? null,
           updatedAt: now,
         })
         .where(eq(candidates.id, candidateId));
@@ -162,6 +164,7 @@ class SyncManager {
         id: candidateId,
         source: "remote",
         remoteId: remoteCandidateId,
+        remoteResumeId: applicant.resumeId ?? null,
         name: applicant.name,
         phone: phoneNumber,
         email: applicant.email || null,

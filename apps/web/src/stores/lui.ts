@@ -47,16 +47,19 @@ export const useLuiStore = defineStore("lui", () => {
   const providers = ref<ModelProvider[]>([]);
   const customEndpoints = ref<GatewayEndpoint[]>([]);
   const selectedModelId = ref<string | null>(null);
+  const selectedModelProvider = ref<string | null>(null);
   const credentials = ref<Record<string, Credential>>({});
   const tasks = ref<Task[]>([]);
   const isProcessing = ref(false);
   const isCredentialLoading = ref(false);
   const temperature = ref(0.5);
+  const customModelName = ref("");
 
   // Chat config computed
   const chatConfig = computed(() => ({
     agentId: selectedAgentId.value,
     modelId: selectedModelId.value,
+    modelProvider: selectedModelProvider.value,
     temperature: temperature.value,
   }));
 
@@ -66,6 +69,7 @@ export const useLuiStore = defineStore("lui", () => {
     selectedId,
     selectedAgentId,
     selectedModelId,
+    selectedModelProvider,
     temperature,
     messages,
     fileResources,
@@ -77,12 +81,24 @@ export const useLuiStore = defineStore("lui", () => {
     error,
   });
 
+  const modelModule = createLuiModelModule({
+    providers,
+    customEndpoints,
+    selectedId: selectedModelId,
+    selectedProviderId: selectedModelProvider,
+    isLoading,
+  });
+
   const messageModule = createLuiMessageModule({
     selectedId,
     messages,
+    fileResources,
     selectedAgentId,
     selectedModelId,
+    selectedModelProvider,
     temperature,
+    customEndpoints,
+    customModelName,
   });
 
   const fileModule = createLuiFileModule({
@@ -98,13 +114,6 @@ export const useLuiStore = defineStore("lui", () => {
     error,
   });
 
-  const modelModule = createLuiModelModule({
-    providers,
-    customEndpoints,
-    selectedId: selectedModelId,
-    isLoading,
-  });
-
   const credentialModule = createLuiCredentialModule({
     credentials,
     isLoading: isCredentialLoading,
@@ -115,7 +124,7 @@ export const useLuiStore = defineStore("lui", () => {
     isProcessing,
   });
 
-  async function initialize() {
+  async function initialize(options?: { skipAutoSelect?: boolean }) {
     if (isInitializing.value || isInitialized.value) {
       return;
     }
@@ -131,7 +140,8 @@ export const useLuiStore = defineStore("lui", () => {
       await agentModule.loadAgents();
       await conversationModule.loadConversations();
 
-      if (!selectedId.value && conversations.value[0]) {
+      // Only auto-select first conversation if skipAutoSelect is not set
+      if (!options?.skipAutoSelect && !selectedId.value && conversations.value[0]) {
         await conversationModule.selectConversation(conversations.value[0].id);
       }
 
@@ -158,11 +168,13 @@ export const useLuiStore = defineStore("lui", () => {
     selectedAgentId,
     providers,
     selectedModelId,
+    selectedModelProvider,
     credentials,
     tasks,
     isProcessing,
     temperature,
     chatConfig,
+    customModelName,
     // Modules
     ...conversationModule,
     ...messageModule,

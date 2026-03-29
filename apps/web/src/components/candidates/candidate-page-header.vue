@@ -40,6 +40,9 @@
             <DropdownMenuItem :disabled="isImporting" @click="emit('import')">
               <Upload class="mr-2 h-4 w-4" />
               导入文件
+              <Badge v-if="(importActivityCount ?? 0) > 0" variant="secondary" class="ml-auto min-w-5 justify-center px-1.5 py-0">
+                {{ importActivityCount }}
+              </Badge>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem @click="emit('goto-import')">
@@ -53,10 +56,19 @@
           <Plus class="h-4 w-4" />
           新建
         </Button>
-        <Button variant="outline" class="hidden gap-2 sm:flex" :disabled="isImporting" @click="emit('import')">
-          <Upload class="h-4 w-4" />
-          导入
-        </Button>
+        <div class="relative hidden sm:block">
+          <Button variant="outline" class="gap-2" :disabled="isImporting" @click="emit('import')">
+            <Upload class="h-4 w-4" />
+            导入
+          </Button>
+          <Badge
+            v-if="(importActivityCount ?? 0) > 0"
+            variant="default"
+            class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full px-1.5 py-0"
+          >
+            {{ importActivityCount }}
+          </Badge>
+        </div>
 
         <div class="hidden h-9 items-center gap-1 border-l border-border pl-3 ml-1 lg:flex">
           <Button variant="secondary" size="sm" class="gap-1.5" @click="emit('goto-import')">
@@ -92,6 +104,7 @@ import { FileClock, MoreHorizontal, Plus, RefreshCw, Search, Upload } from "luci
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
+import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import DropdownMenu from "@/components/ui/dropdown-menu.vue";
 import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
@@ -104,6 +117,7 @@ interface CandidatePageHeaderProps {
   search: string;
   searchSuggestions: string[];
   isImporting?: boolean;
+  importActivityCount?: number;
   syncLoading?: boolean;
   syncError?: string | null;
   syncEnabled?: boolean;

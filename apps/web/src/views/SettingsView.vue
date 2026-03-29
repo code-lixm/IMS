@@ -148,22 +148,95 @@
               添加自定义端点后，会在 LUI 模型选择器中显示为可选模型。
             </p>
 
-            <div class="grid gap-2 sm:grid-cols-2">
-              <Input v-model="gatewayEndpointForm.id" placeholder="端点 ID（如 team-openai）" />
-              <Input v-model="gatewayEndpointForm.name" placeholder="显示名称" />
-              <Input v-model="gatewayEndpointForm.provider" placeholder="Provider（如 openai）" />
-              <Input v-model="gatewayEndpointForm.baseURL" placeholder="Base URL（https://...）" />
+            <div class="flex items-center justify-between gap-3 rounded-md border border-dashed p-3">
+              <div>
+                <p class="text-sm font-medium">管理自定义端点</p>
+                <p class="text-xs text-muted-foreground">支持新增、编辑、测试连接与删除。</p>
+              </div>
+              <Button size="sm" class="gap-1.5" @click="openCreateGatewayEndpointDialog">
+                <Plus class="h-3.5 w-3.5" />
+                添加端点
+              </Button>
             </div>
 
-            <Input
-              v-model="gatewayEndpointForm.apiKey"
-              type="password"
-              placeholder="API Key（可选，留空则使用凭证管理）"
-            />
+            <Dialog :open="isGatewayEndpointDialogOpen" @update:open="handleGatewayEndpointDialogOpenChange">
+              <template #content>
+                <DialogHeader>
+                  <DialogTitle>{{ gatewayEndpointDialogTitle }}</DialogTitle>
+                  <DialogDescription>
+                    保存后会同步到本地服务，并在 LUI 模型选择器中可用。
+                  </DialogDescription>
+                </DialogHeader>
 
-            <Button size="sm" class="gap-1.5" @click="addGatewayEndpoint">
-              添加端点
-            </Button>
+                <Separator class="my-4" />
+
+                <div class="space-y-4">
+                  <!-- 提供商选择 -->
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">AI 提供商</label>
+                    <select
+                      v-model="gatewayEndpointForm.providerId"
+                      class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      :disabled="editingGatewayEndpointId !== null"
+                    >
+                      <option value="">选择提供商...</option>
+                      <option v-for="p in presetProviders" :key="p.id" :value="p.id">
+                        {{ p.name }}
+                      </option>
+                    </select>
+                    <p class="text-xs text-muted-foreground">
+                      {{ selectedPresetProvider ? `Base URL: ${selectedPresetProvider.baseURL}` : '请选择一个提供商' }}
+                    </p>
+                  </div>
+
+                  <!-- API Key -->
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">API Key</label>
+                    <div class="flex gap-2">
+                      <Input
+                        v-model="gatewayEndpointForm.apiKey"
+                        :type="showApiKey ? 'text' : 'password'"
+                        placeholder="输入 API Key"
+                        class="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        class="shrink-0"
+                        @click="showApiKey = !showApiKey"
+                      >
+                        <Eye v-if="!showApiKey" class="h-4 w-4" />
+                        <EyeOff v-else class="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p class="text-xs text-muted-foreground">留空则使用凭证管理中的 API Key</p>
+                  </div>
+                </div>
+
+                <DialogFooter class="mt-6 gap-2 sm:justify-between">
+                  <Button
+                    variant="outline"
+                    class="gap-1.5"
+                    :disabled="isTestingGatewayEndpoint || isSavingGatewayEndpoint"
+                    @click="testGatewayEndpointFromDialog"
+                  >
+                    <Loader2 v-if="isTestingGatewayEndpoint" class="h-3.5 w-3.5 animate-spin" />
+                    <FlaskConical v-else class="h-3.5 w-3.5" />
+                    测试连接
+                  </Button>
+                  <div class="flex items-center gap-2">
+                    <Button variant="secondary" :disabled="isSavingGatewayEndpoint || isTestingGatewayEndpoint" @click="closeGatewayEndpointDialog">
+                      取消
+                    </Button>
+                    <Button :disabled="isSavingGatewayEndpoint || isTestingGatewayEndpoint" @click="saveGatewayEndpoint">
+                      <Loader2 v-if="isSavingGatewayEndpoint" class="mr-2 h-3.5 w-3.5 animate-spin" />
+                      {{ editingGatewayEndpointId ? '保存修改' : '添加端点' }}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </template>
+            </Dialog>
 
             <div
               v-if="luiStore.customEndpoints.length === 0"
@@ -176,17 +249,38 @@
               <div
                 v-for="endpoint in luiStore.customEndpoints"
                 :key="endpoint.id"
-                class="flex items-center justify-between rounded-md border p-3"
+                class="flex items-center justify-between gap-3 rounded-md border p-3"
               >
-                <div>
+                <div class="min-w-0 space-y-1">
                   <p class="text-sm font-medium">{{ endpoint.name }}</p>
-                  <p class="text-xs text-muted-foreground">
-                    {{ endpoint.provider }} · {{ endpoint.baseURL }}
+                  <p class="text-xs text-muted-foreground break-all">
+                    <template v-if="endpoint.providerId">
+                      {{ endpoint.providerId }} · 预设提供商
+                    </template>
+                    <template v-else>
+                      {{ endpoint.id }} · {{ endpoint.provider }} · {{ endpoint.baseURL }}
+                    </template>
                   </p>
                 </div>
-                <Button variant="outline" size="sm" @click="removeGatewayEndpoint(endpoint.id)">
-                  删除
-                </Button>
+                <div class="flex shrink-0 items-center gap-1">
+                  <Button variant="ghost" size="icon" class="h-8 w-8" title="编辑" @click="openEditGatewayEndpointDialog(endpoint)">
+                    <Pencil class="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8"
+                    :title="testingEndpointId === endpoint.id ? '测试中' : '测试连接'"
+                    :disabled="testingEndpointId === endpoint.id"
+                    @click="testGatewayEndpoint(endpoint)"
+                  >
+                    <Loader2 v-if="testingEndpointId === endpoint.id" class="h-4 w-4 animate-spin" />
+                    <FlaskConical v-else class="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive" title="删除" @click="removeGatewayEndpoint(endpoint.id)">
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -197,11 +291,18 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from "vue";
+import { computed, reactive, ref, onMounted } from "vue";
 import {
   CheckCircle,
+  Eye,
+  EyeOff,
+  FlaskConical,
+  Loader2,
+  Pencil,
   Power,
+  Plus,
   RefreshCw,
+  Trash2,
   Upload,
   User,
   XCircle,
@@ -219,22 +320,56 @@ import AppPageShell from "@/components/layout/app-page-shell.vue";
 import Badge from "@/components/ui/badge.vue";
 import Button from "@/components/ui/button.vue";
 import Card from "@/components/ui/card.vue";
+import Dialog from "@/components/ui/dialog.vue";
+import DialogDescription from "@/components/ui/dialog-description.vue";
+import DialogFooter from "@/components/ui/dialog-footer.vue";
+import DialogHeader from "@/components/ui/dialog-header.vue";
+import DialogTitle from "@/components/ui/dialog-title.vue";
 import Input from "@/components/ui/input.vue";
 import Separator from "@/components/ui/separator.vue";
 import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
+import { luiApi } from "@/api/lui";
+
+interface PresetProvider {
+  id: string;
+  name: string;
+  icon: string;
+  baseURL: string;
+}
+
+const PRESET_PROVIDER_BASE_URLS: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+  minimax: "https://api.minimax.chat/v1",
+  moonshot: "https://api.moonshot.cn/v1",
+  deepseek: "https://api.deepseek.com/v1",
+  gemini: "https://generativelanguage.googleapis.com/v1beta",
+  siliconflow: "https://api.siliconflow.cn/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+  grok: "https://api.x.ai/v1",
+};
 
 const authStore = useAuthStore();
 const luiStore = useLuiStore();
 const syncStore = useSyncStore();
-const { notifySuccess, notifyWarning } = useAppNotifications();
+const { notifyError, notifySuccess, notifyWarning } = useAppNotifications();
 const { color: currentColor, radius: currentRadius, setColor, setRadius, AVAILABLE_COLORS: themeColors, AVAILABLE_RADII: themeRadii } = useTheme();
 const syncEnabled = ref(false);
+const isGatewayEndpointDialogOpen = ref(false);
+const editingGatewayEndpointId = ref<string | null>(null);
+const testingEndpointId = ref<string | null>(null);
+const isTestingGatewayEndpoint = ref(false);
+const isSavingGatewayEndpoint = ref(false);
+const presetProviders = ref<PresetProvider[]>([]);
+const showApiKey = ref(false);
 const gatewayEndpointForm = reactive({
-  id: "",
-  name: "",
-  provider: "openai",
-  baseURL: "",
+  providerId: "",
   apiKey: "",
+});
+const gatewayEndpointDialogTitle = computed(() => editingGatewayEndpointId.value ? "编辑自定义端点" : "添加自定义端点");
+
+const selectedPresetProvider = computed(() => {
+  return presetProviders.value.find(p => p.id === gatewayEndpointForm.providerId);
 });
 
 const colorLabel: Record<string, string> = {
@@ -262,6 +397,28 @@ onMounted(async () => {
   await authStore.checkStatus();
   await syncStore.fetchStatus();
   syncEnabled.value = syncStore.status.enabled;
+
+  // 加载预设提供商列表
+  try {
+    const data = await luiApi.listPresetProviders();
+    presetProviders.value = data.providers.map((provider) => ({
+      ...provider,
+      baseURL: PRESET_PROVIDER_BASE_URLS[provider.id] ?? "",
+    }));
+  } catch {
+    // 如果 API 不可用，使用硬编码的预设列表
+    presetProviders.value = [
+      { id: "openai", name: "OpenAI", icon: "OpenAI", baseURL: "https://api.openai.com/v1" },
+      { id: "anthropic", name: "Anthropic", icon: "Anthropic", baseURL: "https://api.anthropic.com/v1" },
+      { id: "minimax", name: "MiniMax", icon: "MiniMax", baseURL: "https://api.minimax.chat/v1" },
+      { id: "moonshot", name: "Moonshot", icon: "Moonshot", baseURL: "https://api.moonshot.cn/v1" },
+      { id: "deepseek", name: "DeepSeek", icon: "DeepSeek", baseURL: "https://api.deepseek.com/v1" },
+      { id: "gemini", name: "Google Gemini", icon: "Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta" },
+      { id: "siliconflow", name: "SiliconFlow", icon: "SiliconFlow", baseURL: "https://api.siliconflow.cn/v1" },
+      { id: "openrouter", name: "OpenRouter", icon: "OpenRouter", baseURL: "https://openrouter.ai/api/v1" },
+      { id: "grok", name: "Grok", icon: "Grok", baseURL: "https://api.x.ai/v1" },
+    ];
+  }
 });
 
 function fmtTime(ts: number) {
@@ -278,7 +435,11 @@ async function logout() {
 }
 
 async function toggleSync() {
-  await syncStore.toggle(syncEnabled.value);
+  try {
+    await syncStore.toggle(syncEnabled.value);
+  } finally {
+    syncEnabled.value = syncStore.status.enabled;
+  }
 }
 
 async function runSyncNow() {
@@ -286,33 +447,152 @@ async function runSyncNow() {
 }
 
 function resetGatewayEndpointForm() {
-  gatewayEndpointForm.id = "";
-  gatewayEndpointForm.name = "";
-  gatewayEndpointForm.provider = "openai";
-  gatewayEndpointForm.baseURL = "";
+  gatewayEndpointForm.providerId = "";
   gatewayEndpointForm.apiKey = "";
+  showApiKey.value = false;
 }
 
-function addGatewayEndpoint() {
-  const endpoint: GatewayEndpoint = {
-    id: gatewayEndpointForm.id.trim(),
-    name: gatewayEndpointForm.name.trim(),
-    provider: gatewayEndpointForm.provider.trim(),
-    baseURL: gatewayEndpointForm.baseURL.trim(),
-    ...(gatewayEndpointForm.apiKey.trim() ? { apiKey: gatewayEndpointForm.apiKey.trim() } : {}),
-  };
-
-  if (!endpoint.id || !endpoint.name || !endpoint.provider || !endpoint.baseURL) {
-    notifyWarning("请完整填写端点 ID、名称、Provider 和 Base URL");
-    return;
+function buildGatewayEndpointFromForm(): GatewayEndpoint {
+  const provider = selectedPresetProvider.value;
+  if (!provider) {
+    throw new Error("请选择提供商");
   }
 
-  luiStore.registerCustomEndpoint(endpoint);
-  notifySuccess("已保存自定义端点");
+  return {
+    id: provider.id,
+    name: provider.name,
+    provider: provider.id,
+    baseURL: provider.baseURL,
+    providerId: provider.id,
+    ...(gatewayEndpointForm.apiKey.trim() ? { apiKey: gatewayEndpointForm.apiKey.trim() } : {}),
+  };
+}
+
+function validateGatewayEndpoint(endpoint: GatewayEndpoint, requireApiKey = false) {
+  // 检查是否选择了提供商
+  if (!endpoint.providerId && (!endpoint.id || !endpoint.provider)) {
+    notifyWarning("请选择提供商");
+    return false;
+  }
+
+  // API Key 是必填项（用于测试或保存时）
+  if (requireApiKey && !endpoint.apiKey) {
+    notifyWarning("请输入 API Key");
+    return false;
+  }
+
+  return true;
+}
+
+function openCreateGatewayEndpointDialog() {
+  editingGatewayEndpointId.value = null;
+  resetGatewayEndpointForm();
+  isGatewayEndpointDialogOpen.value = true;
+}
+
+function openEditGatewayEndpointDialog(endpoint: GatewayEndpoint) {
+  editingGatewayEndpointId.value = endpoint.id;
+  // 支持 providerId 简化配置模式
+  // 优先使用 providerId，如果不存在则使用 provider
+  const providerId = endpoint.providerId || endpoint.provider;
+  if (providerId) {
+    gatewayEndpointForm.providerId = providerId;
+  }
+  gatewayEndpointForm.apiKey = endpoint.apiKey ?? "";
+  // 编辑时默认隐藏 API Key
+  showApiKey.value = false;
+  isGatewayEndpointDialogOpen.value = true;
+}
+
+function closeGatewayEndpointDialog() {
+  isGatewayEndpointDialogOpen.value = false;
+  editingGatewayEndpointId.value = null;
   resetGatewayEndpointForm();
 }
 
-function removeGatewayEndpoint(endpointId: string) {
-  luiStore.removeCustomEndpoint(endpointId);
+function handleGatewayEndpointDialogOpenChange(open: boolean) {
+  if (!open && (isSavingGatewayEndpoint.value || isTestingGatewayEndpoint.value)) {
+    return;
+  }
+
+  isGatewayEndpointDialogOpen.value = open;
+  if (!open) {
+    closeGatewayEndpointDialog();
+  }
+}
+
+async function saveGatewayEndpoint() {
+  const endpoint: GatewayEndpoint = {
+    ...buildGatewayEndpointFromForm(),
+  };
+
+  if (!validateGatewayEndpoint(endpoint, true)) {
+    return;
+  }
+
+  isSavingGatewayEndpoint.value = true;
+
+  try {
+    if (editingGatewayEndpointId.value) {
+      await luiStore.updateCustomEndpoint(editingGatewayEndpointId.value, endpoint);
+      notifySuccess("已更新自定义端点");
+    } else {
+      await luiStore.registerCustomEndpoint(endpoint);
+      notifySuccess("已保存自定义端点");
+    }
+    closeGatewayEndpointDialog();
+  } catch {
+  } finally {
+    isSavingGatewayEndpoint.value = false;
+  }
+}
+
+async function runGatewayEndpointTest(endpoint: GatewayEndpoint, options?: { fromDialog?: boolean }) {
+  if (!validateGatewayEndpoint(endpoint, true)) {
+    return;
+  }
+
+  if (options?.fromDialog) {
+    isTestingGatewayEndpoint.value = true;
+  } else {
+    testingEndpointId.value = endpoint.id;
+  }
+
+  try {
+    const result = await luiStore.testCustomEndpoint(endpoint);
+    if (result.modelCount > 0) {
+      notifySuccess(`连接成功，发现 ${result.providerCount} 个 Provider、${result.modelCount} 个模型`);
+    } else {
+      notifyWarning("连接成功，但当前端点未返回任何模型");
+    }
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "测试端点连接失败");
+  } finally {
+    if (options?.fromDialog) {
+      isTestingGatewayEndpoint.value = false;
+    } else {
+      testingEndpointId.value = null;
+    }
+  }
+}
+
+async function testGatewayEndpoint(endpoint: GatewayEndpoint) {
+  await runGatewayEndpointTest(endpoint);
+}
+
+async function testGatewayEndpointFromDialog() {
+  try {
+    const endpoint = buildGatewayEndpointFromForm();
+    if (!validateGatewayEndpoint(endpoint, true)) {
+      return;
+    }
+    await runGatewayEndpointTest(endpoint, { fromDialog: true });
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "测试端点连接失败");
+  }
+}
+
+async function removeGatewayEndpoint(endpointId: string) {
+  await luiStore.removeCustomEndpoint(endpointId);
 }
 </script>

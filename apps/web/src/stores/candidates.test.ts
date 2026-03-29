@@ -11,6 +11,7 @@ function makeCandidate(id: string, name: string): CandidateListItemSummary {
     id,
     source: "remote",
     remoteId: null,
+    remoteResumeId: null,
     name,
     phone: null,
     email: null,

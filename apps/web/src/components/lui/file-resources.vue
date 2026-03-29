@@ -2,17 +2,23 @@
   <section class="flex h-full min-h-0 flex-col gap-3">
     <header class="flex items-center justify-between">
       <h3 class="text-sm font-semibold">文件资源</h3>
-      <Badge variant="secondary">{{ totalCount }} 个文件</Badge>
+      <Badge variant="outline" class="h-8 rounded-sm gap-1.5 border-border/60 bg-background px-2.5 text-xs font-medium leading-none shadow-none">
+        <FileText class="h-3.5 w-3.5" />
+        {{ totalCount }} 个文件
+      </Badge>
     </header>
 
     <div
       v-if="totalCount === 0"
-      class="flex h-36 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground"
+      class="flex flex-1 items-start justify-start rounded-lg border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground"
     >
-      暂无文件资源
+      <div class="space-y-1">
+        <p class="font-medium text-foreground/80">暂无文件资源</p>
+        <p class="text-xs leading-5 text-muted-foreground">当会话自动同步简历或手动上传文件后，这里会显示对应文件。</p>
+      </div>
     </div>
 
-    <ScrollArea v-else class="h-[28rem] pr-3">
+    <ScrollArea v-else class="min-h-0 flex-1 pr-3">
       <div class="space-y-4">
         <section
           v-for="group in groupedResources"
@@ -38,7 +44,7 @@
                   class="h-4 w-4 shrink-0 text-muted-foreground"
                 />
                 <div class="min-w-0">
-                  <p class="truncate text-sm font-medium">{{ file.name }}</p>
+                  <p class="truncate text-sm font-medium">{{ displayFileName(file.name) }}</p>
                   <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                     <span>{{ formatDate(file.createdAt) }}</span>
                     <Badge v-if="file.language" variant="secondary">{{ file.language }}</Badge>
@@ -84,45 +90,35 @@
       </div>
     </ScrollArea>
 
-    <Dialog :open="previewOpen" @update:open="onPreviewOpenChange">
-      <template #default>
-        <div
-          v-if="previewOpen && previewFile"
-          class="fixed left-1/2 top-1/2 z-50 flex w-full max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg border bg-background p-6 shadow-lg"
-        >
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <p class="truncate text-sm font-semibold">{{ previewFile.name }}</p>
-              <div class="mt-1 flex items-center gap-2">
-                <Badge variant="outline">{{ typeLabel(previewFile.type) }}</Badge>
-                <Badge v-if="previewFile.language" variant="secondary">{{ previewFile.language }}</Badge>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              class="h-8 w-8"
-              @click="previewOpen = false"
-            >
-              <X class="h-4 w-4" />
-            </Button>
-          </div>
+    <Dialog
+      :open="previewOpen"
+      content-class="max-w-5xl p-5"
+      @update:open="onPreviewOpenChange"
+    >
+      <template #content>
+        <DialogHeader v-if="previewFile">
+          <DialogTitle class="truncate pr-8 text-sm font-semibold">
+            {{ displayFileName(previewFile.name) }}
+          </DialogTitle>
+          <DialogDescription class="flex items-center gap-2 pt-1">
+            <Badge variant="outline">{{ typeLabel(previewFile.type) }}</Badge>
+            <Badge v-if="previewFile.language" variant="secondary">{{ previewFile.language }}</Badge>
+          </DialogDescription>
+        </DialogHeader>
 
-          <ScrollArea class="h-[60vh] rounded-md border bg-muted/30">
-            <div v-if="isMarkdownFile(previewFile)" class="p-4">
-              <div class="prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(previewFile.content)" />
-            </div>
-            <pre v-else class="whitespace-pre-wrap break-all p-4 text-xs leading-5"><code>{{ previewFile.content }}</code></pre>
-          </ScrollArea>
-
-          <div class="flex justify-end">
-            <Button type="button" variant="outline" @click="downloadFile(previewFile)">
-              <Download class="h-4 w-4" />
-              下载文件
-            </Button>
+        <ScrollArea v-if="previewFile" class="h-[60vh] rounded-md border bg-muted/30">
+          <div v-if="isMarkdownFile(previewFile)" class="p-4">
+            <div class="prose prose-sm max-w-none dark:prose-invert" v-html="renderMarkdown(previewFile.content)" />
           </div>
-        </div>
+          <pre v-else class="whitespace-pre-wrap break-all p-4 text-xs leading-5"><code>{{ previewFile.content }}</code></pre>
+        </ScrollArea>
+
+        <DialogFooter v-if="previewFile">
+          <Button type="button" variant="outline" @click="downloadFile(previewFile)">
+            <Download class="h-4 w-4" />
+            下载文件
+          </Button>
+        </DialogFooter>
       </template>
     </Dialog>
   </section>
@@ -137,11 +133,14 @@ import {
   FileCode,
   FileText,
   Trash2,
-  X,
 } from "lucide-vue-next"
 import Badge from "@/components/ui/badge.vue"
 import Button from "@/components/ui/button.vue"
 import Dialog from "@/components/ui/dialog.vue"
+import DialogDescription from "@/components/ui/dialog-description.vue"
+import DialogFooter from "@/components/ui/dialog-footer.vue"
+import DialogHeader from "@/components/ui/dialog-header.vue"
+import DialogTitle from "@/components/ui/dialog-title.vue"
 import ScrollArea from "@/components/ui/scroll-area.vue"
 import { renderSafeMarkdown } from "@/lib/render/render-safe-markdown"
 import { useLuiStore, type FileResource } from "@/stores/lui"
@@ -201,6 +200,15 @@ function isMarkdownFile(file: FileResource): boolean {
          file.language === "markdown"
 }
 
+function displayFileName(name: string): string {
+  try {
+    return decodeURIComponent(name).replace(/\+/g, " ")
+  }
+  catch {
+    return name
+  }
+}
+
 function openPreview(file: FileResource) {
   previewFile.value = file
   previewOpen.value = true
@@ -236,7 +244,7 @@ function downloadFile(file: FileResource) {
   const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement("a")
   link.href = objectUrl
-  link.download = file.name
+  link.download = displayFileName(file.name)
   document.body.appendChild(link)
   link.click()
   link.remove()

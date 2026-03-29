@@ -18,7 +18,6 @@ import type {
   Notification,
   Device,
   ParsedResume,
-  Agent,
 } from "./db-schema";
 
 // ---------------------------------------------------------------------------
@@ -319,6 +318,30 @@ export interface ImportFileListData {
   items: ImportFileTask[];
 }
 
+export type ImportScreeningVerdict = "pass" | "review" | "reject";
+
+export type ImportScreeningStatus = "not_requested" | "running" | "completed";
+
+export type ImportScreeningSource = "ai" | "heuristic";
+
+export interface ImportScreeningConclusion {
+  verdict: ImportScreeningVerdict;
+  label: string;
+  score: number;
+  summary: string;
+  strengths: string[];
+  concerns: string[];
+  recommendedAction: string;
+}
+
+export interface ImportTaskResultData {
+  parsedResume: ParsedResume;
+  screeningStatus?: ImportScreeningStatus;
+  screeningSource?: ImportScreeningSource | null;
+  screeningError?: string | null;
+  screeningConclusion?: ImportScreeningConclusion | null;
+}
+
 export interface CreateImportBatchData {
   id: string;
   status: string;
@@ -399,6 +422,7 @@ export interface ConversationData {
   title: string;
   candidateId: string | null;
   agentId?: string | null;
+  modelProvider?: string | null;
   modelId?: string | null;
   temperature?: number | null;
   createdAt: number;
@@ -419,6 +443,7 @@ export interface CreateConversationInput {
   title?: string;
   candidateId?: string;
   agentId?: string | null;
+  modelProvider?: string | null;
   modelId?: string | null;
   temperature?: number | null;
 }
@@ -427,6 +452,7 @@ export interface UpdateConversationInput {
   title?: string;
   candidateId?: string | null;
   agentId?: string | null;
+  modelProvider?: string | null;
   modelId?: string | null;
   temperature?: number | null;
 }
@@ -446,7 +472,10 @@ export interface SendMessageInput {
   content: string;
   fileIds?: string[];
   agentId?: string;
+  modelProvider?: string;
   modelId?: string;
+  endpointBaseURL?: string;
+  endpointApiKey?: string;
   temperature?: number;
 }
 
@@ -482,6 +511,37 @@ export interface SetLuiCredentialInput {
   apiKey: string;
 }
 
+export interface LuiGatewayEndpointData {
+  id: string;
+  name: string;
+  baseURL: string;
+  apiKey?: string;
+  provider: string;
+  /**
+   * 预设提供商 ID。当提供此字段时，系统会自动从预设配置中填充
+   * id、name、baseURL、provider 等字段，只需提供 apiKey 即可。
+   */
+  providerId?: string;
+}
+
+export interface LuiPresetProviderData {
+  id: string;
+  name: string;
+  icon: string;
+}
+
+export interface LuiPresetProviderListData {
+  providers: LuiPresetProviderData[];
+}
+
+export interface LuiSettingsData {
+  customEndpoints: LuiGatewayEndpointData[];
+}
+
+export interface UpdateLuiSettingsInput {
+  customEndpoints: LuiGatewayEndpointData[];
+}
+
 // ---------------------------------------------------------------------------
 // LUI - Agent
 // ---------------------------------------------------------------------------
@@ -490,7 +550,7 @@ export interface AgentData {
   id: string;
   name: string;
   description: string | null;
-  mode: "all" | "chat" | "ask";
+  mode: "all" | "chat" | "ask" | "workflow";
   temperature: number;
   systemPrompt: string | null;
   tools: string[];
@@ -506,7 +566,7 @@ export interface AgentListData {
 export interface CreateAgentInput {
   name: string;
   description?: string;
-  mode?: "all" | "chat" | "ask";
+  mode?: "all" | "chat" | "ask" | "workflow";
   temperature?: number;
   systemPrompt?: string;
   tools?: string[];
@@ -515,7 +575,7 @@ export interface CreateAgentInput {
 
 export interface UpdateAgentInput {
   description?: string;
-  mode?: "all" | "chat" | "ask";
+  mode?: "all" | "chat" | "ask" | "workflow";
   temperature?: number;
   systemPrompt?: string;
   tools?: string[];

@@ -1,6 +1,7 @@
 import { computed, ref } from "vue";
 import { importApi } from "@/api/import";
 import { shareApi } from "@/api/share";
+import { useImportPreferences } from "@/composables/import/use-import-preferences";
 import { pickFiles, type PickedFile } from "@/composables/use-file-picker";
 import type { ShareImportResult } from "@ims/shared";
 
@@ -65,6 +66,7 @@ export function useImportFileSelection(options: UseImportFileSelectionOptions = 
   const isImporting = ref(false);
   const conflictQueue = ref<PendingConflict[]>([]);
   const activeConflict = ref<PendingConflict | null>(null);
+  const { autoScreen } = useImportPreferences();
 
   const conflictDialog = computed<ConflictDialogState>(() => ({
     open: activeConflict.value !== null,
@@ -73,6 +75,11 @@ export function useImportFileSelection(options: UseImportFileSelectionOptions = 
 
   function shiftNextConflict() {
     activeConflict.value = conflictQueue.value.shift() ?? null;
+  }
+
+  function resetConflictState() {
+    conflictQueue.value = [];
+    activeConflict.value = null;
   }
 
   async function importImrFiles(files: PickedFile[]) {
@@ -94,11 +101,13 @@ export function useImportFileSelection(options: UseImportFileSelectionOptions = 
     }
   }
 
-  async function triggerImport() {
+  async function triggerImport(importOptions?: { autoScreen?: boolean }) {
     const files = await pickFiles({ accept: IMPORT_ACCEPT, multiple: true });
     if (!files.length) {
       return;
     }
+
+    resetConflictState();
 
     const regularFiles = files.filter((file) => !isImrFile(file));
     const imrFiles = files.filter(isImrFile);
@@ -106,7 +115,7 @@ export function useImportFileSelection(options: UseImportFileSelectionOptions = 
     isImporting.value = true;
     try {
       if (regularFiles.length > 0) {
-        await importApi.create(regularFiles.map((file) => file.path));
+        await importApi.upload(regularFiles.map((file) => file.file), importOptions?.autoScreen ?? autoScreen.value);
       }
 
       if (imrFiles.length > 0) {
@@ -137,7 +146,7 @@ export function useImportFileSelection(options: UseImportFileSelectionOptions = 
       return;
     }
 
-    activeConflict.value = null;
+    resetConflictState();
   }
 
   return {

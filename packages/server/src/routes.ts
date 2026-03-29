@@ -5,13 +5,16 @@ import {
   lookupLabelOrDefault,
   resolveApplicationStatusCode,
 } from "@ims/shared";
+import { mkdir, writeFile, readFile, unlink } from "fs/promises";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { syncManager } from "./services/sync-manager";
-import { processFile } from "./services/import/pipeline";
+import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
 import { sendToDevice } from "./services/share/transfer";
-import { BaobaoClient, setBaobaoClient, getBaobaoClient } from "./services/baobao-client";
+import { BaobaoClient, setBaobaoClient } from "./services/baobao-client";
 import { clearBaobaoLoginSession, fetchBaobaoLoginQrCode, getBaobaoLoginSessionStatus } from "./services/baobao-login";
 import { config } from "./config";
 import { db, rawDb } from "./db";
@@ -20,15 +23,92 @@ import {
   users, candidates, resumes, interviews, artifacts, artifactVersions,
   candidateWorkspaces, importBatches, importFileTasks, shareRecords, notifications,
   remoteUsers, conversations, messages, fileResources, agents, providerCredentials,
+  luiWorkflows,
 } from "./schema";
 import { streamText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { buildCandidateContext, formatCandidateContextForPrompt } from "./services/lui-context";
+import {
+  getOrCreateWorkflow,
+  getWorkflow,
+  getWorkflowByCandidate,
+  updateWorkflow,
+  advanceStage,
+  resetWorkflow,
+  pauseWorkflow,
+  resumeWorkflow,
+  completeWorkflow,
+  listCandidateWorkflows,
+  executeAgent,
+  WorkflowStage,
+} from "./services/lui-workflow";
+import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
+import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
+import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcription";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
+
+function normalizeOpenAIBaseURL(baseURL: string | null | undefined): string {
+  const trimmed = baseURL?.trim();
+  if (!trimmed) {
+    return DEFAULT_OPENAI_COMPATIBLE_BASE_URL;
+  }
+  const withoutTrailingSlash = trimmed.replace(/\/+$/, "");
+  const withoutOperationPath = withoutTrailingSlash.replace(/\/(models|chat\/completions|responses|embeddings)$/i, "");
+  if (/\/v\d+$/i.test(withoutOperationPath)) {
+    return withoutOperationPath;
+  }
+  return `${withoutOperationPath}/v1`;
+}
 
 function logBaobaoAuth(stage: string, details?: Record<string, unknown>, important = false) {
   if (!important && !DEBUG_BAOBAO) return;
   console.log("[baobao-auth]", stage, details ?? {});
+}
+
+// File storage configuration
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const FILES_STORAGE_DIR = process.env.FILES_STORAGE_DIR || join(__dirname, "..", "..", "runtime", "files");
+
+async function ensureDir(dirPath: string): Promise<void> {
+  try {
+    await mkdir(dirPath, { recursive: true });
+  } catch (error) {
+    console.error("[FileStorage] Failed to create directory:", dirPath, error);
+  }
+}
+
+async function saveFileToLocal(conversationId: string, fileName: string, content: string): Promise<string> {
+  const dirPath = join(FILES_STORAGE_DIR, conversationId);
+  await ensureDir(dirPath);
+  
+  // Sanitize filename
+  const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const filePath = join(dirPath, sanitizedName);
+  
+  await writeFile(filePath, content, "utf-8");
+  return filePath;
+}
+
+async function saveImportUploadToLocal(batchId: string, file: File): Promise<string> {
+  const dirPath = join(config.dataDir, "import-uploads", batchId);
+  await ensureDir(dirPath);
+
+  const sanitizedName = file.name.replace(/[\\/]/g, "_");
+  const filePath = join(dirPath, sanitizedName);
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  await writeFile(filePath, buffer);
+  return filePath;
+}
+
+async function deleteFileFromLocal(filePath: string): Promise<void> {
+  try {
+    await unlink(filePath);
+  } catch (error) {
+    // File may not exist, ignore error
+    console.warn("[FileStorage] Failed to delete file:", filePath, error);
+  }
 }
 
 type LuiSupportedModel = {
@@ -43,11 +123,37 @@ type LuiSupportedModel = {
   runtimeModel: string;
 };
 
-const LUI_MODEL_PROVIDERS: Array<{ id: string; name: string; icon: string; models: LuiSupportedModel[] }> = [
-  {
+type LuiGatewayEndpoint = {
+  id: string;
+  name: string;
+  baseURL: string;
+  apiKey?: string;
+  provider: string;
+  /**
+   * 预设提供商 ID。当提供此字段时，系统会自动从预设配置中填充
+   * id、name、baseURL、provider 等字段。
+   */
+  providerId?: string;
+};
+
+type LuiSettings = {
+  customEndpoints: LuiGatewayEndpoint[];
+};
+
+const PRESET_PROVIDERS: Record<string, {
+  id: string;
+  name: string;
+  icon: string;
+  baseURL: string;
+  supportsModelsEndpoint: boolean;
+  models: LuiSupportedModel[];
+}> = {
+  openai: {
     id: "openai",
     name: "OpenAI",
     icon: "OpenAI",
+    baseURL: "https://api.openai.com/v1",
+    supportsModelsEndpoint: true,
     models: [
       {
         id: "gpt-4o",
@@ -58,7 +164,7 @@ const LUI_MODEL_PROVIDERS: Array<{ id: string; name: string; icon: string; model
         supportsStreaming: true,
         supportsTools: true,
         requiresAuth: true,
-        runtimeModel: "openai/gpt-4o",
+        runtimeModel: "gpt-4o",
       },
       {
         id: "gpt-4o-mini",
@@ -69,14 +175,27 @@ const LUI_MODEL_PROVIDERS: Array<{ id: string; name: string; icon: string; model
         supportsStreaming: true,
         supportsTools: true,
         requiresAuth: true,
-        runtimeModel: "openai/gpt-4o-mini",
+        runtimeModel: "gpt-4o-mini",
+      },
+      {
+        id: "o1-preview",
+        provider: "openai",
+        name: "o1-preview",
+        displayName: "o1 Preview",
+        maxTokens: 128000,
+        supportsStreaming: true,
+        supportsTools: false,
+        requiresAuth: true,
+        runtimeModel: "o1-preview",
       },
     ],
   },
-  {
+  anthropic: {
     id: "anthropic",
     name: "Anthropic",
     icon: "Anthropic",
+    baseURL: "https://api.anthropic.com/v1",
+    supportsModelsEndpoint: false,
     models: [
       {
         id: "claude-3-5-sonnet",
@@ -87,20 +206,459 @@ const LUI_MODEL_PROVIDERS: Array<{ id: string; name: string; icon: string; model
         supportsStreaming: true,
         supportsTools: true,
         requiresAuth: true,
-        runtimeModel: "anthropic/claude-3-5-sonnet-20241022",
+        runtimeModel: "claude-3-5-sonnet-20241022",
+      },
+      {
+        id: "claude-3-5-haiku",
+        provider: "anthropic",
+        name: "claude-3-5-haiku-20241022",
+        displayName: "Claude 3.5 Haiku",
+        maxTokens: 200000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: true,
+        runtimeModel: "claude-3-5-haiku-20241022",
       },
     ],
   },
-];
+  minimax: {
+    id: "minimax",
+    name: "MiniMax",
+    icon: "MiniMax",
+    baseURL: "https://api.minimax.chat/v1",
+    supportsModelsEndpoint: false,
+    models: [
+      {
+        id: "minimax-m2.7",
+        provider: "minimax",
+        name: "MiniMax-M2.7",
+        displayName: "MiniMax M2.7",
+        maxTokens: 8000,
+        supportsStreaming: true,
+        supportsTools: false,
+        requiresAuth: true,
+        runtimeModel: "MiniMax-M2.7",
+      },
+      {
+        id: "minimax-text-01",
+        provider: "minimax",
+        name: "MiniMax-Text-01",
+        displayName: "MiniMax Text-01",
+        maxTokens: 1000000,
+        supportsStreaming: true,
+        supportsTools: false,
+        requiresAuth: true,
+        runtimeModel: "MiniMax-Text-01",
+      },
+    ],
+  },
+  moonshot: {
+    id: "moonshot",
+    name: "Moonshot",
+    icon: "Moonshot",
+    baseURL: "https://api.moonshot.cn/v1",
+    supportsModelsEndpoint: true,
+    models: [], // Will be fetched from API
+  },
+  deepseek: {
+    id: "deepseek",
+    name: "DeepSeek",
+    icon: "DeepSeek",
+    baseURL: "https://api.deepseek.com/v1",
+    supportsModelsEndpoint: true,
+    models: [], // Will be fetched from API
+  },
+  gemini: {
+    id: "gemini",
+    name: "Google Gemini",
+    icon: "Gemini",
+    baseURL: "https://generativelanguage.googleapis.com/v1beta",
+    supportsModelsEndpoint: false,
+    models: [
+      {
+        id: "gemini-2.0-flash",
+        provider: "gemini",
+        name: "gemini-2.0-flash",
+        displayName: "Gemini 2.0 Flash",
+        maxTokens: 1000000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: true,
+        runtimeModel: "gemini-2.0-flash",
+      },
+      {
+        id: "gemini-1.5-pro",
+        provider: "gemini",
+        name: "gemini-1.5-pro",
+        displayName: "Gemini 1.5 Pro",
+        maxTokens: 2000000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: true,
+        runtimeModel: "gemini-1.5-pro",
+      },
+    ],
+  },
+  siliconflow: {
+    id: "siliconflow",
+    name: "SiliconFlow",
+    icon: "SiliconFlow",
+    baseURL: "https://api.siliconflow.cn/v1",
+    supportsModelsEndpoint: true,
+    models: [], // Will be fetched from API
+  },
+  openrouter: {
+    id: "openrouter",
+    name: "OpenRouter",
+    icon: "OpenRouter",
+    baseURL: "https://openrouter.ai/api/v1",
+    supportsModelsEndpoint: true,
+    models: [], // Will be fetched from API
+  },
+  grok: {
+    id: "grok",
+    name: "Grok",
+    icon: "Grok",
+    baseURL: "https://api.x.ai/v1",
+    supportsModelsEndpoint: true,
+    models: [], // Will be fetched from API
+  },
+};
 
-const LUI_MODEL_RUNTIME_BY_ID = new Map(
-  LUI_MODEL_PROVIDERS.flatMap((provider) => provider.models.map((model) => [model.id, model.runtimeModel] as const)),
-);
+const LUI_MODEL_PROVIDERS: Array<{ id: string; name: string; icon: string; models: LuiSupportedModel[] }> = Object.values(PRESET_PROVIDERS).map(p => ({
+  id: p.id,
+  name: p.name,
+  icon: p.icon,
+  models: p.models,
+}));
+
+// Get provider configuration by ID
+function getPresetProvider(providerId: string): typeof PRESET_PROVIDERS[string] | null {
+  return PRESET_PROVIDERS[providerId] || null;
+}
+
+// Get all available preset providers (for UI dropdown)
+function getPresetProviderList(): Array<{ id: string; name: string; icon: string; baseURL: string }> {
+  return Object.values(PRESET_PROVIDERS).map(p => ({
+    id: p.id,
+    name: p.name,
+    icon: p.icon,
+    baseURL: p.baseURL,
+  }));
+};
+
+function toModelIdentityId(providerId: string, modelName: string) {
+  return `${providerId}::${modelName}`;
+}
+
+function parseRuntimeModelName(modelId: string) {
+  const separatorIndex = modelId.indexOf("::");
+  if (separatorIndex < 0) {
+    return modelId;
+  }
+  return modelId.slice(separatorIndex + 2);
+}
+
+const VALID_AGENT_TOOL_NAMES = new Set<string>(TOOL_NAMES);
+
+function parseAgentTools(toolsJson: string | null | undefined): string[] {
+  if (!toolsJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(toolsJson);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((tool): tool is string => typeof tool === "string" && VALID_AGENT_TOOL_NAMES.has(tool));
+  } catch {
+    return [];
+  }
+}
+
+function serializeAgent(row: typeof agents.$inferSelect) {
+  return {
+    ...row,
+    tools: parseAgentTools(row.toolsJson),
+  };
+}
+
+function buildAgentToolConstraints(agentName: string, allowedToolNames: string[]): string {
+  if (allowedToolNames.length === 0) {
+    return `\n\n## Agent Tool Constraints\nCurrent agent "${agentName}" has no tools enabled. Answer without using any tools.`;
+  }
+
+  return `\n\n## Agent Tool Constraints\nCurrent agent "${agentName}" may only use these tools: ${allowedToolNames.join(", ")}. Never call tools outside this allowlist.`;
+}
 
 const LUI_MODEL_PROVIDERS_RESPONSE = LUI_MODEL_PROVIDERS.map((provider) => ({
   ...provider,
-  models: provider.models.map(({ runtimeModel: _runtimeModel, ...model }) => model),
+  models: provider.models.map(({ runtimeModel: _runtimeModel, ...model }) => ({
+    ...model,
+    id: toModelIdentityId(provider.id, model.name),
+    provider: provider.id,
+  })),
 }));
+
+const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https://ai-gateway.vercel.com/v1";
+const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.env.VERCEL_AI_GATEWAY_TOKEN || "";
+
+interface OpenAiCompatibleModel {
+  id: string;
+}
+
+interface OpenAiCompatibleModelsResponse {
+  data?: OpenAiCompatibleModel[];
+}
+
+type CustomModelDiscoveryConfig = {
+  providerId?: string;
+  baseURL?: string;
+  apiKey?: string;
+  provider?: string;
+  strict?: boolean;
+};
+
+// Fetch models for a preset provider
+async function fetchPresetProviderModels(
+  providerId: string,
+  apiKey?: string,
+): Promise<{ models: LuiSupportedModel[]; errorMessage: string | null }> {
+  const presetProvider = getPresetProvider(providerId);
+  if (!presetProvider) {
+    return { models: [], errorMessage: `Unknown provider: ${providerId}` };
+  }
+
+  const baseURL = presetProvider.baseURL;
+
+  // For providers with preset models (no /models endpoint support)
+  if (!presetProvider.supportsModelsEndpoint && presetProvider.models.length > 0) {
+    return {
+      models: presetProvider.models.map((model) => ({
+        ...model,
+        id: toModelIdentityId(providerId, model.name),
+        provider: providerId,
+        requiresAuth: !apiKey,
+      })),
+      errorMessage: null,
+    };
+  }
+
+  // For providers that support /models endpoint or have fallback
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    const normalizedBaseURL = normalizeOpenAIBaseURL(baseURL);
+    const response = await fetch(`${trimTrailingSlash(normalizedBaseURL)}/models`, { headers });
+
+    if (!response.ok) {
+      console.warn(`[${presetProvider.name}] Failed to fetch models: ${response.status} ${response.statusText}`);
+      // Fall back to preset models if available
+      if (presetProvider.models.length > 0) {
+        return {
+          models: presetProvider.models.map((model) => ({
+            ...model,
+            id: toModelIdentityId(providerId, model.name),
+            provider: providerId,
+            requiresAuth: !apiKey,
+          })),
+          errorMessage: null,
+        };
+      }
+      return {
+        models: [{
+          id: toModelIdentityId(providerId, "__manual__"),
+          provider: providerId,
+          name: "__manual__",
+          displayName: "✏️ 输入模型名称...",
+          maxTokens: 128000,
+          supportsStreaming: true,
+          supportsTools: true,
+          requiresAuth: !apiKey,
+          runtimeModel: "__manual__",
+        }],
+        errorMessage: null,
+      };
+    }
+
+    const payload = await response.json() as OpenAiCompatibleModelsResponse;
+    const models = Array.isArray(payload?.data) ? payload.data : [];
+
+    if (models.length === 0 && presetProvider.models.length > 0) {
+      // Fall back to preset models
+      return {
+        models: presetProvider.models.map((model) => ({
+          ...model,
+          id: toModelIdentityId(providerId, model.name),
+          provider: providerId,
+          requiresAuth: !apiKey,
+        })),
+        errorMessage: null,
+      };
+    }
+
+    return {
+      models: models
+        .filter((model): model is OpenAiCompatibleModel => Boolean(model?.id && typeof model.id === "string"))
+        .map((model) => ({
+          id: toModelIdentityId(providerId, model.id),
+          provider: providerId,
+          name: model.id,
+          displayName: model.id,
+          maxTokens: 128000,
+          supportsStreaming: true,
+          supportsTools: true,
+          requiresAuth: !apiKey,
+          runtimeModel: model.id,
+        })),
+      errorMessage: null,
+    };
+  } catch (error) {
+    console.error(`[${presetProvider.name}] Error fetching models:`, error);
+    // Fall back to preset models
+    if (presetProvider.models.length > 0) {
+      return {
+        models: presetProvider.models.map((model) => ({
+          ...model,
+          id: toModelIdentityId(providerId, model.name),
+          provider: providerId,
+          requiresAuth: !apiKey,
+        })),
+        errorMessage: null,
+      };
+    }
+    return {
+      models: [{
+        id: toModelIdentityId(providerId, "__manual__"),
+        provider: providerId,
+        name: "__manual__",
+        displayName: "✏️ 输入模型名称...",
+        maxTokens: 128000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: !apiKey,
+        runtimeModel: "__manual__",
+      }],
+      errorMessage: null,
+    };
+  }
+}
+
+// Legacy function for custom endpoints
+async function fetchOpenAiCompatibleModels(config: CustomModelDiscoveryConfig): Promise<{ models: LuiSupportedModel[]; errorMessage: string | null }> {
+  const baseURL = config.baseURL?.trim();
+  if (!baseURL) return { models: [], errorMessage: null };
+
+  const providerName = config.provider?.trim() || "Custom OpenAI Compatible";
+  const providerId = config.providerId?.trim() || normalizeProviderId(providerName);
+  const apiKey = config.apiKey?.trim();
+
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    const normalizedBaseURL = normalizeOpenAIBaseURL(baseURL);
+    const response = await fetch(`${trimTrailingSlash(normalizedBaseURL)}/models`, { headers });
+
+    if (!response.ok) {
+      const errorMessage = `Failed to fetch models: ${response.status} ${response.statusText}`;
+      console.warn(`[${providerName}] ${errorMessage}`);
+      // Return a placeholder model for providers that don't support /models endpoint
+      // Use __manual__ as special marker for manual input
+      return {
+        models: [{
+          id: toModelIdentityId(providerId, "__manual__"),
+          provider: providerId,
+          name: "__manual__",
+          displayName: "✏️ 输入模型名称...",
+          maxTokens: 128000,
+          supportsStreaming: true,
+          supportsTools: true,
+          requiresAuth: !apiKey,
+          runtimeModel: "__manual__",
+        }],
+        errorMessage: null,
+      };
+    }
+
+    const payload = await response.json() as OpenAiCompatibleModelsResponse;
+    const models = Array.isArray(payload?.data) ? payload.data : [];
+
+    if (models.length === 0) {
+      // No models returned, provide a placeholder for manual input
+      return {
+        models: [{
+          id: toModelIdentityId(providerId, "__manual__"),
+          provider: providerId,
+          name: "__manual__",
+          displayName: "✏️ 输入模型名称...",
+          maxTokens: 128000,
+          supportsStreaming: true,
+          supportsTools: true,
+          requiresAuth: !apiKey,
+          runtimeModel: "__manual__",
+        }],
+        errorMessage: null,
+      };
+    }
+
+    return {
+      models: models
+        .filter((model): model is OpenAiCompatibleModel => Boolean(model?.id && typeof model.id === "string"))
+        .map((model) => ({
+          id: toModelIdentityId(providerId, model.id),
+          provider: providerId,
+          name: model.id,
+          displayName: model.id,
+          maxTokens: 128000,
+          supportsStreaming: true,
+          supportsTools: true,
+          requiresAuth: !apiKey,
+          runtimeModel: model.id,
+        })),
+      errorMessage: null,
+    };
+  } catch (error) {
+    console.error(`[${providerName}] Error fetching models:`, error);
+    // Network error or other issues, return placeholder for manual input
+    return {
+      models: [{
+        id: toModelIdentityId(providerId, "__manual__"),
+        provider: providerId,
+        name: "__manual__",
+        displayName: "✏️ 输入模型名称...",
+        maxTokens: 128000,
+        supportsStreaming: true,
+        supportsTools: true,
+        requiresAuth: !apiKey,
+        runtimeModel: "__manual__",
+      }],
+      errorMessage: null,
+    };
+  }
+}
+
+function normalizeProviderId(input: string) {
+  const normalized = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  return normalized || "custom-openai";
+}
+
+function trimTrailingSlash(url: string) {
+  return url.replace(/\/+$/, "");
+}
 
 function parseJson<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
@@ -132,6 +690,108 @@ async function upsertLocalUser(user: { name: string; email: string | null }) {
     lastSyncAt: now,
   });
   return id;
+}
+
+function sanitizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeGatewayEndpoint(value: unknown): LuiGatewayEndpoint | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const providerId = sanitizeString(value.providerId);
+  const apiKey = sanitizeString(value.apiKey);
+
+  // 如果提供了 providerId，从预设配置自动填充
+  if (providerId) {
+    const preset = getPresetProvider(providerId);
+    if (preset) {
+      return {
+        id: preset.id,
+        name: preset.name,
+        baseURL: preset.baseURL,
+        provider: preset.id,
+        providerId: preset.id,
+        ...(apiKey ? { apiKey } : {}),
+      };
+    }
+  }
+
+  // 传统模式：需要手动填写所有字段
+  const id = sanitizeString(value.id);
+  const name = sanitizeString(value.name);
+  const baseURL = sanitizeString(value.baseURL);
+  const provider = sanitizeString(value.provider);
+  const fallbackProviderId = sanitizeString(value.providerId);
+
+  if (!id || !name || !baseURL || !provider) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    baseURL,
+    provider,
+    ...(fallbackProviderId ? { providerId: fallbackProviderId } : {}),
+    ...(apiKey ? { apiKey } : {}),
+  };
+}
+
+function parseUserSettings(settingsJson: string | null | undefined): Record<string, unknown> {
+  if (!settingsJson?.trim()) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(settingsJson) as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function extractLuiSettings(settings: Record<string, unknown>): LuiSettings {
+  const rawLui = settings.lui;
+  const rawCustomEndpoints = isRecord(rawLui) ? rawLui.customEndpoints : undefined;
+  const customEndpoints = Array.isArray(rawCustomEndpoints)
+    ? rawCustomEndpoints
+        .map(normalizeGatewayEndpoint)
+        .filter((endpoint): endpoint is LuiGatewayEndpoint => endpoint !== null)
+    : [];
+
+  return { customEndpoints };
+}
+
+function mergeLuiSettings(settings: Record<string, unknown>, luiSettings: LuiSettings): Record<string, unknown> {
+  const nextSettings: Record<string, unknown> = { ...settings };
+  const existingLui = isRecord(settings.lui) ? settings.lui : {};
+  nextSettings.lui = {
+    ...existingLui,
+    customEndpoints: luiSettings.customEndpoints,
+  };
+  return nextSettings;
+}
+
+async function getOrCreateLocalUser() {
+  const existing = await db.select().from(users).limit(1);
+  if (existing[0]) {
+    return existing[0];
+  }
+
+  const id = await upsertLocalUser({
+    name: "Local User",
+    email: null,
+  });
+
+  const created = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return created[0] ?? null;
 }
 
 async function persistBaobaoAuth(
@@ -214,6 +874,7 @@ function getErrorMessage(error: unknown) {
 function isBaobaoAuthExpiredError(error: unknown) {
   const message = getErrorMessage(error);
   return message.includes("请重新刷新页面")
+    || message.includes("Baobao client not initialized")
     || message.includes("Invalid baobao token")
     || message.includes("token expired")
     || message.includes("401 Unauthorized");
@@ -587,7 +1248,27 @@ export async function route(request: Request): Promise<Response> {
 
   if (path === "/api/auth/baobao/login-status" && request.method === "GET") {
     logBaobaoAuth("route:login-status:start");
-    const session = await getBaobaoLoginSessionStatus();
+    // Add timeout protection to prevent hanging
+    const timeoutMs = 25000;
+    const session = await Promise.race([
+      getBaobaoLoginSessionStatus(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Login status check timeout after ${timeoutMs}ms`)), timeoutMs)
+      ),
+    ]).catch((err) => {
+      logBaobaoAuth("route:login-status:timeout", { error: err.message });
+      return {
+        status: "error" as const,
+        imageSrc: "",
+        source: null,
+        fetchedAt: null,
+        refreshed: false,
+        currentUrl: "",
+        lastCheckedAt: Date.now(),
+        error: `Timeout: ${err.message}`,
+        authenticated: null,
+      };
+    });
 
     if (session.authenticated) {
       logBaobaoAuth("route:login-status:authenticated", {
@@ -632,13 +1313,27 @@ export async function route(request: Request): Promise<Response> {
   if (path === "/api/me" && request.method === "GET") {
     const row = await db.select().from(users).limit(1);
     const u = row[0];
-    return ok({ user: u ? { id: u.id, name: u.name, email: u.email, tokenStatus: u.tokenStatus, lastSyncAt: u.lastSyncAt, settings: u.settingsJson ? JSON.parse(u.settingsJson) : {} } : null, syncEnabled: false, opencodeReady: false, opencodeVersion: null });
+    return ok({ user: u ? { id: u.id, name: u.name, email: u.email, tokenStatus: u.tokenStatus, lastSyncAt: u.lastSyncAt, settings: parseUserSettings(u.settingsJson) } : null, syncEnabled: false, opencodeReady: false, opencodeVersion: null });
   }
 
   // Sync
   if (path === "/api/sync/toggle" && request.method === "POST") {
     const body = await parseJson<{ enabled: boolean }>(request) ?? { enabled: false };
-    if (body.enabled) syncManager.start(5000); else syncManager.stop();
+    if (body.enabled) {
+      try {
+        await syncManager.runOnce();
+        syncManager.start(5000);
+      } catch (err) {
+        syncManager.stop();
+        if (isBaobaoAuthExpiredError(err)) {
+          await markBaobaoAuthExpired();
+          return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
+        }
+        return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
+      }
+    } else {
+      syncManager.stop();
+    }
     const s = syncManager.status();
     return ok({ enabled: s.enabled, intervalMs: s.intervalMs });
   }
@@ -798,6 +1493,7 @@ export async function route(request: Request): Promise<Response> {
   if (candMatch && request.method === "GET") {
     const id = candMatch[1];
     if (!(await candidateOrFail(id))) return fail("NOT_FOUND", "candidate not found", 404);
+    await ensureCandidateResumeAvailable(id);
     const [row] = await db.select().from(candidates).where(eq(candidates.id, id)).limit(1);
     const resumeRows = await db.select().from(resumes).where(eq(resumes.candidateId, id));
     const interviewRows = await db.select().from(interviews).where(eq(interviews.candidateId, id)).orderBy(desc(interviews.scheduledAt));
@@ -978,27 +1674,60 @@ export async function route(request: Request): Promise<Response> {
   }
 
   if (path === "/api/import/batches" && request.method === "POST") {
-    const body = await parseJson<{ paths: string[]; autoScreen?: boolean }>(request);
-    if (!body.paths?.length) return fail("VALIDATION_ERROR", "paths is required and non-empty", 422);
     const id = `batch_${crypto.randomUUID()}`;
     const ts = Date.now();
-    await db.insert(importBatches).values({ id, status: "processing", sourceType: null, currentStage: "processing", totalFiles: body.paths.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen: body.autoScreen ?? false, createdAt: ts, startedAt: ts });
-    for (const filePath of body.paths) {
-      const taskId = `task_${crypto.randomUUID()}`;
-      const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
-      const fileType = ["pdf", "png", "jpg", "jpeg", "webp"].includes(ext) ? ext : "unknown";
-      await db.insert(importFileTasks).values({ id: taskId, batchId: id, originalPath: filePath, normalizedPath: null, fileType, status: "queued", stage: null, errorCode: null, errorMessage: null, candidateId: null, resultJson: null, retryCount: 0, createdAt: ts, updatedAt: ts });
-      void processFile(taskId, filePath, fileType as any).catch(err => console.error(`[import] file processing error: ${err.message}`));
+    const contentType = request.headers.get("content-type") ?? "";
+
+    let autoScreen = false;
+    let sourcePaths: string[] = [];
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      autoScreen = sanitizeString(formData.get("autoScreen")) === "true";
+      const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+      if (!files.length) return fail("VALIDATION_ERROR", "files is required and non-empty", 422);
+      sourcePaths = await Promise.all(files.map((file) => saveImportUploadToLocal(id, file)));
+    } else {
+      const body = await parseJson<{ paths: string[]; autoScreen?: boolean }>(request);
+      if (!body.paths?.length) return fail("VALIDATION_ERROR", "paths is required and non-empty", 422);
+      autoScreen = body.autoScreen ?? false;
+      sourcePaths = body.paths;
     }
-    return ok({ id, status: "processing", totalFiles: body.paths.length, autoScreen: body.autoScreen ?? false, createdAt: ts }, { status: 201 });
+
+    const preparedTasks = await prepareImportTasks(id, sourcePaths);
+    await db.insert(importBatches).values({ id, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, createdAt: ts, startedAt: ts });
+    for (const task of preparedTasks) {
+      const taskId = `task_${crypto.randomUUID()}`;
+      await db.insert(importFileTasks).values({ id: taskId, batchId: id, originalPath: task.originalPath, normalizedPath: task.normalizedPath, fileType: task.fileType, status: task.status, stage: task.status === "skipped" ? "classifying" : null, errorCode: task.errorCode, errorMessage: task.errorMessage, candidateId: null, resultJson: null, retryCount: 0, createdAt: ts, updatedAt: ts });
+      if (task.status === "queued") {
+        void processFile(taskId, task.normalizedPath ?? task.originalPath, task.fileType).catch(err => console.error(`[import] file processing error: ${err.message}`));
+      }
+    }
+    await refreshBatchProgress(id);
+    return ok({ id, status: "processing", totalFiles: preparedTasks.length, autoScreen, createdAt: ts }, { status: 201 });
   }
 
   const batchMatch = path.match(/^\/api\/import\/batches\/([^/]+)$/);
+  const batchCancelMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/cancel$/);
+  const batchRetryMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/retry-failed$/);
+  const batchRerunScreeningMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/rerun-screening$/);
   if (batchMatch && request.method === "GET") {
     const [row] = await db.select().from(importBatches).where(eq(importBatches.id, batchMatch[1])).limit(1);
     if (!row) return fail("NOT_FOUND", "batch not found", 404);
     return ok({ ...row, autoScreen: row.autoScreen ?? false });
   }
+
+   if (batchMatch && request.method === "DELETE") {
+     const id = batchMatch[1];
+     const [row] = await db.select().from(importBatches).where(eq(importBatches.id, id)).limit(1);
+     if (!row) return fail("NOT_FOUND", "batch not found", 404);
+     if (row.status === "processing" || row.status === "queued") {
+       return fail("BATCH_ACTIVE", "cannot delete active batch", 409);
+     }
+     await db.delete(importFileTasks).where(eq(importFileTasks.batchId, id));
+     await db.delete(importBatches).where(eq(importBatches.id, id));
+     return ok({ id, deleted: true });
+   }
 
   const batchFilesMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/files$/);
   if (batchFilesMatch && request.method === "GET") {
@@ -1006,14 +1735,27 @@ export async function route(request: Request): Promise<Response> {
     return ok({ items: rows });
   }
 
-  if (batchMatch && request.method === "POST") {
-    const id = batchMatch[1];
-    if (path.endsWith("/cancel")) {
-      await db.update(importBatches).set({ status: "cancelled" }).where(eq(importBatches.id, id));
-      return ok({ id, status: "cancelled" });
+  if (batchCancelMatch && request.method === "POST") {
+    const id = batchCancelMatch[1];
+    const [row] = await db.select({ id: importBatches.id }).from(importBatches).where(eq(importBatches.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "batch not found", 404);
+    await cancelImportBatch(id);
+    return ok({ id, status: "cancelled" });
+  }
+
+  if (batchRetryMatch && request.method === "POST") {
+    return ok({ retriedCount: 0 });
+  }
+
+  if (batchRerunScreeningMatch && request.method === "POST") {
+    const id = batchRerunScreeningMatch[1];
+    const [row] = await db.select().from(importBatches).where(eq(importBatches.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "batch not found", 404);
+    if (row.status === "processing" || row.status === "queued") {
+      return fail("BATCH_ACTIVE", "cannot rerun screening for active batch", 409);
     }
-    if (path.endsWith("/retry-failed")) return ok({ retriedCount: 0 });
-    return fail("NOT_FOUND", "route not found", 404);
+    const result = await rerunImportBatchScreening(id);
+    return ok({ id, retriedCount: result.retriedCount, status: result.retriedCount > 0 ? "processing" : row.status });
   }
 
   // Share
@@ -1047,7 +1789,7 @@ export async function route(request: Request): Promise<Response> {
     if (!body.candidateId) return fail("VALIDATION_ERROR", "candidateId is required", 422);
     if (!(await candidateOrFail(body.candidateId))) return fail("NOT_FOUND", "candidate not found", 404);
     try {
-      const { statSync, existsSync } = await import("node:fs");
+      const { statSync } = await import("node:fs");
       const filePath = await exportCandidate(body.candidateId);
       return ok({ filePath, fileSize: statSync(filePath).size });
     } catch (err) { return fail("SHARE_EXPORT_FAILED", (err as Error).message, 500); }
@@ -1111,10 +1853,20 @@ export async function route(request: Request): Promise<Response> {
   // AI Chat (LUI)
   if (path === "/api/chat" && request.method === "POST") {
     try {
-      const body = await parseJson<{ messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> }>(request);
+      const body = await parseJson<{ messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>; modelId?: string }>(request);
+      
+      const modelId = body.modelId || "gpt-4o";
+      let provider: ReturnType<typeof createOpenAI>;
+      
+      // Create provider using OpenAI Compatible
+      provider = createOpenAI({
+        name: "custom",
+        baseURL: normalizeOpenAIBaseURL(DEFAULT_OPENAI_COMPATIBLE_BASE_URL),
+        apiKey: DEFAULT_OPENAI_COMPATIBLE_API_KEY,
+      });
       
       const result = streamText({
-        model: 'openai/gpt-4o',
+        model: provider.chat(parseRuntimeModelName(modelId)),
         messages: body.messages,
         system: `You are a helpful AI assistant for an Interview Management System. 
 You help recruiters manage candidates, schedule interviews, and analyze candidate information.
@@ -1148,6 +1900,7 @@ Always be concise and helpful in your responses.`,
       title?: string;
       candidateId?: string;
       agentId?: string | null;
+      modelProvider?: string | null;
       modelId?: string | null;
       temperature?: number | null;
     }>(request);
@@ -1156,6 +1909,7 @@ Always be concise and helpful in your responses.`,
     const normalizedTitle = body.title?.trim();
     const title = normalizedTitle || `新会话 ${Date.now()}`;
     const agentId = body.agentId?.trim() || null;
+    const modelProvider = body.modelProvider?.trim() || null;
     const modelId = body.modelId?.trim() || null;
     const temperature = typeof body.temperature === "number" ? body.temperature : null;
     await db.insert(conversations).values({
@@ -1163,6 +1917,7 @@ Always be concise and helpful in your responses.`,
       title: normalizedTitle || "新会话",
       candidateId: body.candidateId || null,
       agentId,
+      modelProvider,
       modelId,
       temperature,
       createdAt: now,
@@ -1173,6 +1928,7 @@ Always be concise and helpful in your responses.`,
       title,
       candidateId: body.candidateId || null,
       agentId,
+      modelProvider,
       modelId,
       temperature,
       createdAt: now.getTime(),
@@ -1186,6 +1942,10 @@ Always be concise and helpful in your responses.`,
     const id = convMatch[1];
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
     if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
+
+    if (conv.candidateId) {
+      await syncCandidateResumesToConversation(conv.id, conv.candidateId);
+    }
 
     // Get candidate info if associated
     let candidateInfo: { id: string; name: string; position: string | null } | null = null;
@@ -1220,6 +1980,8 @@ Always be concise and helpful in your responses.`,
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
     if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
 
+    await db.update(luiWorkflows).set({ conversationId: null }).where(eq(luiWorkflows.conversationId, id));
+
     // Delete associated messages and files first
     await db.delete(messages).where(eq(messages.conversationId, id));
     await db.delete(fileResources).where(eq(fileResources.conversationId, id));
@@ -1238,6 +2000,7 @@ Always be concise and helpful in your responses.`,
       title?: string;
       candidateId?: string | null;
       agentId?: string | null;
+      modelProvider?: string | null;
       modelId?: string | null;
       temperature?: number | null;
     }>(request);
@@ -1259,6 +2022,9 @@ Always be concise and helpful in your responses.`,
     }
     if (body.agentId !== undefined) {
       updates.agentId = body.agentId?.trim() || null;
+    }
+    if (body.modelProvider !== undefined) {
+      updates.modelProvider = body.modelProvider?.trim() || null;
     }
     if (body.modelId !== undefined) {
       updates.modelId = body.modelId?.trim() || null;
@@ -1290,7 +2056,11 @@ Always be concise and helpful in your responses.`,
       content: string;
       fileIds?: string[];
       agentId?: string;
+      modelProvider?: string;
       modelId?: string;
+      customModelName?: string;
+      endpointBaseURL?: string;
+      endpointApiKey?: string;
       temperature?: number;
     }>(request);
     if (!body.content?.trim()) return fail("VALIDATION_ERROR", "content is required", 422);
@@ -1301,6 +2071,9 @@ Always be concise and helpful in your responses.`,
     }
     if (body.modelId !== undefined) {
       convConfigUpdates.modelId = body.modelId?.trim() || null;
+    }
+    if (body.modelProvider !== undefined) {
+      convConfigUpdates.modelProvider = body.modelProvider?.trim() || null;
     }
     if (body.temperature !== undefined) {
       convConfigUpdates.temperature = body.temperature;
@@ -1341,21 +2114,101 @@ When appropriate, you can help with:
 Always be concise and helpful in your responses.`;
     let temperature = body.temperature ?? conv.temperature ?? 0.5;
 
+    // Check if agent is in workflow mode
+    let isWorkflowMode = false;
+    let allowedToolNames: string[] | undefined;
+    let agentSystemPrompt: string | null = null;
     if (body.agentId) {
       const [agent] = await db.select().from(agents).where(eq(agents.id, body.agentId)).limit(1);
-      if (agent?.systemPrompt) {
-        systemPrompt = agent.systemPrompt;
-      }
-      if (agent?.temperature !== undefined && agent.temperature !== null) {
-        temperature = agent.temperature;
+      if (agent) {
+        allowedToolNames = parseAgentTools(agent.toolsJson);
+        agentSystemPrompt = agent.systemPrompt;
+        if (agent.systemPrompt) {
+          systemPrompt = agent.systemPrompt;
+        }
+        if (agent.temperature !== undefined && agent.temperature !== null) {
+          temperature = agent.temperature;
+        }
+        // Check if this is a workflow agent
+        isWorkflowMode = agent.mode === "workflow";
+
+        systemPrompt = `${systemPrompt}${buildAgentToolConstraints(agent.name, allowedToolNames)}`;
       }
     }
 
+    const modelProvider = body.modelProvider?.trim() || conv.modelProvider || null;
+    const modelId = body.modelId?.trim() || conv.modelId || null;
+    if (!modelId) {
+      return fail("VALIDATION_ERROR", "modelId is required", 422);
+    }
+
+    // Load user's custom endpoints to resolve configuration
+    const user = await getOrCreateLocalUser();
+    const settings = user ? parseUserSettings(user.settingsJson) : {};
+    const luiSettings = extractLuiSettings(settings);
+
+    // Find matching custom endpoint by providerId or gateway id
+    const matchingEndpoint = modelProvider
+      ? luiSettings.customEndpoints.find((ep) =>
+          ep.providerId === modelProvider ||
+          (modelProvider.startsWith("gateway:") && ep.id === modelProvider.slice("gateway:".length))
+        )
+      : null;
+
+    let resolvedBaseURL: string;
+    let resolvedApiKey: string;
+
+    if (modelProvider?.startsWith("gateway:")) {
+      if (!body.endpointBaseURL?.trim() && !matchingEndpoint?.baseURL) {
+        return fail("VALIDATION_ERROR", "endpointBaseURL is required for custom gateway provider", 422);
+      }
+      resolvedBaseURL = body.endpointBaseURL?.trim() || matchingEndpoint?.baseURL || DEFAULT_OPENAI_COMPATIBLE_BASE_URL;
+      resolvedApiKey = body.endpointApiKey?.trim() || matchingEndpoint?.apiKey || "";
+    } else if (matchingEndpoint?.providerId) {
+      const presetProvider = getPresetProvider(matchingEndpoint.providerId);
+      resolvedBaseURL = presetProvider?.baseURL || DEFAULT_OPENAI_COMPATIBLE_BASE_URL;
+      resolvedApiKey = matchingEndpoint.apiKey || "";
+    } else {
+      resolvedBaseURL = DEFAULT_OPENAI_COMPATIBLE_BASE_URL;
+      resolvedApiKey = DEFAULT_OPENAI_COMPATIBLE_API_KEY;
+    }
+
+    let actualModelName = parseRuntimeModelName(modelId);
+    if (actualModelName === "__manual__") {
+      const customModelName = body.customModelName?.trim();
+      if (!customModelName) {
+        return fail("VALIDATION_ERROR", "customModelName is required when using manual model selection", 422);
+      }
+      actualModelName = customModelName;
+    }
+
+    // Route to workflow orchestrator if in workflow mode
+    if (isWorkflowMode && conv.candidateId) {
+      const workflowResponse = await executeAgent(convId, body.content.trim(), {
+        agentId: body.agentId,
+        candidateId: conv.candidateId,
+        modelProvider,
+        modelId,
+        runtimeModelName: actualModelName,
+        endpointBaseURL: resolvedBaseURL,
+        endpointApiKey: resolvedApiKey,
+        temperature,
+        allowedToolNames,
+        agentSystemPrompt,
+      });
+      return workflowResponse;
+    }
+
     if (conv.candidateId) {
+      const resumeSync = await ensureCandidateResumeAvailable(conv.candidateId);
+      await syncCandidateResumesToConversation(conv.id, conv.candidateId);
       const candidateContext = await buildCandidateContext(conv.candidateId);
       if (candidateContext) {
         const contextPrompt = `\n\n## Candidate Context\nYou are currently helping with candidate: ${candidateContext.candidateName}.\n${formatCandidateContextForPrompt(candidateContext)}`;
         systemPrompt = `${systemPrompt}\n${contextPrompt}\n\nWhen answering questions about this candidate, use the context above. Be specific and reference the candidate's information in your responses.`;
+      }
+      if (resumeSync.status === "imported") {
+        systemPrompt = `${systemPrompt}\n\nA missing remote resume was automatically downloaded before this response. If the user asks for resume analysis, start from the initial screening stage.`;
       }
     }
 
@@ -1364,22 +2217,27 @@ Always be concise and helpful in your responses.`;
       content: m.content,
     }));
 
-    const modelId = body.modelId?.trim() || conv.modelId || "gpt-4o";
-    const model = LUI_MODEL_RUNTIME_BY_ID.get(modelId);
-    if (!model) {
-      return fail("VALIDATION_ERROR", `unsupported modelId: ${modelId}`, 422);
-    }
+    const provider = createOpenAI({
+      name: modelProvider || "default-openai-compatible",
+      baseURL: normalizeOpenAIBaseURL(resolvedBaseURL),
+      apiKey: resolvedApiKey,
+    });
 
-    // Note: Tool calling will be enabled in a future iteration
-    // For now, store tool execution results manually when AI calls tools
+    const toolContext: ToolContext = {
+      directory: config.dataDir || process.cwd(),
+      candidateId: conv.candidateId ?? undefined,
+    };
+    const runtimeTools = getWorkflowTools(toolContext, allowedToolNames);
+    const enabledTools = Object.keys(runtimeTools).length > 0 ? runtimeTools : undefined;
+
     const result = streamText({
-      model,
+      model: provider.chat(actualModelName),
       messages: historyMessages,
       system: systemPrompt,
       temperature,
+      tools: enabledTools,
     });
 
-    // Note: In a production app, you'd want to save the AI response to DB after streaming completes
     return result.toUIMessageStreamResponse();
   }
 
@@ -1390,7 +2248,7 @@ Always be concise and helpful in your responses.`;
   // GET /api/lui/agents - List all agents
   if (path === "/api/lui/agents" && request.method === "GET") {
     const rows = await db.select().from(agents).orderBy(desc(agents.createdAt));
-    return ok({ items: rows });
+    return ok({ items: rows.map(serializeAgent) });
   }
 
   // POST /api/lui/agents - Create agent
@@ -1419,7 +2277,7 @@ Always be concise and helpful in your responses.`;
       id,
       name: body.name.trim(),
       description: body.description || null,
-      mode: (body.mode as "all" | "chat" | "ask") || "chat",
+      mode: (body.mode as "all" | "chat" | "ask" | "workflow") || "chat",
       temperature: body.temperature ?? 0,
       systemPrompt: body.systemPrompt || null,
       toolsJson: body.tools ? JSON.stringify(body.tools) : null,
@@ -1432,7 +2290,7 @@ Always be concise and helpful in your responses.`;
       id,
       name: body.name.trim(),
       description: body.description || null,
-      mode: (body.mode as "all" | "chat" | "ask") || "chat",
+      mode: (body.mode as "all" | "chat" | "ask" | "workflow") || "chat",
       temperature: body.temperature ?? 0,
       systemPrompt: body.systemPrompt || null,
       tools: body.tools || [],
@@ -1448,10 +2306,7 @@ Always be concise and helpful in your responses.`;
     const id = agentMatch[1];
     const [row] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
     if (!row) return fail("NOT_FOUND", "agent not found", 404);
-    return ok({
-      ...row,
-      tools: row.toolsJson ? JSON.parse(row.toolsJson) : [],
-    });
+    return ok(serializeAgent(row));
   }
 
   // PUT /api/lui/agents/:id - Update agent
@@ -1487,10 +2342,7 @@ Always be concise and helpful in your responses.`;
     await db.update(agents).set(updates).where(eq(agents.id, id));
 
     const [updated] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
-    return ok({
-      ...updated,
-      tools: updated.toolsJson ? JSON.parse(updated.toolsJson) : [],
-    });
+    return ok(serializeAgent(updated));
   }
 
   // DELETE /api/lui/agents/:id - Delete agent
@@ -1503,9 +2355,114 @@ Always be concise and helpful in your responses.`;
     return ok({ id });
   }
 
-  // GET /api/lui/models - List available AI models
-  if (path === "/api/lui/models" && request.method === "GET") {
+  // GET /api/lui/providers - List available preset providers
+  if (path === "/api/lui/providers" && request.method === "GET") {
+    return ok({ providers: getPresetProviderList() });
+  }
+
+  // GET|POST /api/lui/models - List available AI models (including custom endpoint discovery)
+  if (path === "/api/lui/models" && (request.method === "GET" || request.method === "POST")) {
+    let customConfig: CustomModelDiscoveryConfig = {};
+
+    if (request.method === "GET") {
+      customConfig = {
+        providerId: url.searchParams.get("providerId")?.trim() || undefined,
+        baseURL: url.searchParams.get("baseURL")?.trim() || undefined,
+        apiKey: url.searchParams.get("apiKey")?.trim() || undefined,
+        provider: url.searchParams.get("provider")?.trim() || undefined,
+      };
+    } else {
+      try {
+        const body = await parseJson<CustomModelDiscoveryConfig>(request);
+        customConfig = {
+          providerId: body.providerId?.trim() || undefined,
+          baseURL: body.baseURL?.trim() || undefined,
+          apiKey: body.apiKey?.trim() || undefined,
+          provider: body.provider?.trim() || undefined,
+          strict: body.strict === true,
+        };
+      } catch {
+        return fail("VALIDATION_ERROR", "invalid json body", 422);
+      }
+    }
+
+    // If providerId is specified, use preset provider logic
+    if (customConfig.providerId) {
+      const presetProvider = getPresetProvider(customConfig.providerId);
+      if (presetProvider) {
+        const modelsResult = await fetchPresetProviderModels(
+          customConfig.providerId,
+          customConfig.apiKey,
+        );
+        if (customConfig.strict && modelsResult.errorMessage) {
+          return fail("REMOTE_SYNC_FAILED", modelsResult.errorMessage, 502);
+        }
+        return ok({
+          providers: [{
+            id: presetProvider.id,
+            name: presetProvider.name,
+            icon: presetProvider.icon,
+            models: modelsResult.models.map(({ runtimeModel: _runtimeModel, ...model }) => model),
+          }],
+        });
+      }
+    }
+
+    // Legacy: if baseURL is provided, use custom endpoint discovery
+    if (customConfig.baseURL?.trim()) {
+      const customModelsResult = await fetchOpenAiCompatibleModels(customConfig);
+      if (customConfig.strict && customModelsResult.errorMessage) {
+        return fail("REMOTE_SYNC_FAILED", customModelsResult.errorMessage, 502);
+      }
+      const customProviderName = customConfig.provider?.trim() || "Custom OpenAI Compatible";
+      const customProviderId = customConfig.providerId?.trim() || normalizeProviderId(customProviderName);
+      return ok({
+        providers: [{
+          id: customProviderId,
+          name: customProviderName,
+          icon: "OpenAI",
+          models: customModelsResult.models.map(({ runtimeModel: _runtimeModel, ...model }) => model),
+        }],
+      });
+    }
+
     return ok({ providers: LUI_MODEL_PROVIDERS_RESPONSE });
+  }
+
+  if (path === "/api/lui/settings" && request.method === "GET") {
+    const user = await getOrCreateLocalUser();
+    const settings = user ? parseUserSettings(user.settingsJson) : {};
+    return ok(extractLuiSettings(settings));
+  }
+
+  if (path === "/api/lui/settings" && request.method === "PUT") {
+    let body: { customEndpoints?: unknown };
+    try {
+      body = await parseJson<{ customEndpoints?: unknown }>(request);
+    } catch {
+      return fail("VALIDATION_ERROR", "invalid json body", 422);
+    }
+
+    const customEndpoints = Array.isArray(body.customEndpoints)
+      ? body.customEndpoints
+          .map(normalizeGatewayEndpoint)
+          .filter((endpoint): endpoint is LuiGatewayEndpoint => endpoint !== null)
+      : [];
+
+    const user = await getOrCreateLocalUser();
+    if (!user) {
+      return fail("INTERNAL_ERROR", "failed to initialize local user", 500);
+    }
+
+    const existingSettings = parseUserSettings(user.settingsJson);
+    const nextLuiSettings = { customEndpoints };
+    const nextSettings = mergeLuiSettings(existingSettings, nextLuiSettings);
+
+    await db.update(users)
+      .set({ settingsJson: JSON.stringify(nextSettings) })
+      .where(eq(users.id, user.id));
+
+    return ok(nextLuiSettings);
   }
 
   // ---------------------------------------------------------------------------
@@ -1566,6 +2523,89 @@ Always be concise and helpful in your responses.`;
     return ok({ provider, isAuthorized: false });
   }
 
+  // POST /api/lui/generate-title - Generate conversation title from message content
+  if (path === "/api/lui/generate-title" && request.method === "POST") {
+    const body = await parseJson<{
+      content: string;
+      modelId?: string;
+      modelProvider?: string;
+    }>(request);
+    if (!body.content?.trim()) {
+      return fail("VALIDATION_ERROR", "content is required", 422);
+    }
+
+    try {
+      const provider = createOpenAI({
+        name: "title-generator",
+        baseURL: normalizeOpenAIBaseURL(DEFAULT_OPENAI_COMPATIBLE_BASE_URL),
+        apiKey: DEFAULT_OPENAI_COMPATIBLE_API_KEY,
+      });
+
+      const result = streamText({
+        model: provider.chat("gpt-4o-mini"),
+        messages: [
+          {
+            role: "system",
+            content: `你是一个会话标题生成助手。请根据用户的第一条消息，生成一个简洁、准确的会话标题（10-20字）。
+标题应该概括消息的主要内容或意图。
+只返回标题文本，不要有任何其他说明、引号或格式。`,
+          },
+          {
+            role: "user",
+            content: `请为以下消息生成标题：\n\n${body.content.trim().slice(0, 500)}`,
+          },
+        ],
+        temperature: 0.3,
+      });
+
+      return result.toUIMessageStreamResponse();
+    } catch (err) {
+      console.error("[generate-title] Error:", err);
+      // Return a default title on error
+      return ok({ title: body.content.trim().slice(0, 20) + (body.content.length > 20 ? "..." : "") });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Transcribe
+  // ---------------------------------------------------------------------------
+
+  if (path === "/api/lui/transcribe" && request.method === "POST") {
+    try {
+      const formData = await request.formData();
+      const file = formData.get("file");
+      const sessionId = sanitizeString(formData.get("sessionId"));
+      const sampleRate = Number(sanitizeString(formData.get("sampleRate")) || "16000");
+      const isFinal = sanitizeString(formData.get("isFinal")) === "true";
+
+      if (!sessionId) {
+        return fail("VALIDATION_ERROR", "sessionId is required", 422);
+      }
+
+      let pcmBuffer: Uint8Array | null = null;
+      let normalizedSampleRate = sampleRate;
+
+      if (file instanceof File && file.size > 0) {
+        const rawAudio = new Uint8Array(await file.arrayBuffer());
+        const parsedAudio = stripWavHeader(rawAudio);
+        pcmBuffer = parsedAudio.pcmBuffer;
+        normalizedSampleRate = parsedAudio.sampleRate;
+      }
+
+      const result = await transcribeVoskChunk({
+        sessionId,
+        audioBuffer: pcmBuffer,
+        sampleRate: normalizedSampleRate,
+        finalize: isFinal,
+      });
+
+      return ok(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return fail("TRANSCRIBE_ERROR", message, 500);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // LUI - Files
   // ---------------------------------------------------------------------------
@@ -1596,6 +2636,10 @@ Always be concise and helpful in your responses.`;
                        file.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/) ? "image" : "document";
       const language = fileType === "code" ? file.name.split(".").pop() || "text" : null;
 
+      // Save file to local filesystem
+      const filePath = await saveFileToLocal(conversationId, file.name, content);
+      console.log("[FileStorage] Saved file to:", filePath);
+
       const now = new Date();
       const id = `file_${crypto.randomUUID()}`;
       await db.insert(fileResources).values({
@@ -1604,12 +2648,13 @@ Always be concise and helpful in your responses.`;
         name: file.name,
         type: fileType,
         content,
+        filePath,
         language,
         size: file.size,
         createdAt: now,
       });
 
-      return ok({ id, name: file.name, type: fileType, size: file.size, content }, { status: 201 });
+      return ok({ id, name: file.name, type: fileType, size: file.size, content, filePath }, { status: 201 });
     } catch (err) {
       return fail("INTERNAL_ERROR", `File upload error: ${(err as Error).message}`, 500);
     }
@@ -1629,8 +2674,197 @@ Always be concise and helpful in your responses.`;
     const id = fileMatch[1];
     const [row] = await db.select().from(fileResources).where(eq(fileResources.id, id)).limit(1);
     if (!row) return fail("NOT_FOUND", "file not found", 404);
+    
+    // Delete file from local filesystem if filePath exists
+    if (row.filePath) {
+      await deleteFileFromLocal(row.filePath);
+      console.log("[FileStorage] Deleted file from:", row.filePath);
+    }
+    
     await db.delete(fileResources).where(eq(fileResources.id, id));
     return ok({ id });
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Agent Execute (Workflow Mode)
+  // ---------------------------------------------------------------------------
+
+  // POST /api/lui/agents/:id/execute - Execute agent with workflow orchestration
+  const agentExecuteMatch = path.match(/^\/api\/lui\/agents\/([^/]+)\/execute$/);
+  if (agentExecuteMatch && request.method === "POST") {
+    const agentId = agentExecuteMatch[1];
+    const body = await parseJson<{
+      conversationId: string;
+      message: string;
+      candidateId?: string;
+      modelId?: string;
+      temperature?: number;
+    }>(request);
+
+    if (!body.conversationId) {
+      return fail("VALIDATION_ERROR", "conversationId is required", 422);
+    }
+    if (!body.message?.trim()) {
+      return fail("VALIDATION_ERROR", "message is required", 422);
+    }
+
+    try {
+      const [agent] = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+      if (!agent) {
+        return fail("NOT_FOUND", "agent not found", 404);
+      }
+
+      const response = await executeAgent(body.conversationId, body.message.trim(), {
+        agentId,
+        candidateId: body.candidateId,
+        modelProvider: body.modelProvider,
+        modelId: body.modelId,
+        runtimeModelName: body.modelId ? parseRuntimeModelName(body.modelId) : undefined,
+        endpointBaseURL: body.endpointBaseURL,
+        endpointApiKey: body.endpointApiKey,
+        temperature: body.temperature,
+        allowedToolNames: parseAgentTools(agent.toolsJson),
+        agentSystemPrompt: agent.systemPrompt,
+      });
+      return response;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return fail("AGENT_EXECUTION_ERROR", message, 500);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // LUI - Workflows
+  // ---------------------------------------------------------------------------
+
+  // GET /api/lui/workflows - List workflows
+  if (path === "/api/lui/workflows" && request.method === "GET") {
+    const candidateId = url.searchParams.get("candidateId");
+    if (candidateId) {
+      const workflows = await listCandidateWorkflows(candidateId);
+      return ok({ items: workflows });
+    }
+    return ok({ items: [] });
+  }
+
+  // POST /api/lui/workflows - Create workflow
+  if (path === "/api/lui/workflows" && request.method === "POST") {
+    const body = await parseJson<{
+      candidateId: string;
+      conversationId: string;
+    }>(request);
+
+    if (!body.candidateId) {
+      return fail("VALIDATION_ERROR", "candidateId is required", 422);
+    }
+    if (!body.conversationId) {
+      return fail("VALIDATION_ERROR", "conversationId is required", 422);
+    }
+
+    // Verify candidate exists
+    const [candidate] = await db
+      .select({ id: candidates.id })
+      .from(candidates)
+      .where(eq(candidates.id, body.candidateId))
+      .limit(1);
+    if (!candidate) {
+      return fail("NOT_FOUND", "candidate not found", 404);
+    }
+
+    // Verify conversation exists
+    const [conv] = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.id, body.conversationId))
+      .limit(1);
+    if (!conv) {
+      return fail("NOT_FOUND", "conversation not found", 404);
+    }
+
+    const workflow = await getOrCreateWorkflow(body.candidateId, body.conversationId);
+    return ok(workflow, { status: 201 });
+  }
+
+  // GET /api/lui/workflows/:id - Get workflow
+  const workflowMatch = path.match(/^\/api\/lui\/workflows\/([^/]+)$/);
+  if (workflowMatch && request.method === "GET") {
+    const id = workflowMatch[1];
+    const workflow = await getWorkflow(id);
+    if (!workflow) {
+      return fail("NOT_FOUND", "workflow not found", 404);
+    }
+    return ok(workflow);
+  }
+
+  // PUT /api/lui/workflows/:id - Update workflow
+  if (workflowMatch && request.method === "PUT") {
+    const id = workflowMatch[1];
+    const workflow = await getWorkflow(id);
+    if (!workflow) {
+      return fail("NOT_FOUND", "workflow not found", 404);
+    }
+
+    const body = await parseJson<{
+      currentStage?: WorkflowStage;
+      status?: "active" | "paused" | "completed" | "error";
+    }>(request);
+
+    if (body.currentStage) {
+      await updateWorkflow(id, { currentStage: body.currentStage });
+    }
+    if (body.status) {
+      if (body.status === "paused") await pauseWorkflow(id);
+      else if (body.status === "active") await resumeWorkflow(id);
+      else if (body.status === "completed") await completeWorkflow(id);
+    }
+
+    const updated = await getWorkflow(id);
+    return ok(updated);
+  }
+
+  // POST /api/lui/workflows/:id/advance - Advance to next stage
+  const workflowAdvanceMatch = path.match(/^\/api\/lui\/workflows\/([^/]+)\/advance$/);
+  if (workflowAdvanceMatch && request.method === "POST") {
+    const id = workflowAdvanceMatch[1];
+    const workflow = await getWorkflow(id);
+    if (!workflow) {
+      return fail("NOT_FOUND", "workflow not found", 404);
+    }
+
+    const nextStage = await advanceStage(id);
+    return ok({ id, previousStage: workflow.currentStage, currentStage: nextStage });
+  }
+
+  // POST /api/lui/workflows/:id/reset - Reset workflow
+  const workflowResetMatch = path.match(/^\/api\/lui\/workflows\/([^/]+)\/reset$/);
+  if (workflowResetMatch && request.method === "POST") {
+    const id = workflowResetMatch[1];
+    const workflow = await getWorkflow(id);
+    if (!workflow) {
+      return fail("NOT_FOUND", "workflow not found", 404);
+    }
+
+    const body = await parseJson<{ targetStage?: WorkflowStage }>(request);
+    await resetWorkflow(id, body.targetStage ?? "S0");
+    const updated = await getWorkflow(id);
+    return ok(updated);
+  }
+
+  // GET /api/lui/workflows/by-candidate/:candidateId - Get workflow by candidate
+  const workflowByCandMatch = path.match(/^\/api\/lui\/workflows\/by-candidate\/([^/]+)$/);
+  if (workflowByCandMatch && request.method === "GET") {
+    const candidateId = workflowByCandMatch[1];
+    const conversationId = url.searchParams.get("conversationId");
+    
+    if (!conversationId) {
+      return fail("VALIDATION_ERROR", "conversationId query param is required", 422);
+    }
+
+    const workflow = await getWorkflowByCandidate(candidateId, conversationId);
+    if (!workflow) {
+      return fail("NOT_FOUND", "workflow not found", 404);
+    }
+    return ok(workflow);
   }
 
   return fail("NOT_FOUND", "route not found", 404);

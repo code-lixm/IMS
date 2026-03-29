@@ -1,10 +1,6 @@
-export interface GatewayEndpoint {
-  id: string;
-  name: string;
-  baseURL: string;
-  apiKey?: string;
-  provider: string;
-}
+import type { LuiGatewayEndpointData } from "@ims/shared";
+
+export type GatewayEndpoint = LuiGatewayEndpointData;
 
 const STORAGE_KEY = "ims:lui:gateway-endpoints";
 
@@ -21,11 +17,26 @@ function normalizeEndpoint(value: unknown): GatewayEndpoint | null {
     return null;
   }
 
+  const providerId = sanitizeString(value.providerId);
+  const apiKey = sanitizeString(value.apiKey);
+
+  // 如果提供了 providerId，使用简化配置模式
+  if (providerId) {
+    return {
+      id: providerId,
+      name: providerId,
+      baseURL: "",
+      provider: providerId,
+      providerId,
+      ...(apiKey ? { apiKey } : {}),
+    };
+  }
+
+  // 传统模式：需要手动填写所有字段
   const id = sanitizeString(value.id);
   const name = sanitizeString(value.name);
   const baseURL = sanitizeString(value.baseURL);
   const provider = sanitizeString(value.provider);
-  const apiKey = sanitizeString(value.apiKey);
 
   if (!id || !name || !baseURL || !provider) {
     return null;

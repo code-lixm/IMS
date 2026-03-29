@@ -4,6 +4,7 @@
       v-model:search="search"
       :search-suggestions="searchSuggestions"
       :is-importing="isImporting"
+      :import-activity-count="importActivity.activeBatchCount.value"
       :sync-loading="syncStore.loading"
       :sync-error="syncStore.status.lastError"
       :sync-enabled="syncStore.status.enabled"
@@ -14,7 +15,7 @@
       @sync="runSyncNow"
     />
 
-    <AppPageContent class="flex flex-1 min-h-0 overflow-hidden">
+    <AppPageContent class="flex flex-col flex-1 min-h-0 overflow-hidden">
 
       <CandidateFeedbackBanner :feedback="feedback" class="mb-4 shrink-0" @dismiss="clearFeedback" />
 
@@ -25,13 +26,14 @@
           :total="store.total"
           :page="store.page"
           :page-size="store.pageSize"
-          :workspace-loading-id="workspaceLoadingId"
           :export-loading-id="exportLoadingId"
+          :delete-loading-id="deleteLoadingId"
           @create="setCreateDialogOpen(true)"
           @import="triggerImport"
           @select="goToCandidateDetail"
           @open-workspace="openWorkspace"
           @export="exportCandidate"
+          @delete="handleDelete"
           @page-change="goToPage"
           @page-size-change="changePageSize"
         />
@@ -60,24 +62,27 @@ import AppPageShell from "@/components/layout/app-page-shell.vue";
 import { useCandidateCreateDialog } from "@/composables/candidates/use-candidate-create-dialog";
 import { useCandidatePageActions } from "@/composables/candidates/use-candidate-page-actions";
 import { useCandidateSearch } from "@/composables/candidates/use-candidate-search";
+import { useImportBatches } from "@/composables/import/use-import-batches";
 import type { CandidateCreateFormValue } from "@/composables/candidates/types";
 import { useCandidatesStore } from "@/stores/candidates";
 import { useSyncStore } from "@/stores/sync";
 
 const store = useCandidatesStore();
 const syncStore = useSyncStore();
+const importActivity = useImportBatches();
 const { search, searchSuggestions, initialize, scheduleSearch } = useCandidateSearch(store);
 const {
   feedback,
   isImporting,
-  workspaceLoadingId,
   exportLoadingId,
+  deleteLoadingId,
   clearFeedback,
   goToCandidateDetail,
   goToImportPage,
   triggerImport,
   openWorkspace,
   exportCandidate,
+  deleteCandidate,
 } = useCandidatePageActions();
 const {
   open: createDialogOpen,
@@ -92,6 +97,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(store.total / store.page
 onMounted(async () => {
   await Promise.all([
     initialize(),
+    importActivity.initialize(),
     syncStore.fetchStatus(),
   ]);
 });
@@ -105,6 +111,11 @@ async function submitCreate() {
   if (created) {
     clearFeedback();
   }
+}
+
+async function handleDelete(candidateId: string) {
+  await deleteCandidate(candidateId);
+  await store.refreshCurrentPage();
 }
 
 async function runSyncNow() {

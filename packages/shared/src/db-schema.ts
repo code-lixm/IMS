@@ -37,6 +37,7 @@ export type FileTaskStatus =
   | "parsing"
   | "matching_candidate"
   | "saving"
+  | "ai_screening"
   | "done"
   | "failed"
   | "skipped";
@@ -66,6 +67,7 @@ export interface Candidate {
   id: string;
   source: CandidateSource;
   remoteId: string | null;
+  remoteResumeId: string | null;
   name: string;
   phone: string | null;
   email: string | null;
@@ -212,6 +214,7 @@ export interface Conversation {
   title: string;
   candidateId: string | null;
   agentId: string | null;
+  modelProvider: string | null;
   modelId: string | null;
   temperature: number | null;
   createdAt: number;
@@ -257,7 +260,7 @@ export interface FileResource {
 // LUI - Agent
 // ---------------------------------------------------------------------------
 
-export type AgentMode = "all" | "chat" | "ask";
+export type AgentMode = "all" | "chat" | "ask" | "workflow";
 
 export interface Agent {
   id: string;

@@ -10,7 +10,12 @@ export * from "./db-schema";
 
 // API contract types
 export * from "./api-types";
-export type { BaobaoLoginQrData } from "./api-types";
+export type {
+  BaobaoLoginQrData,
+  ImportScreeningConclusion,
+  ImportScreeningVerdict,
+  ImportTaskResultData,
+} from "./api-types";
 
 // Baobao third-party API types
 export * from "./baobao-types";

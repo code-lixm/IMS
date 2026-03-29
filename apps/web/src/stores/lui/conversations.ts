@@ -9,6 +9,7 @@ interface LuiConversationModuleOptions {
   selectedId: Ref<string | null>;
   selectedAgentId: Ref<string | null>;
   selectedModelId: Ref<string | null>;
+  selectedModelProvider: Ref<string | null>;
   temperature: Ref<number>;
   messages: Ref<Record<string, Message[]>>;
   fileResources: Ref<Record<string, FileResource[]>>;
@@ -24,7 +25,13 @@ export interface LuiConversationModule {
   selectedConversation: ComputedRef<Conversation | undefined>;
   initialize: () => Promise<void>;
   bindConversationCandidate: (conversationId: string, candidateId: string | null) => Promise<void>;
-  updateConversationAiConfig: (input: { agentId?: string | null; modelId?: string | null; temperature?: number }) => Promise<void>;
+  updateConversationAiConfig: (input: {
+    agentId?: string | null;
+    modelProvider?: string | null;
+    modelId?: string | null;
+    temperature?: number;
+  }) => Promise<void>;
+  updateConversationTitle: (conversationId: string, title: string) => Promise<void>;
   loadConversations: () => Promise<void>;
   loadConversation: (id: string) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
@@ -38,6 +45,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
     selectedId,
     selectedAgentId,
     selectedModelId,
+    selectedModelProvider,
     temperature,
     messages,
     fileResources,
@@ -56,7 +64,10 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
 
   function applyConversationConfig(conversation: Conversation | undefined) {
     selectedAgentId.value = conversation?.agentId ?? null;
-    selectedModelId.value = conversation?.modelId ?? null;
+    if (conversation?.modelProvider && conversation.modelId) {
+      selectedModelProvider.value = conversation.modelProvider;
+      selectedModelId.value = conversation.modelId;
+    }
     temperature.value = conversation?.temperature ?? 0.5;
   }
 
@@ -146,6 +157,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
         title,
         candidateId,
         agentId: selectedAgentId.value,
+        modelProvider: selectedModelProvider.value,
         modelId: selectedModelId.value,
         temperature: temperature.value,
       });
@@ -229,6 +241,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
 
   async function updateConversationAiConfig(input: {
     agentId?: string | null;
+    modelProvider?: string | null;
     modelId?: string | null;
     temperature?: number;
   }) {
@@ -246,6 +259,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
     const optimistic: Conversation = {
       ...current,
       agentId: input.agentId !== undefined ? input.agentId : current.agentId,
+      modelProvider: input.modelProvider !== undefined ? input.modelProvider : current.modelProvider,
       modelId: input.modelId !== undefined ? input.modelId : current.modelId,
       temperature: input.temperature !== undefined ? input.temperature : current.temperature,
       updatedAt: new Date(),
@@ -270,11 +284,36 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
     }
   }
 
+  async function updateConversationTitle(conversationId: string, title: string) {
+    const index = conversations.value.findIndex((item) => item.id === conversationId);
+    if (index < 0) {
+      return;
+    }
+
+    const current = conversations.value[index];
+    const optimistic: Conversation = {
+      ...current,
+      title,
+      updatedAt: new Date(),
+    };
+    conversations.value[index] = optimistic;
+
+    try {
+      const updated = await luiApi.update(conversationId, { title });
+      const normalized = convertConversation(updated);
+      conversations.value[index] = normalized;
+    } catch (err) {
+      conversations.value[index] = current;
+      console.error("[updateConversationTitle] Failed:", err);
+    }
+  }
+
   return {
     selectedConversation,
     initialize,
     bindConversationCandidate,
     updateConversationAiConfig,
+    updateConversationTitle,
     loadConversations,
     loadConversation,
     selectConversation,

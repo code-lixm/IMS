@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS candidates (
   id TEXT PRIMARY KEY,
   source TEXT NOT NULL DEFAULT 'local',
   remote_id TEXT,
+  remote_resume_id TEXT,
   name TEXT NOT NULL,
   phone TEXT,
   email TEXT,
@@ -179,6 +180,65 @@ CREATE TABLE IF NOT EXISTS provider_credentials (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  candidate_id TEXT REFERENCES candidates(id),
+  agent_id TEXT,
+  model_provider TEXT,
+  model_id TEXT,
+  temperature REAL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  reasoning TEXT,
+  tools_json TEXT,
+  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agents (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  mode TEXT NOT NULL DEFAULT 'chat',
+  temperature INTEGER NOT NULL DEFAULT 0,
+  system_prompt TEXT,
+  tools_json TEXT,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lui_workflows (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL REFERENCES candidates(id),
+  conversation_id TEXT REFERENCES conversations(id),
+  current_stage TEXT NOT NULL DEFAULT 'S0',
+  stage_data_json TEXT,
+  documents_json TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS file_resources (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  language TEXT,
+  size INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
 `);
 
 function ensureColumn(table: string, column: string, definition: string) {
@@ -194,8 +254,10 @@ function ensureColumn(table: string, column: string, definition: string) {
 
 ensureColumn("remote_users", "cookie_json", "TEXT");
 ensureColumn("conversations", "agent_id", "TEXT");
+ensureColumn("conversations", "model_provider", "TEXT");
 ensureColumn("conversations", "model_id", "TEXT");
 ensureColumn("conversations", "temperature", "REAL");
+ensureColumn("candidates", "remote_resume_id", "TEXT");
 ensureColumn("candidates", "organization_name", "TEXT");
 ensureColumn("candidates", "org_all_parent_name", "TEXT");
 ensureColumn("candidates", "recruitment_source_name", "TEXT");
@@ -210,6 +272,7 @@ ensureColumn("interviews", "check_in_time", "INTEGER");
 ensureColumn("interviews", "arrival_date", "TEXT");
 ensureColumn("interviews", "eliminate_reason_string", "TEXT");
 ensureColumn("interviews", "remark", "TEXT");
+ensureColumn("file_resources", "file_path", "TEXT");
 
 export const db = drizzle(sqlite);
 export const rawDb = sqlite;

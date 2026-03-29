@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-03-22
-**Commit:** 1bbebb8
+**Generated:** 2026-03-25
+**Commit:** 2cd03c1
 **Branch:** master
 
 ## OVERVIEW
@@ -18,10 +18,11 @@ ims/
 ├── packages/
 │   ├── server/        # Bun HTTP API 服务 (@ims/server)
 │   └── shared/        # 共享类型和常量 (@ims/shared)
-└── .spec-workflow/    # Spec 驱动开发工作流
-    ├── steering/       # 产品/技术愿景
-    ├── specs/          # 功能规格（每个功能一个目录）
-    └── archive/        # 历史文档归档
+├── .spec-workflow/    # Spec 驱动开发工作流
+│   ├── steering/       # 产品/技术愿景
+│   ├── specs/          # 功能规格（每个功能一个目录）
+│   └── archive/        # 历史文档归档
+└── runtime/           # 本地运行时数据（SQLite、日志等）
 ```
 
 ## WHERE TO LOOK
@@ -29,18 +30,22 @@ ims/
 | Task | Location | Notes |
 |------|----------|-------|
 | Web 开发 | `apps/web/src/` | Vue SPA，路由在 `router/index.ts` |
+| UI 组件 | `apps/web/src/components/ui/` | shadcn-vue 风格的组件库 |
+| LUI 组件 | `apps/web/src/components/lui/` | AI 对话界面组件 |
 | API 开发 | `packages/server/src/` | Bun.serve，路由在 `routes.ts` |
+| 服务层 | `packages/server/src/services/` | 业务逻辑：导入、IMR、同步等 |
 | 共享类型 | `packages/shared/src/` | DB Schema、API 类型、常量 |
 | 桌面入口 | `apps/desktop/src/lib.rs` | Tauri 主逻辑 |
-| 构建配置 | `apps/desktop/tauri.conf.json` | 窗口、bundle、权限 |
+| 构建配置 | `apps/desktop/tauri.conf.json` | 窗口、bundle、权限、deep-link |
 
 ## CONVENTIONS (THIS PROJECT)
 
 - **pnpm workspaces** + Turbo orchestrator
-- **TypeScript strict mode** — 所有包均启用
+- **TypeScript strict mode** — 所有包均启用 `strict: true`
 - **路径别名** — `@/*` → `./src/*` (web)
-- **无 ESLint/Prettier** — 依赖 TS strict 保证质量
+- **无 ESLint/Prettier** — 依赖 TS strict 保证质量（刻意选择）
 - **无测试** — 当前阶段未配置测试基础设施
+- **双锁文件** — pnpm-lock.yaml + bun.lock（pnpm管理workspace + Bun运行时）
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
@@ -55,6 +60,9 @@ ims/
 - **.spec-workflow/** — Spec 驱动开发模板系统
 - **双包管理器** — pnpm workspace + bun.lock (server runtime)
 - **Tauri dev 编排** — `beforeDevCommand` 并行启动 server + web
+- **运行时数据在仓库内** — `runtime/` 目录存放 SQLite 和日志
+- **双 schema 系统** — `server/src/schema.ts` (Drizzle) + `shared/src/db-schema.ts` (TS 类型)
+- **应用启动时自举** — 无独立 migration 目录，`db.ts` 直接执行 `CREATE TABLE IF NOT EXISTS`
 
 ## COMMANDS
 
@@ -82,10 +90,13 @@ pnpm clean            # Turbo clean + rm node_modules
 | Spec | 说明 | 状态 |
 |------|------|------|
 | `steering/product.md` | 产品全景图（愿景、用户、核心功能） | 现行 |
-| `specs/imr-format/` | IMR 包格式规范（共享单位格式） | 大部分完成，artifacts 导入待完善 |
-| `specs/local-api/` | 本地 API 规范（全部业务接口） | 后端完成，UI 迁移待完成 |
-| `specs/import-pipeline/` | 导入流水线规范（简历导入流程） | 后端完成，UI 进度展示待完善 |
-| `specs/embedded-opencode-service/` | 内置 OpenCode 服务设计（AI 工作台） | 后端完成，LUI 页面接入待完成 |
+| `specs/lui-ai-gateway/` | LUI AI Gateway（Vercel AI SDK 集成） | 进行中 |
+| `specs/local-ai-workbench/` | 本地 AI 工作台 | 进行中 |
+| `specs/web-frontend-architecture-hardening/` | 前端架构加固 | 进行中 |
+| `specs/imr-format/` | IMR 包格式规范（共享单位格式） | 大部分完成 |
+| `specs/local-api/` | 本地 API 规范（全部业务接口） | 后端完成 |
+| `specs/import-pipeline/` | 导入流水线规范（简历导入流程） | 后端完成 |
+| `specs/embedded-opencode-service/` | 内置 OpenCode 服务设计（AI 工作台） | 后端完成 |
 
 ### Spec 开发流程
 
@@ -105,9 +116,19 @@ pnpm clean            # Turbo clean + rm node_modules
 - `Monorepo-Migration-Spec.md` — 已完成迁移
 - `STATUS.md` — 废弃，由各 spec 的 `tasks.md` 替代
 
+## ENTRY POINTS
+
+| 应用 | 入口文件 | 说明 |
+|------|----------|------|
+| Web | `apps/web/src/main.ts` | Vue SPA 入口 |
+| Server | `packages/server/src/index.ts` | Bun.serve 启动 |
+| Desktop | `apps/desktop/src/main.rs` → `lib.rs` | Rust 薄入口 → Tauri 应用 |
+| Shared | `packages/shared/src/index.ts` | Barrel 导出 |
+
 ## NOTES
 
 - **无 CI/CD** — 无 GitHub Actions/Docker
 - **无测试** — 当前阶段未配置测试基础设施
-- **opencode-manager** — 基础子进程管理实现（待完善 crash 重启逻辑）
+- **runtime/ 目录** — 本地运行时数据，应配置 `.gitignore` 避免意外提交
 - **.imr 文件关联** — Tauri 配置了 `imr://` deep link 和文件关联
+- **Vite 代理** — `/api` 代理到 `http://127.0.0.1:3000`

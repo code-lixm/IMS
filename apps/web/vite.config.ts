@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { resolve } from "node:path";
 import vueDevTools from "vite-plugin-vue-devtools";
-import UnoCSS from "unocss/vite";
+import tailwindcss from "@tailwindcss/vite";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { mockDevServerPlugin } from "vite-plugin-mock-dev-server";
@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       vueDevTools({ componentInspector: true }),
       vue(),
+      tailwindcss(),
       AutoImport({
         imports: ["vue", "vue-router", "pinia"],
         dts: "src/auto-imports.d.ts",
@@ -23,7 +24,6 @@ export default defineConfig(({ mode }) => {
         dts: "src/components.d.ts",
         dirs: ["src/components/ui"],
       }),
-      UnoCSS(),
       mockDevServerPlugin({
         enabled: mockEnabled,
         log: mockEnabled ? "info" : "silent",

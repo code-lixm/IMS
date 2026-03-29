@@ -23,7 +23,7 @@
         >
           <DialogContent
             v-if="open"
-            class="fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border bg-background p-6 shadow-lg sm:rounded-lg"
+            :class="cn('fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border bg-background p-6 shadow-lg sm:rounded-lg', contentClass)"
           >
             <slot name="content" />
           </DialogContent>
@@ -40,9 +40,11 @@ import {
   DialogPortal,
   DialogRoot,
 } from "radix-vue";
+import { cn } from "@/lib/utils";
 
 interface DialogProps {
   open?: boolean;
+  contentClass?: string;
 }
 
 defineProps<DialogProps>();

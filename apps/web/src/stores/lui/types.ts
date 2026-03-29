@@ -9,6 +9,7 @@ export interface Conversation {
   title: string;
   candidateId: string | null;
   agentId: string | null;
+  modelProvider: string | null;
   modelId: string | null;
   temperature: number;
   createdAt: Date;
@@ -42,6 +43,7 @@ export function convertConversation(conversation: ApiConversation): Conversation
     title: conversation.title,
     candidateId: conversation.candidateId,
     agentId: conversation.agentId ?? null,
+    modelProvider: conversation.modelProvider ?? null,
     modelId: conversation.modelId ?? null,
     temperature: conversation.temperature ?? 0.5,
     createdAt: new Date(conversation.createdAt),

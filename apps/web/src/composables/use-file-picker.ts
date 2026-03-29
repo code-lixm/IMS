@@ -1,6 +1,7 @@
 export interface FilePickerOptions {
   accept?: string;
   multiple?: boolean;
+  requireAbsolutePath?: boolean;
 }
 
 export interface PickedFile {
@@ -28,6 +29,10 @@ function resolvePickedFilePath(file: File) {
   return file.name;
 }
 
+function isAbsolutePath(path: string) {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
 function createPickerInput(options: FilePickerOptions) {
   const input = document.createElement("input");
   input.type = "file";
@@ -45,10 +50,22 @@ function toPickedFile(file: File): PickedFile {
 }
 
 export async function pickFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
-  return new Promise<PickedFile[]>((resolve) => {
+  return new Promise<PickedFile[]>((resolve, reject) => {
     const input = createPickerInput(options);
     input.onchange = () => {
-      resolve(Array.from(input.files ?? []).map(toPickedFile));
+      try {
+        const pickedFiles = Array.from(input.files ?? []).map(toPickedFile);
+        if (options.requireAbsolutePath) {
+          const invalidFile = pickedFiles.find((file) => !isAbsolutePath(file.path));
+          if (invalidFile) {
+            reject(new Error(`当前环境未返回文件绝对路径，无法导入：${invalidFile.name}`));
+            return;
+          }
+        }
+        resolve(pickedFiles);
+      } catch (error) {
+        reject(error);
+      }
     };
     input.click();
   });

@@ -17,6 +17,7 @@ interface StreamChunk {
   type: string;
   id?: string;
   messageId?: string;
+  textDelta?: string;
   delta?: string;
   text?: string;
   toolName?: string;
@@ -25,6 +26,11 @@ interface StreamChunk {
   output?: unknown;
   errorText?: string;
   [key: string]: unknown;
+}
+
+interface EmbeddedReasoningParseResult {
+  content: string;
+  reasoning: string | null;
 }
 
 function cloneState(state: LuiStreamMessageState): LuiStreamMessageState {
@@ -36,18 +42,62 @@ function cloneState(state: LuiStreamMessageState): LuiStreamMessageState {
   };
 }
 
+function mergeReasoningParts(...parts: Array<string | null | undefined>): string | null {
+  const merged = parts.filter((part): part is string => typeof part === "string" && part.length > 0).join("");
+  return merged || null;
+}
+
+function parseEmbeddedReasoning(rawText: string): EmbeddedReasoningParseResult {
+  if (!rawText) {
+    return {
+      content: "",
+      reasoning: null,
+    };
+  }
+
+  const openTag = "<think>";
+  const closeTag = "</think>";
+  const openIndex = rawText.indexOf(openTag);
+
+  if (openIndex < 0) {
+    return {
+      content: rawText,
+      reasoning: null,
+    };
+  }
+
+  const prefix = rawText.slice(0, openIndex);
+  if (prefix.trim().length > 0) {
+    return {
+      content: rawText,
+      reasoning: null,
+    };
+  }
+
+  const afterOpen = rawText.slice(openIndex + openTag.length);
+  const closeIndex = afterOpen.indexOf(closeTag);
+
+  if (closeIndex < 0) {
+    return {
+      content: "",
+      reasoning: afterOpen || null,
+    };
+  }
+
+  return {
+    content: afterOpen.slice(closeIndex + closeTag.length),
+    reasoning: afterOpen.slice(0, closeIndex) || null,
+  };
+}
+
 function appendChunk(state: LuiStreamMessageState, chunk: StreamChunk): LuiStreamMessageState {
   const nextState = cloneState(state);
 
   switch (chunk.type) {
-    case "text-delta":
-      nextState.content += typeof chunk.delta === "string" ? chunk.delta : "";
+    case "finish":
+      nextState.status = "complete";
       break;
-    case "reasoning-delta":
-      nextState.reasoning = `${nextState.reasoning ?? ""}${typeof chunk.delta === "string" ? chunk.delta : ""}` || null;
-      break;
-    case "reasoning":
-      nextState.reasoning = `${nextState.reasoning ?? ""}${typeof chunk.text === "string" ? chunk.text : ""}` || null;
+    case "finish-step":
       break;
     case "tool-call":
     case "tool-result":
@@ -129,14 +179,79 @@ export async function consumeLuiMessageStream(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let accumulatedText = "";
+    let accumulatedReasoning = "";
+
+    const syncDisplayState = () => {
+      const parsed = parseEmbeddedReasoning(accumulatedText);
+      latestState = {
+        ...latestState,
+        content: parsed.content,
+        reasoning: mergeReasoningParts(accumulatedReasoning, parsed.reasoning),
+      };
+    };
+
+    const handleChunk = (chunk: StreamChunk): boolean => {
+      if (chunk.type === "done" || chunk.type === "finish") {
+        return true;
+      }
+
+      if (chunk.type === "finish-step") {
+        latestState = appendChunk(latestState, chunk);
+        callbacks.onUpdate?.(cloneState(latestState));
+        return false;
+      }
+
+      if (chunk.type === "error") {
+        const error = new Error(
+          typeof chunk.errorText === "string" ? chunk.errorText : "流式消息返回错误事件"
+        );
+        callbacks.onError?.(error);
+        throw error;
+      }
+
+      if (chunk.type === "text-delta") {
+        accumulatedText += typeof chunk.textDelta === "string"
+          ? chunk.textDelta
+          : (typeof chunk.delta === "string" ? chunk.delta : "");
+        syncDisplayState();
+        callbacks.onUpdate?.(cloneState(latestState));
+        return false;
+      }
+
+      if (chunk.type === "text") {
+        accumulatedText += typeof chunk.text === "string"
+          ? chunk.text
+          : (typeof chunk.delta === "string" ? chunk.delta : "");
+        syncDisplayState();
+        callbacks.onUpdate?.(cloneState(latestState));
+        return false;
+      }
+
+      if (chunk.type === "reasoning-delta") {
+        accumulatedReasoning += typeof chunk.delta === "string" ? chunk.delta : "";
+        syncDisplayState();
+        callbacks.onUpdate?.(cloneState(latestState));
+        return false;
+      }
+
+      if (chunk.type === "reasoning") {
+        accumulatedReasoning += typeof chunk.text === "string" ? chunk.text : "";
+        syncDisplayState();
+        callbacks.onUpdate?.(cloneState(latestState));
+        return false;
+      }
+
+      latestState = appendChunk(latestState, chunk);
+      callbacks.onUpdate?.(cloneState(latestState));
+      return false;
+    };
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) {
-        break;
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done });
       }
-
-      buffer += decoder.decode(value, { stream: true });
       const { events, remaining } = splitSseEvents(buffer);
       buffer = remaining;
 
@@ -144,21 +259,20 @@ export async function consumeLuiMessageStream(
         const chunks = parseSseEvent(eventBlock);
 
         for (const chunk of chunks) {
-          if (chunk.type === "done") {
-            continue;
+          const shouldFinish = handleChunk(chunk);
+          if (shouldFinish) {
+            latestState = {
+              ...latestState,
+              status: "complete",
+            };
+            callbacks.onComplete?.(cloneState(latestState));
+            return latestState;
           }
-
-          if (chunk.type === "error") {
-            const error = new Error(
-              typeof chunk.errorText === "string" ? chunk.errorText : "流式消息返回错误事件"
-            );
-            callbacks.onError?.(error);
-            throw error;
-          }
-
-          latestState = appendChunk(latestState, chunk);
-          callbacks.onUpdate?.(cloneState(latestState));
         }
+      }
+
+      if (done) {
+        break;
       }
     }
 
@@ -169,17 +283,14 @@ export async function consumeLuiMessageStream(
       for (const eventBlock of events) {
         const chunks = parseSseEvent(eventBlock);
         for (const chunk of chunks) {
-          if (chunk.type === "error") {
-            const error = new Error(
-              typeof chunk.errorText === "string" ? chunk.errorText : "流式消息返回错误事件"
-            );
-            callbacks.onError?.(error);
-            throw error;
-          }
-
-          if (chunk.type !== "done") {
-            latestState = appendChunk(latestState, chunk);
-            callbacks.onUpdate?.(cloneState(latestState));
+          const shouldFinish = handleChunk(chunk);
+          if (shouldFinish) {
+            latestState = {
+              ...latestState,
+              status: "complete",
+            };
+            callbacks.onComplete?.(cloneState(latestState));
+            return latestState;
           }
         }
       }

@@ -8,13 +8,18 @@ const tesseract = require("tesseract.js");
 
 export async function extractPdfText(filePath: string): Promise<ExtractResult> {
   const buf = readFileSync(filePath);
+
   try {
     const data = await pdfParse(buf);
-    const text = (data.text ?? "").trim();
-    const confidence = text.length > 200 ? 90 : text.length > 50 ? 60 : 30;
+    const text = normalizeExtractedPdfText(data.text);
+    if (!text) {
+      throw new Error("pdf-parse returned too little text");
+    }
+
+    const confidence = text.length > 2000 ? 95 : text.length > 800 ? 88 : text.length > 200 ? 72 : 55;
     return { text, confidence, method: "pdf_text" };
   } catch (err) {
-    throw new Error(`pdf-parse failed: ${(err as Error).message}`);
+    throw new Error(`local pdf extraction failed: ${(err as Error).message}`);
   }
 }
 
@@ -33,4 +38,16 @@ export async function extractText(
 ): Promise<ExtractResult> {
   if (fileType === "pdf") return extractPdfText(filePath);
   return extractImageText(filePath, fileType);
+}
+
+function normalizeExtractedPdfText(value: string | null | undefined): string | null {
+  const withoutNulls = (value ?? "").split("\0").join("");
+  const normalized = withoutNulls
+    .replace(/^\(null\)$/im, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\t\f\v]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return normalized.length >= 20 ? normalized : null;
 }

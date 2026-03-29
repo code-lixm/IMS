@@ -46,4 +46,24 @@ describe("consumeLuiMessageStream", () => {
     const response = createStreamResponse(['data: {oops}\n\n']);
     await expect(consumeLuiMessageStream(response)).rejects.toThrow("流式事件 JSON 解析失败");
   });
+
+  test("does not stop early on finish-step before later text chunks", async () => {
+    const updates: Array<{ content: string; status: string }> = [];
+    const response = createStreamResponse([
+      'data: {"type":"start-step"}\n\n',
+      'data: {"type":"finish-step"}\n\n',
+      'data: {"type":"text-delta","delta":"后续正文"}\n\n',
+      'data: {"type":"finish"}\n\n',
+    ]);
+
+    const result = await consumeLuiMessageStream(response, {
+      onUpdate(state) {
+        updates.push({ content: state.content, status: state.status });
+      },
+    });
+
+    expect(updates.some((item) => item.content === "后续正文")).toBe(true);
+    expect(result.content).toBe("后续正文");
+    expect(result.status).toBe("complete");
+  });
 });

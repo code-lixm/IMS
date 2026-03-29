@@ -9,17 +9,15 @@
       @keydown.enter.prevent="toggleTheme"
       @keydown.space.prevent="toggleTheme"
     >
-      <div
-        :class="isDark ? 'i-lucide-sun-medium' : 'i-lucide-moon-star'"
-        class="h-4 w-4"
-      />
+      <SunMedium v-if="isDark" class="h-4 w-4" />
+      <MoonStar v-else class="h-4 w-4" />
     </div>
 
     <DropdownMenu v-model:open="menuOpen">
       <DropdownMenuTrigger as-child>
         <button
           type="button"
-          class="relative flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-primary/10 text-sm font-semibold text-primary transition-all hover:scale-[1.02] hover:bg-primary/15 hover:shadow-sm"
+          class="relative flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-primary/10 text-sm font-semibold text-primary transition-all hover:scale-[1.02] hover:bg-primary/15 hover:shadow-sm dark:bg-primary-foreground/10 dark:text-primary-foreground dark:hover:bg-primary-foreground/15"
         >
           <img
             v-if="userAvatarUrl"
@@ -29,7 +27,7 @@
           />
           <span
             v-else
-            class="flex h-8 w-8 items-center justify-center rounded-md bg-primary/5"
+            class="flex h-8 w-8 items-center justify-center rounded-md bg-primary/5 dark:bg-primary-foreground/10"
           >
             {{ userInitial }}
           </span>
@@ -47,11 +45,11 @@
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem @click="router.push('/settings')">
-          <div class="i-lucide-settings-2 h-4 w-4" />
+          <Settings2 class="h-4 w-4" />
           系统设置
         </DropdownMenuItem>
         <DropdownMenuItem @click="router.push('/import')">
-          <div class="i-lucide-files h-4 w-4" />
+          <Files class="h-4 w-4" />
           导入任务
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -59,7 +57,7 @@
           class="mt-1 bg-destructive text-destructive-foreground focus:bg-destructive/90 focus:text-destructive-foreground data-[highlighted]:bg-destructive/90 data-[highlighted]:text-destructive-foreground"
           @click="handleLogout"
         >
-          <div class="i-lucide-log-out h-4 w-4" />
+          <LogOut class="h-4 w-4" />
           退出登录
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -69,6 +67,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { Files, LogOut, MoonStar, Settings2, SunMedium } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { useTheme } from "@/composables/use-theme";
 import { useAppNotifications } from "@/composables/use-app-notifications";
