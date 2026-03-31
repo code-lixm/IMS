@@ -26,6 +26,29 @@ export function useImportBatches() {
   let disposed = false;
   let refreshPromise: Promise<void> | null = null;
 
+  function pruneStaleBatchState(items: ImportBatchListData["items"]) {
+    const batchIds = new Set(items.map((batch) => batch.id));
+
+    const nextExpanded = new Set(Array.from(expandedBatches.value).filter((batchId) => batchIds.has(batchId)));
+    if (nextExpanded.size !== expandedBatches.value.size) {
+      expandedBatches.value = nextExpanded;
+    }
+
+    const nextBatchFiles = Object.fromEntries(
+      Object.entries(batchFiles.value).filter(([batchId]) => batchIds.has(batchId)),
+    );
+    if (Object.keys(nextBatchFiles).length !== Object.keys(batchFiles.value).length) {
+      batchFiles.value = nextBatchFiles;
+    }
+
+    const nextLoadingFiles = Object.fromEntries(
+      Object.entries(loadingFiles.value).filter(([batchId]) => batchIds.has(batchId)),
+    );
+    if (Object.keys(nextLoadingFiles).length !== Object.keys(loadingFiles.value).length) {
+      loadingFiles.value = nextLoadingFiles;
+    }
+  }
+
   function stopPolling() {
     if (pollTimer) {
       clearTimeout(pollTimer);
@@ -50,9 +73,20 @@ export function useImportBatches() {
     }
 
     refreshPromise = (async () => {
-      loading.value = true;
+      const showPageLoading = batches.value.length === 0;
+      if (showPageLoading) {
+        loading.value = true;
+      }
+
       try {
-        batches.value = (await importApi.list()).items;
+        const items = (await importApi.list()).items;
+        batches.value = items;
+        pruneStaleBatchState(items);
+
+        const expandedIds = Array.from(expandedBatches.value);
+        if (expandedIds.length > 0) {
+          await Promise.all(expandedIds.map((batchId) => loadBatchFiles(batchId, { force: true, silent: true })));
+        }
       } finally {
         loading.value = false;
         refreshPromise = null;
@@ -67,15 +101,19 @@ export function useImportBatches() {
     await refresh();
   }
 
-  async function loadBatchFiles(batchId: string, force = false) {
+  async function loadBatchFiles(batchId: string, options: { force?: boolean; silent?: boolean } = {}) {
+    const { force = false, silent = false } = options;
+
     if (!force && batchFiles.value[batchId]) {
       return batchFiles.value[batchId];
     }
 
-    loadingFiles.value = {
-      ...loadingFiles.value,
-      [batchId]: true,
-    };
+    if (!silent) {
+      loadingFiles.value = {
+        ...loadingFiles.value,
+        [batchId]: true,
+      };
+    }
 
     try {
       const files = (await importApi.files(batchId)).items;
@@ -85,10 +123,12 @@ export function useImportBatches() {
       };
       return files;
     } finally {
-      loadingFiles.value = {
-        ...loadingFiles.value,
-        [batchId]: false,
-      };
+      if (!silent) {
+        loadingFiles.value = {
+          ...loadingFiles.value,
+          [batchId]: false,
+        };
+      }
     }
   }
 
@@ -111,7 +151,7 @@ export function useImportBatches() {
     await importApi.retryFailed(batchId);
     await Promise.all([
       refresh(),
-      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, true) : Promise.resolve(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
     ]);
   }
 
@@ -119,7 +159,15 @@ export function useImportBatches() {
     await importApi.rerunScreening(batchId);
     await Promise.all([
       refresh(),
-      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, true) : Promise.resolve(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
+    ]);
+  }
+
+  async function rerunFileScreening(taskId: string, batchId: string) {
+    await importApi.rerunFileScreening(taskId);
+    await Promise.all([
+      refresh(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
     ]);
   }
 
@@ -127,7 +175,7 @@ export function useImportBatches() {
     await importApi.cancel(batchId);
     await Promise.all([
       refresh(),
-      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, true) : Promise.resolve(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
     ]);
   }
 
@@ -167,6 +215,7 @@ export function useImportBatches() {
     toggleFiles,
     retryFailed,
     rerunScreening,
+    rerunFileScreening,
     cancelBatch,
     deleteBatch,
   };

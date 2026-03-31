@@ -249,7 +249,7 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
   }
 }
 
-function buildImportScreeningConclusion(parsed: { phone: string | null; email: string | null; yearsOfExperience: number | null; skills: string[]; education: string[]; workHistory: string[]; rawText: string }, confidence: number) {
+function buildImportScreeningConclusion(parsed: { phone: string | null; email: string | null; yearsOfExperience: number | null; skills: string[]; education: string[]; workHistory: string[]; rawText: string }, confidence: number): import("@ims/shared").ImportScreeningConclusion {
   let score = 35;
   const strengths: string[] = [];
   const concerns: string[] = [];
@@ -376,14 +376,28 @@ async function matchOrCreateCandidate(
   parsed: { phone: string | null; email: string | null; name: string | null; position: string | null; yearsOfExperience: number | null; skills: string[] },
   taskId?: string,
 ): Promise<{ id: string; created: boolean }> {
+  let existingId: string | null = null;
+
   if (parsed.phone) {
     const [existing] = await db.select({ id: candidates.id }).from(candidates).where(eq(candidates.phone, parsed.phone)).limit(1);
-    if (existing) return { id: existing.id, created: false };
+    if (existing) existingId = existing.id;
   }
-  if (parsed.email) {
+  if (!existingId && parsed.email) {
     const [existing] = await db.select({ id: candidates.id }).from(candidates).where(eq(candidates.email, parsed.email)).limit(1);
-    if (existing) return { id: existing.id, created: false };
+    if (existing) existingId = existing.id;
   }
+
+  if (existingId) {
+    // 如果现有候选人的 yearsOfExperience 为空，但解析结果有值，则更新
+    if (parsed.yearsOfExperience != null) {
+      const [current] = await db.select({ yearsOfExperience: candidates.yearsOfExperience }).from(candidates).where(eq(candidates.id, existingId)).limit(1);
+      if (current && current.yearsOfExperience == null) {
+        await db.update(candidates).set({ yearsOfExperience: parsed.yearsOfExperience, updatedAt: Date.now() }).where(eq(candidates.id, existingId));
+      }
+    }
+    return { id: existingId, created: false };
+  }
+
   if (taskId && await isBatchCancelledForTask(taskId)) {
     throw new ImportCancelledError();
   }
@@ -445,11 +459,11 @@ export async function rerunImportBatchScreening(batchId: string): Promise<{ retr
   await db.update(importBatches).set({
     status: "processing",
     currentStage: "ai_screening",
-    autoScreen: true,
     completedAt: null,
   }).where(eq(importBatches.id, batchId));
 
   for (const { task, result } of runnableTasks) {
+    if (!result) continue;
     const nextResult: ImportTaskResultData = {
       parsedResume: result.parsedResume,
       screeningStatus: "running",
@@ -469,6 +483,7 @@ export async function rerunImportBatchScreening(batchId: string): Promise<{ retr
   await refreshBatchProgress(batchId);
 
   for (const { task, result } of runnableTasks) {
+    if (!result) continue;
     let nextResult: ImportTaskResultData = {
       parsedResume: result.parsedResume,
       screeningStatus: "running",
@@ -510,6 +525,64 @@ export async function rerunImportBatchScreening(batchId: string): Promise<{ retr
   }
 
   return { retriedCount: runnableTasks.length };
+}
+
+
+
+export async function rerunFileScreening(taskId: string): Promise<{ retried: boolean; screeningStatus: string }> {
+  const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
+  if (!task) {
+    return { retried: false, screeningStatus: "not_requested" };
+  }
+
+  const result = parseImportTaskResult(task.resultJson);
+  if (!result?.parsedResume) {
+    return { retried: false, screeningStatus: "not_requested" };
+  }
+
+  const nextResult: ImportTaskResultData = {
+    parsedResume: result.parsedResume,
+    screeningStatus: "running",
+    screeningSource: null,
+    screeningError: null,
+    screeningConclusion: null,
+  };
+
+  await updateTask(taskId, {
+    status: "ai_screening",
+    stage: "ai_screening",
+    resultJson: JSON.stringify(nextResult),
+    updatedAt: Date.now(),
+  });
+
+  await updateBatchProgress(taskId);
+
+  try {
+    const aiConclusion = await generateImportScreeningConclusionWithAI({
+      parsed: result.parsedResume,
+      confidence: resolveTaskConfidence(task, result),
+      fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+    });
+    nextResult.screeningStatus = "completed";
+    nextResult.screeningSource = "ai";
+    nextResult.screeningConclusion = aiConclusion;
+  } catch (error) {
+    nextResult.screeningStatus = "completed";
+    nextResult.screeningSource = "heuristic";
+    nextResult.screeningError = error instanceof Error ? error.message : "AI 初筛失败，已回退规则结论";
+    nextResult.screeningConclusion = buildImportScreeningConclusion(result.parsedResume, resolveTaskConfidence(task, result));
+  }
+
+  await updateTask(taskId, {
+    status: "done",
+    stage: "completed",
+    resultJson: JSON.stringify(nextResult),
+    updatedAt: Date.now(),
+  });
+
+  await updateBatchProgress(taskId);
+
+  return { retried: true, screeningStatus: nextResult.screeningStatus };
 }
 
 async function markTaskCancelledIfNeeded(taskId: string): Promise<boolean> {

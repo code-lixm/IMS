@@ -111,6 +111,47 @@ async function deleteFileFromLocal(filePath: string): Promise<void> {
   }
 }
 
+// Global queue for import batches - ensures all batches run serially
+let importBatchQueue: Promise<void> = Promise.resolve();
+
+async function runBatchInQueue<T>(job: () => Promise<T>): Promise<T> {
+  const previous = importBatchQueue;
+  let release: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  importBatchQueue = next;
+
+  await previous.catch(() => undefined);
+  try {
+    return await job();
+  } finally {
+    release();
+  }
+}
+
+function runImportBatchSerially(tasks: Array<{ taskId: string; filePath: string; fileType: Parameters<typeof processFile>[2] }>) {
+  void runBatchInQueue(async () => {
+    let batchId: string | null = null;
+    for (const task of tasks) {
+      try {
+        if (!batchId) {
+          // Get batch ID from first task for final refresh
+          const [taskRow] = await db.select({ batchId: importFileTasks.batchId }).from(importFileTasks).where(eq(importFileTasks.id, task.taskId)).limit(1);
+          batchId = taskRow?.batchId ?? null;
+        }
+        await processFile(task.taskId, task.filePath, task.fileType);
+      } catch (err) {
+        console.error(`[import] file processing error: ${(err as Error).message}`);
+      }
+    }
+    // Final refresh to ensure batch status is correctly set
+    if (batchId) {
+      await refreshBatchProgress(batchId);
+    }
+  });
+}
+
 type LuiSupportedModel = {
   id: string;
   provider: string;
@@ -1696,13 +1737,19 @@ export async function route(request: Request): Promise<Response> {
 
     const preparedTasks = await prepareImportTasks(id, sourcePaths);
     await db.insert(importBatches).values({ id, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, createdAt: ts, startedAt: ts });
+    const queuedTasks: Array<{ taskId: string; filePath: string; fileType: typeof preparedTasks[number]["fileType"] }> = [];
     for (const task of preparedTasks) {
       const taskId = `task_${crypto.randomUUID()}`;
       await db.insert(importFileTasks).values({ id: taskId, batchId: id, originalPath: task.originalPath, normalizedPath: task.normalizedPath, fileType: task.fileType, status: task.status, stage: task.status === "skipped" ? "classifying" : null, errorCode: task.errorCode, errorMessage: task.errorMessage, candidateId: null, resultJson: null, retryCount: 0, createdAt: ts, updatedAt: ts });
       if (task.status === "queued") {
-        void processFile(taskId, task.normalizedPath ?? task.originalPath, task.fileType).catch(err => console.error(`[import] file processing error: ${err.message}`));
+        queuedTasks.push({
+          taskId,
+          filePath: task.normalizedPath ?? task.originalPath,
+          fileType: task.fileType,
+        });
       }
     }
+    runImportBatchSerially(queuedTasks);
     await refreshBatchProgress(id);
     return ok({ id, status: "processing", totalFiles: preparedTasks.length, autoScreen, createdAt: ts }, { status: 201 });
   }
@@ -1711,6 +1758,7 @@ export async function route(request: Request): Promise<Response> {
   const batchCancelMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/cancel$/);
   const batchRetryMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/retry-failed$/);
   const batchRerunScreeningMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/rerun-screening$/);
+  const fileRerunScreeningMatch = path.match(/^\/api\/import\/file-tasks\/([^/]+)\/rerun-screening$/);
   if (batchMatch && request.method === "GET") {
     const [row] = await db.select().from(importBatches).where(eq(importBatches.id, batchMatch[1])).limit(1);
     if (!row) return fail("NOT_FOUND", "batch not found", 404);
@@ -1758,6 +1806,14 @@ export async function route(request: Request): Promise<Response> {
     return ok({ id, retriedCount: result.retriedCount, status: result.retriedCount > 0 ? "processing" : row.status });
   }
 
+  if (fileRerunScreeningMatch && request.method === "POST") {
+    const taskId = fileRerunScreeningMatch[1];
+    const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
+    if (!task) return fail("NOT_FOUND", "task not found", 404);
+    const result = await rerunFileScreening(taskId);
+    return ok({ taskId, retried: result.retried, screeningStatus: result.screeningStatus });
+  }
+
   // Share
   if (path === "/api/share/devices" && request.method === "GET") {
     const discovery = getDiscovery("Interview-Manager", config.port);
@@ -1796,14 +1852,46 @@ export async function route(request: Request): Promise<Response> {
   }
 
   if (path === "/api/share/send" && request.method === "POST") {
-    const body = await parseJson<{ candidateId: string; target: { ip: string; port: number; deviceId?: string; name: string } }>(request);
-    if (!body.candidateId || !body.target) return fail("VALIDATION_ERROR", "candidateId and target are required", 422);
-    if (!(await candidateOrFail(body.candidateId))) return fail("NOT_FOUND", "candidate not found", 404);
-    try {
-      const imrPath = await exportCandidate(body.candidateId);
-      const result = await sendToDevice(body.candidateId, body.target as any, imrPath);
-      return ok({ recordId: result.recordId, status: result.success ? "success" : "failed", error: result.error, transferredAt: result.success ? Date.now() : null });
-    } catch (err) { return fail("SHARE_DEVICE_OFFLINE", (err as Error).message, 503); }
+    const body = await parseJson<{
+      candidateId?: string;
+      candidateIds?: string[];
+      target: { ip: string; port: number; deviceId?: string; name: string };
+    }>(request);
+    if (!body.target) return fail("VALIDATION_ERROR", "target is required", 422);
+
+    // Normalize to array
+    const candidateIds = body.candidateIds ?? (body.candidateId ? [body.candidateId] : []);
+    if (!candidateIds.length) return fail("VALIDATION_ERROR", "candidateId or candidateIds is required", 422);
+
+    // Validate all candidates exist
+    const validIds: string[] = [];
+    for (const id of candidateIds) {
+      if (await candidateOrFail(id)) {
+        validIds.push(id);
+      }
+    }
+    if (!validIds.length) return fail("NOT_FOUND", "no valid candidates found", 404);
+
+    // Send each candidate sequentially
+    const results: Array<{ candidateId: string; recordId: string; status: string; error?: string; transferredAt: number | null }> = [];
+    for (const cid of validIds) {
+      try {
+        const imrPath = await exportCandidate(cid);
+        const result = await sendToDevice(cid, body.target as any, imrPath);
+        results.push({
+          candidateId: cid,
+          recordId: result.recordId,
+          status: result.success ? "success" : "failed",
+          error: result.error,
+          transferredAt: result.success ? Date.now() : null,
+        });
+      } catch (err) {
+        results.push({ candidateId: cid, recordId: "", status: "failed", error: (err as Error).message, transferredAt: null });
+      }
+    }
+
+    const successCount = results.filter(r => r.status === "success").length;
+    return ok({ total: results.length, successCount, results });
   }
 
   if (path === "/api/share/resolve" && request.method === "POST") {
@@ -1814,6 +1902,29 @@ export async function route(request: Request): Promise<Response> {
   }
 
   if (path === "/api/share/import" && request.method === "POST") {
+    const contentType = request.headers.get("content-type") ?? "";
+
+    // Binary mode: receiving .imr file from another device
+    if (contentType.includes("application/octet-stream") || contentType.includes("application/octet")) {
+      try {
+        const arrayBuffer = await request.arrayBuffer();
+        const buffer = new Uint8Array(arrayBuffer);
+        const fileName = request.headers.get("x-filename") ?? `share-${Date.now()}.imr`;
+        const tmpDir = join(config.dataDir, "import-uploads", "incoming");
+        await ensureDir(tmpDir);
+        const tmpPath = join(tmpDir, fileName);
+        await writeFile(tmpPath, buffer);
+        const result = await importIpmr(tmpPath);
+        if (result.result === "failed") {
+          return fail("SHARE_IMPORT_FAILED", result.error!, 422);
+        }
+        return ok(result);
+      } catch (err) {
+        return fail("SHARE_IMPORT_FAILED", (err as Error).message, 500);
+      }
+    }
+
+    // JSON mode: local file path import
     const body = await parseJson<{ filePath: string }>(request);
     if (!body.filePath) return fail("VALIDATION_ERROR", "filePath is required", 422);
     const result = await importIpmr(body.filePath);

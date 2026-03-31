@@ -24,6 +24,7 @@ export const importApi = {
   files(batchId: string) { return api<ImportFileListData>(`/api/import/batches/${batchId}/files`); },
   retryFailed(id: string) { return api<{ retriedCount: number }>(`/api/import/batches/${id}/retry-failed`, { method: "POST" }); },
   rerunScreening(id: string) { return api<{ id: string; retriedCount: number; status: string }>(`/api/import/batches/${id}/rerun-screening`, { method: "POST" }); },
+  rerunFileScreening(taskId: string) { return api<{ taskId: string; retried: boolean; screeningStatus: string }>(`/api/import/file-tasks/${taskId}/rerun-screening`, { method: "POST" }); },
   cancel(id: string) { return api(`/api/import/batches/${id}/cancel`, { method: "POST" }); },
   remove(id: string) { return api<{ id: string; deleted: boolean }>(`/api/import/batches/${id}`, { method: "DELETE" }); },
 };

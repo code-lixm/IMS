@@ -9,7 +9,7 @@
           候选人
         </Button>
         <div class="relative">
-          <Button class="gap-2" :disabled="fileImport.isImporting" @click="startImport">
+          <Button class="gap-2" :disabled="isImporting" @click="startImport">
             <Plus class="h-4 w-4" />
             新建导入
           </Button>
@@ -87,12 +87,13 @@
       />
 
       <div v-else class="space-y-4">
-        <Card v-for="b in batches" :key="b.id" class="overflow-hidden border-border/70 shadow-sm">
+        <Card v-for="b in batches" :key="b.id" :class="['overflow-hidden border-border/70 shadow-sm', b.status === 'processing' ? 'ring-2 ring-primary/30 bg-primary/5' : '']">
           <div class="space-y-4 p-5">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div class="space-y-2 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
                   <Badge :variant="statusVariant(b.status)">{{ statusLabel(b.status) }}</Badge>
+                  <Badge v-if="b.status === 'processing'" variant="default" class="animate-pulse">正在处理</Badge>
                   <Badge v-if="b.autoScreen" variant="outline">AI 初筛</Badge>
                   <span class="text-sm font-medium text-foreground/90">{{ b.totalFiles }} 个文件</span>
                   <span class="text-xs text-muted-foreground">{{ formatImportTimestamp(b.createdAt) }}</span>
@@ -187,7 +188,8 @@
               <article
                 v-for="f in batchFiles[b.id]"
                 :key="f.id"
-                class="rounded-xl border bg-background px-4 py-3 shadow-sm"
+                class="rounded-xl border bg-background px-4 py-3 shadow-sm cursor-pointer hover:bg-muted/30 transition-colors"
+                @click="parseImportTaskResult(f.resultJson)?.parsedResume && showScreeningDetail(f)"
               >
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div class="min-w-0 space-y-2 flex-1">
@@ -200,7 +202,7 @@
                         v-if="screeningResult(f)?.screeningConclusion"
                         :class="[
                           'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
-                          screeningVerdictClass(screeningResult(f)?.screeningConclusion?.verdict),
+                          screeningScoreClass(screeningResult(f)?.screeningConclusion?.score),
                         ]"
                       >
                         初筛{{ screeningResult(f)?.screeningConclusion?.label }}
@@ -234,6 +236,14 @@
 
                     <p v-if="f.errorMessage" class="text-xs text-destructive break-all">{{ f.errorMessage }}</p>
                   </div>
+
+                  <button
+                    v-if="parseImportTaskResult(f.resultJson)?.parsedResume"
+                    class="text-sm font-semibold text-primary hover:underline cursor-pointer shrink-0 ml-2 mt-1 lg:mt-0"
+                    @click.stop="showScreeningDetail(f)"
+                  >
+                    查看详情
+                  </button>
                 </div>
               </article>
             </div>
@@ -248,13 +258,22 @@
       @update:open="fileImport.setConflictDialogOpen"
       @resolve="fileImport.resolveConflict"
     />
+
+    <AiScreeningDetailDialog
+      :open="screeningDialogOpen"
+      :screening-data="selectedScreeningData"
+      :file="selectedFile"
+      @update:open="screeningDialogOpen = $event"
+      @run-screening="handleRunFileScreening"
+    />
   </AppPageShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { Plus, User, ChevronDown, RefreshCw, Trash2, X } from "lucide-vue-next";
 import AppUserActions from "@/components/app-user-actions.vue";
+import AiScreeningDetailDialog from "@/components/import/ai-screening-detail-dialog.vue";
 import ConflictMergeDialog from "@/components/conflict-merge-dialog.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
@@ -270,8 +289,8 @@ import {
   importStageLabel,
   parseImportTaskResult,
   progressIndicatorClass,
+  screeningScoreClass,
   screeningSourceLabel,
-  screeningVerdictClass,
   statusLabel,
   statusVariant,
 } from "@/composables/import/formatters";
@@ -288,7 +307,7 @@ const { autoScreen, setAutoScreen } = useImportPreferences();
 const fileImport = useImportFileSelection({
   onImportFinished: importBatches.refresh,
 });
-const { conflictDialog } = fileImport;
+const { conflictDialog, isImporting } = fileImport;
 
 const {
   batches,
@@ -339,6 +358,32 @@ async function removeBatch(batchId: string) {
     return;
   }
   await deleteBatch(batchId);
+}
+
+// AI Screening detail dialog
+const screeningDialogOpen = ref(false);
+const selectedScreeningData = ref<ReturnType<typeof parseImportTaskResult>>(null);
+const selectedFile = ref<ImportFileTask | null>(null);
+
+function showScreeningDetail(file: ImportFileTask) {
+  const result = parseImportTaskResult(file.resultJson);
+  if (result?.parsedResume) {
+    selectedScreeningData.value = result;
+    selectedFile.value = file;
+    screeningDialogOpen.value = true;
+  }
+}
+
+async function handleRunFileScreening(taskId: string) {
+  // Find the batchId for this file
+  for (const [batchId, files] of Object.entries(batchFiles.value)) {
+    const file = files.find(f => f.id === taskId);
+    if (file) {
+      await importBatches.rerunFileScreening(taskId, batchId);
+      screeningDialogOpen.value = false;
+      return;
+    }
+  }
 }
 
 function canRerunBatchScreening(batch: typeof batches.value[number]) {
