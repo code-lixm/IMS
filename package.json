@@ -7,6 +7,7 @@
     "dev:server": "pnpm --filter @ims/server dev",
     "dev:desktop": "pnpm --filter @ims/desktop tauri dev",
     "build": "pnpm --filter @ims/shared build && pnpm --filter @ims/server build && pnpm --filter @ims/web build",
+    "build:desktop": "pnpm build && pnpm --filter @ims/desktop tauri build",
     "build:server": "pnpm --filter @ims/server build",
     "build:web": "pnpm --filter @ims/web build",
     "typecheck": "pnpm --filter @ims/shared check && pnpm --filter @ims/server check && pnpm --filter @ims/web check",

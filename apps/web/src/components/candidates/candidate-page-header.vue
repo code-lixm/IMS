@@ -1,10 +1,10 @@
 <template>
-  <AppPageHeader content-class="grid min-h-16 grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[1fr_minmax(360px,560px)_1fr] sm:items-center sm:gap-4 sm:px-6 sm:py-0">
-      <div class="flex items-center gap-2 shrink-0 sm:min-w-0">
+  <AppPageHeader content-class="grid min-h-16 grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_minmax(200px,1fr)_1fr] md:items-center md:gap-3 md:px-4 md:py-0 lg:grid-cols-[1fr_minmax(320px,560px)_1fr] lg:gap-4 lg:px-6">
+      <div class="flex items-center gap-2 shrink-0 min-w-0">
         <AppBrandLink />
       </div>
 
-      <div class="relative w-full sm:mx-auto sm:w-full sm:max-w-[680px]">
+      <div class="relative w-full min-w-0">
         <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           :model-value="search"
@@ -25,9 +25,9 @@
         </datalist>
       </div>
 
-      <div class="flex items-center justify-end gap-2 shrink-0 sm:min-w-0">
+      <div class="flex items-center justify-end gap-2 shrink-0 min-w-0">
         <DropdownMenu>
-          <DropdownMenuTrigger as-child class="sm:hidden">
+          <DropdownMenuTrigger as-child class="md:hidden">
             <Button variant="ghost" size="icon" class="h-9 w-9">
               <MoreHorizontal class="h-4 w-4" />
             </Button>
@@ -52,28 +52,28 @@
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button variant="default" class="hidden gap-2 sm:flex" @click="emit('create')">
+        <Button variant="default" class="hidden md:flex gap-2" @click="emit('create')">
           <Plus class="h-4 w-4" />
-          新建
+          <span class="hidden lg:inline">新建</span>
         </Button>
-        <div class="relative hidden sm:block">
+        <div class="relative hidden md:block">
           <Button variant="outline" class="gap-2" :disabled="isImporting" @click="emit('import')">
             <Upload class="h-4 w-4" />
-            导入
+            <span class="hidden lg:inline">导入</span>
           </Button>
           <Badge
             v-if="(importActivityCount ?? 0) > 0"
             variant="default"
-            class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full px-1.5 py-0"
+            class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full px-1.5 py-0 lg:hidden"
           >
             {{ importActivityCount }}
           </Badge>
         </div>
 
-        <div class="hidden h-9 items-center gap-1 border-l border-border pl-3 ml-1 lg:flex">
+        <div class="hidden h-9 items-center gap-1 border-l border-border pl-3 ml-1 md:flex">
           <Button variant="secondary" size="sm" class="gap-1.5" @click="emit('goto-import')">
             <FileClock class="h-4 w-4" />
-            任务
+            <span class="hidden lg:inline">任务</span>
           </Button>
         </div>
 
@@ -90,7 +90,7 @@
             @click="emit('sync')"
           >
             <RefreshCw class="h-4 w-4" :class="props.syncLoading ? 'animate-spin' : ''" />
-            同步
+            <span class="hidden lg:inline">同步</span>
           </Button>
         </div>
 

@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -6,6 +7,56 @@ use tauri::{
 };
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
+
+// Store the server child process so we can kill it on exit
+struct ServerProcess {
+    child: Option<tauri_plugin_shell::process::CommandChild>,
+}
+
+fn start_server<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<tauri_plugin_shell::process::CommandChild, Box<dyn std::error::Error>> {
+    use tauri_plugin_shell::ShellExt;
+
+    // Get the server executable path from bundled resources
+    let resource_dir = app.path().resource_dir()?;
+    let server_path = resource_dir.join("dist/server");
+    let node_modules_path = resource_dir.join("node_modules");
+    println!("[tauri] starting server at: {:?}", server_path);
+
+    let cmd = app
+        .shell()
+        .command(&server_path)
+        .env("NODE_PATH", node_modules_path.to_str().unwrap_or(""));
+    let (mut rx, child) = cmd.spawn()?;
+
+    // Forward server logs to stdout
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                    println!("[server] {}", String::from_utf8_lossy(&line));
+                }
+                tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                    eprintln!("[server] {}", String::from_utf8_lossy(&line));
+                }
+                tauri_plugin_shell::process::CommandEvent::Error(err) => {
+                    eprintln!("[server] error: {}", err);
+                }
+                tauri_plugin_shell::process::CommandEvent::Terminated(status) => {
+                    println!("[server] terminated with status: {:?}", status);
+                    // Notify frontend that server has stopped
+                    let _ = app_handle.emit("server-stopped", ());
+                }
+                _ => {}
+            }
+        }
+    });
+
+    println!("[tauri] server started successfully");
+    Ok(child)
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tray
@@ -36,6 +87,13 @@ fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::
             }
             "quit" => {
                 QUITTING.store(true, Ordering::SeqCst);
+                // Kill the server before exiting
+                if let Some(server) = app.state::<Mutex<ServerProcess>>().lock().ok() {
+                    let mut process = server;
+                    if let Some(child) = process.child.take() {
+                        let _ = child.kill();
+                    }
+                }
                 app.exit(0);
             }
             _ => {}
@@ -128,6 +186,16 @@ pub fn run() {
             }
         }))
         .setup(|app| {
+            // Start the backend server
+            match start_server(app.handle()) {
+                Ok(child) => {
+                    app.manage(Mutex::new(ServerProcess { child: Some(child) }));
+                }
+                Err(e) => {
+                    eprintln!("[tauri] failed to start server: {}", e);
+                }
+            }
+
             // Setup system tray
             if let Err(e) = setup_tray(app.handle()) {
                 eprintln!("[tauri] tray setup failed: {}", e);
@@ -153,11 +221,20 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // Removed unused import
+
             // On close button, hide to tray instead of quitting
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if !QUITTING.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = window.hide();
+                } else {
+                    // Actually quitting - kill the server
+                    if let Ok(mut server) = window.state::<Mutex<ServerProcess>>().lock() {
+                        if let Some(child) = server.child.take() {
+                            let _ = child.kill();
+                        }
+                    }
                 }
             }
         })

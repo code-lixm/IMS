@@ -52,6 +52,12 @@ function toPickedFile(file: File): PickedFile {
 export async function pickFiles(options: FilePickerOptions = {}): Promise<PickedFile[]> {
   return new Promise<PickedFile[]>((resolve, reject) => {
     const input = createPickerInput(options);
+    let settled = false;
+    function settle(fn: () => void) {
+      if (settled) return;
+      settled = true;
+      fn();
+    }
     input.onchange = () => {
       try {
         const pickedFiles = Array.from(input.files ?? []).map(toPickedFile);
@@ -62,10 +68,14 @@ export async function pickFiles(options: FilePickerOptions = {}): Promise<Picked
             return;
           }
         }
-        resolve(pickedFiles);
+        settle(() => resolve(pickedFiles));
       } catch (error) {
-        reject(error);
+        settle(() => reject(error));
       }
+    };
+    // Handle cancel (user dismisses file picker without selecting)
+    input.oncancel = () => {
+      settle(() => resolve([]));
     };
     input.click();
   });

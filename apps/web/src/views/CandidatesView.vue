@@ -1,5 +1,5 @@
 <template>
-  <AppPageShell class="flex flex-col h-screen overflow-hidden">
+  <AppPageShell class="flex h-screen flex-col overflow-hidden">
     <CandidatePageHeader
       v-model:search="search"
       :search-suggestions="searchSuggestions"
@@ -15,11 +15,10 @@
       @sync="runSyncNow"
     />
 
-    <AppPageContent class="flex flex-col flex-1 min-h-0 overflow-hidden">
-
+    <AppPageContent class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <CandidateFeedbackBanner :feedback="feedback" class="mb-4 shrink-0" @dismiss="clearFeedback" />
 
-      <div class="flex flex-1 min-h-0 overflow-hidden">
+      <div class="flex min-h-0 flex-1 overflow-hidden">
         <CandidateList
           :items="store.list"
           :loading="store.loading"
@@ -28,6 +27,12 @@
           :page-size="store.pageSize"
           :export-loading-id="exportLoadingId"
           :delete-loading-id="deleteLoadingId"
+          :has-selection="batchSelection.hasSelection.value"
+          :selected-count="batchSelection.selectedCount.value"
+          :is-all-selected-on-page="pageSelectionState.isAllSelected"
+          :is-indeterminate-on-page="pageSelectionState.isIndeterminate"
+          :share-loading="isBatchSharing"
+          :is-selected="batchSelection.isSelected"
           @create="setCreateDialogOpen(true)"
           @import="triggerImport"
           @select="goToCandidateDetail"
@@ -36,6 +41,10 @@
           @delete="handleDelete"
           @page-change="goToPage"
           @page-size-change="changePageSize"
+          @toggle-selection="handleToggleSelection"
+          @toggle-all="handleToggleAll"
+          @clear-selection="handleClearSelection"
+          @batch-share="openDeviceSelectDialog"
         />
       </div>
     </AppPageContent>
@@ -48,21 +57,31 @@
       @update:model-value="updateCreateForm"
       @submit="submitCreate"
     />
+
+    <DeviceSelectDialog
+      :open="deviceSelectDialogOpen"
+      :selected-count="batchSelection.selectedCount.value"
+      @update:open="deviceSelectDialogOpen = $event"
+      @send="handleBatchShare"
+    />
   </AppPageShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import CandidateCreateDialog from "@/components/candidates/candidate-create-dialog.vue";
 import CandidateFeedbackBanner from "@/components/candidates/candidate-feedback-banner.vue";
 import CandidateList from "@/components/candidates/candidate-list.vue";
 import CandidatePageHeader from "@/components/candidates/candidate-page-header.vue";
+import DeviceSelectDialog from "@/components/candidates/device-select-dialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
 import { useCandidateCreateDialog } from "@/composables/candidates/use-candidate-create-dialog";
 import { useCandidatePageActions } from "@/composables/candidates/use-candidate-page-actions";
 import { useCandidateSearch } from "@/composables/candidates/use-candidate-search";
+import { useCandidateBatchSelection } from "@/composables/candidates/use-candidate-batch-selection";
 import { useImportBatches } from "@/composables/import/use-import-batches";
+import { shareApi } from "@/api/share";
 import type { CandidateCreateFormValue } from "@/composables/candidates/types";
 import { useCandidatesStore } from "@/stores/candidates";
 import { useSyncStore } from "@/stores/sync";
@@ -70,6 +89,8 @@ import { useSyncStore } from "@/stores/sync";
 const store = useCandidatesStore();
 const syncStore = useSyncStore();
 const importActivity = useImportBatches();
+const batchSelection = useCandidateBatchSelection();
+
 const { search, searchSuggestions, initialize, scheduleSearch } = useCandidateSearch(store);
 const {
   feedback,
@@ -83,6 +104,7 @@ const {
   openWorkspace,
   exportCandidate,
   deleteCandidate,
+  setFeedback,
 } = useCandidatePageActions();
 const {
   open: createDialogOpen,
@@ -92,7 +114,15 @@ const {
   submit,
 } = useCandidateCreateDialog(store);
 
+const deviceSelectDialogOpen = ref(false);
+const isBatchSharing = ref(false);
+
 const totalPages = computed(() => Math.max(1, Math.ceil(store.total / store.pageSize)));
+
+// 计算当前页的选择状态
+const pageSelectionState = computed(() => {
+  return batchSelection.getSelectionStateForPage(store.list);
+});
 
 onMounted(async () => {
   await Promise.all([
@@ -137,5 +167,54 @@ async function changePageSize(nextPageSize: number) {
   }
 
   await store.setPageSize(nextPageSize);
+}
+
+// 批量选择事件处理
+function handleToggleSelection(candidateId: string) {
+  batchSelection.toggleSelection(candidateId);
+}
+
+function handleToggleAll() {
+  const pageIds = store.list.map((item) => item.id);
+  batchSelection.toggleAll(pageIds);
+}
+
+function handleClearSelection() {
+  batchSelection.clearSelection();
+}
+
+function openDeviceSelectDialog() {
+  if (!batchSelection.hasSelection.value) return;
+  deviceSelectDialogOpen.value = true;
+}
+
+// 批量分享
+async function handleBatchShare(device: {
+  ip: string;
+  port: number;
+  deviceId?: string;
+  name: string;
+}) {
+  const candidateIds = batchSelection.getSelectedIds();
+  if (candidateIds.length === 0) return;
+
+  isBatchSharing.value = true;
+  try {
+    await shareApi.batchSend(candidateIds, device);
+    setFeedback({
+      tone: "success",
+      message: `已成功分享 ${candidateIds.length} 位候选人到 ${device.name}`,
+    });
+    batchSelection.clearSelection();
+    deviceSelectDialogOpen.value = false;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "未知错误";
+    setFeedback({
+      tone: "error",
+      message: `分享失败：${message}`,
+    });
+  } finally {
+    isBatchSharing.value = false;
+  }
 }
 </script>

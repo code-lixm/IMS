@@ -38,6 +38,7 @@ declare module 'vue' {
     CarouselItem: typeof import('./components/ui/carousel/CarouselItem.vue')['default']
     CarouselNext: typeof import('./components/ui/carousel/CarouselNext.vue')['default']
     CarouselPrevious: typeof import('./components/ui/carousel/CarouselPrevious.vue')['default']
+    Checkbox: typeof import('./components/ui/checkbox.vue')['default']
     Collapsible: typeof import('./components/ui/collapsible/Collapsible.vue')['default']
     CollapsibleContent: typeof import('./components/ui/collapsible/CollapsibleContent.vue')['default']
     CollapsibleTrigger: typeof import('./components/ui/collapsible/CollapsibleTrigger.vue')['default']

@@ -9,6 +9,8 @@ const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https
 const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.env.VERCEL_AI_GATEWAY_TOKEN || "";
 const DEFAULT_IMPORT_SCREENING_MODEL = process.env.IMPORT_SCREENING_MODEL || process.env.CUSTOM_MODEL_ID || "gpt-4o-mini";
 
+let screeningQueue: Promise<void> = Promise.resolve();
+
 interface ParsedResumeInput {
   name: string | null;
   phone: string | null;
@@ -36,62 +38,80 @@ export async function generateImportScreeningConclusionWithAI(input: {
   confidence: number;
   fileName: string;
 }): Promise<ImportScreeningConclusion> {
-  const endpoint = await resolveImportAiEndpoint();
+  return runScreeningSerially(async () => {
+    const endpoint = await resolveImportAiEndpoint();
 
-  if (!endpoint.apiKey.trim()) {
-    throw new Error("AI screening is not configured");
-  }
-
-  if (endpoint.providerId === "minimax") {
-    return generateMiniMaxScreeningConclusion(input, endpoint);
-  }
-
-  const provider = createOpenAI({
-    name: endpoint.providerId || "import-screening-openai-compatible",
-    baseURL: normalizeOpenAIBaseURL(endpoint.baseURL),
-    apiKey: endpoint.apiKey,
-  });
-
-  try {
-    const result = await generateText({
-      model: provider.chat(parseRuntimeModelName(endpoint.model)),
-      temperature: 0.1,
-      abortSignal: AbortSignal.timeout(45_000),
-      system: [
-        "你是批量简历初筛 Agent。",
-        "你只输出 JSON，不输出额外解释。",
-        "请基于简历解析结果给出明确结论：通过 / 待定 / 淘汰。",
-        "输出 JSON 字段必须严格包含：verdict,label,score,summary,strengths,concerns,recommendedAction。",
-        "verdict 只能是 pass、review、reject。",
-        "label 只能是 通过、待定、淘汰。",
-        "score 是 0-100 的整数。",
-        "strengths 和 concerns 各返回 0-3 条简短中文句子。",
-        "recommendedAction 返回一句中文建议动作。",
-      ].join("\n"),
-      prompt: JSON.stringify({
-        fileName: input.fileName,
-        extractionConfidence: input.confidence,
-        candidate: {
-          name: input.parsed.name,
-          phone: input.parsed.phone,
-          email: input.parsed.email,
-          position: input.parsed.position,
-          yearsOfExperience: input.parsed.yearsOfExperience,
-          skills: input.parsed.skills,
-          education: input.parsed.education,
-          workHistory: input.parsed.workHistory,
-          rawTextPreview: input.parsed.rawText.slice(0, 6000),
-        },
-      }),
-    });
-
-    if (!result.text?.trim()) {
-      throw new Error("AI screening returned empty content");
+    if (!endpoint.apiKey.trim()) {
+      throw new Error("AI screening is not configured");
     }
 
-    return normalizeAiScreeningOutput(JSON.parse(stripAssistantFormatting(result.text)) as Partial<AiScreeningOutput>);
-  } catch (error) {
-    throw new Error(`AI screening request failed: ${(error as Error).message}`);
+    if (endpoint.providerId === "minimax") {
+      return generateMiniMaxScreeningConclusion(input, endpoint);
+    }
+
+    const provider = createOpenAI({
+      name: endpoint.providerId || "import-screening-openai-compatible",
+      baseURL: normalizeOpenAIBaseURL(endpoint.baseURL),
+      apiKey: endpoint.apiKey,
+    });
+
+    try {
+      const result = await generateText({
+        model: provider.chat(parseRuntimeModelName(endpoint.model)),
+        temperature: 0.1,
+        abortSignal: AbortSignal.timeout(45_000),
+        system: [
+          "你是批量简历初筛 Agent。",
+          "你只输出 JSON，不输出额外解释。",
+          "请基于简历解析结果给出明确结论：通过 / 待定 / 淘汰。",
+          "输出 JSON 字段必须严格包含：verdict,label,score,summary,strengths,concerns,recommendedAction。",
+          "verdict 只能是 pass、review、reject。",
+          "label 只能是 通过、待定、淘汰。",
+          "score 是 0-100 的整数。",
+          "strengths 和 concerns 各返回 0-3 条简短中文句子。",
+          "recommendedAction 返回一句中文建议动作。",
+        ].join("\n"),
+        prompt: JSON.stringify({
+          fileName: input.fileName,
+          extractionConfidence: input.confidence,
+          candidate: {
+            name: input.parsed.name,
+            phone: input.parsed.phone,
+            email: input.parsed.email,
+            position: input.parsed.position,
+            yearsOfExperience: input.parsed.yearsOfExperience,
+            skills: input.parsed.skills,
+            education: input.parsed.education,
+            workHistory: input.parsed.workHistory,
+            rawTextPreview: input.parsed.rawText.slice(0, 6000),
+          },
+        }),
+      });
+
+      if (!result.text?.trim()) {
+        throw new Error("AI screening returned empty content");
+      }
+
+      return normalizeAiScreeningOutput(JSON.parse(stripAssistantFormatting(result.text)) as Partial<AiScreeningOutput>);
+    } catch (error) {
+      throw new Error(`AI screening request failed: ${(error as Error).message}`);
+    }
+  });
+}
+
+async function runScreeningSerially<T>(job: () => Promise<T>): Promise<T> {
+  const previous = screeningQueue;
+  let release!: () => void;
+  screeningQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous.catch(() => undefined);
+
+  try {
+    return await job();
+  } finally {
+    release();
   }
 }
 

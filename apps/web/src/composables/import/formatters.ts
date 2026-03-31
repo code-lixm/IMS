@@ -128,11 +128,35 @@ export function parseImportTaskResult(resultJson: string | null): ImportTaskResu
 
 export function screeningVerdictClass(verdict: ImportScreeningVerdict | undefined) {
   const map: Record<string, string> = {
-    pass: "bg-green-100 text-green-700 border-green-200",
-    review: "bg-amber-100 text-amber-700 border-amber-200",
-    reject: "bg-red-100 text-red-700 border-red-200",
+    pass: "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800",
+    review: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800",
+    reject: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800",
   };
   return map[verdict ?? ""] ?? "bg-muted text-muted-foreground border-border";
+}
+
+export function screeningScoreClass(score: number | undefined): string {
+  if (score === undefined || score === null) {
+    return "bg-muted text-muted-foreground border-border";
+  }
+
+  // < 60: 不及格 - 红色
+  if (score < 60) {
+    return "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800";
+  }
+
+  // 60-69: 及格 - 橙色
+  if (score < 70) {
+    return "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800";
+  }
+
+  // 70-84: 良好 - 蓝色
+  if (score < 85) {
+    return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
+  }
+
+  // 85-100: 优秀 - 绿色
+  return "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800";
 }
 
 export function screeningSourceLabel(source: ImportScreeningSource | null | undefined) {

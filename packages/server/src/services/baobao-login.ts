@@ -1,9 +1,21 @@
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { desc, eq } from "drizzle-orm";
 import { BaobaoClient } from "./baobao-client";
 import type { BaobaoLoginResponse } from "../baobao-types";
 import { db } from "../db";
 import { remoteUsers } from "../schema";
+
+// Dynamic import playwright to avoid bundling issues
+let playwrightModule: typeof import("playwright") | null = null;
+async function getPlaywright() {
+  if (!playwrightModule) {
+    playwrightModule = await import("playwright");
+  }
+  return playwrightModule;
+}
+
+type Browser = import("playwright").Browser;
+type BrowserContext = import("playwright").BrowserContext;
+type Page = import("playwright").Page;
 
 const LOGIN_URL = "https://baobao.getui.com/#/login";
 const QR_SELECTOR = ".qr-code";
@@ -376,7 +388,8 @@ class BaobaoLoginSessionManager {
       }, 20000);
 
       try {
-        this.browser = await chromium.launch({ headless: true });
+        const pw = await getPlaywright();
+        this.browser = await pw.chromium.launch({ headless: true });
       } finally {
         clearTimeout(launchTimeout);
       }

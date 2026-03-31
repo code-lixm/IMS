@@ -10,6 +10,7 @@ import { parseResumeText } from "./parser";
 import { generateImportScreeningConclusionWithAI } from "./ai-screening";
 import { config } from "../../config";
 import type { ImportTaskResultData } from "@ims/shared";
+import * as XLSX from "xlsx";
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 const ACTIVE_TASK_STATUSES = ["queued", "extracting", "text_extracting", "ocr_running", "parsing", "matching_candidate", "saving", "ai_screening"] as const;
@@ -745,4 +746,106 @@ async function expandZipImportTasks(batchId: string, archivePath: string): Promi
   }
 
   return tasks;
+}
+
+
+export interface ScreeningExportRow {
+  name: string | null;
+  position: string | null;
+  yearsOfExperience: number | null;
+  phone: string | null;
+  email: string | null;
+  skills: string;
+  education: string;
+  workHistory: string;
+  verdict: string | null;
+  label: string | null;
+  score: number | null;
+  summary: string | null;
+  strengths: string | null;
+  concerns: string | null;
+  recommendedAction: string | null;
+  screeningSource: string | null;
+  originalPath: string;
+  batchId: string;
+}
+
+export async function exportScreeningResults(batchId?: string): Promise<{ buffer: Uint8Array; fileName: string }> {
+  let tasks: typeof importFileTasks.$inferSelect[];
+  if (batchId) {
+    const rows = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchId));
+    tasks = rows;
+  } else {
+    tasks = await db.select().from(importFileTasks);
+  }
+
+  const rows: ScreeningExportRow[] = [];
+
+  for (const task of tasks) {
+    if (task.status !== "done") continue;
+    const result = parseImportTaskResult(task.resultJson);
+    if (!result?.parsedResume) continue;
+    if (result.screeningStatus !== "completed" || !result.screeningConclusion) continue;
+
+    const conc = result.screeningConclusion;
+    rows.push({
+      name: result.parsedResume.name,
+      position: result.parsedResume.position,
+      yearsOfExperience: result.parsedResume.yearsOfExperience,
+      phone: result.parsedResume.phone,
+      email: result.parsedResume.email,
+      skills: result.parsedResume.skills.join("；"),
+      education: result.parsedResume.education.join("；"),
+      workHistory: result.parsedResume.workHistory.join("；"),
+      verdict: conc.verdict,
+      label: conc.label,
+      score: conc.score,
+      summary: conc.summary,
+      strengths: conc.strengths.join("；"),
+      concerns: conc.concerns.join("；"),
+      recommendedAction: conc.recommendedAction,
+      screeningSource: result.screeningSource ?? null,
+      originalPath: task.originalPath,
+      batchId: task.batchId,
+    });
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows, {
+    header: [
+      "name", "position", "yearsOfExperience", "phone", "email",
+      "skills", "education", "workHistory",
+      "verdict", "label", "score", "summary",
+      "strengths", "concerns", "recommendedAction",
+      "screeningSource", "originalPath", "batchId",
+    ],
+  });
+
+  // Set Chinese column headers
+  ws.A1.v = "姓名";
+  ws.B1.v = "岗位";
+  ws.C1.v = "工作年限";
+  ws.D1.v = "电话";
+  ws.E1.v = "邮箱";
+  ws.F1.v = "技能";
+  ws.G1.v = "学历";
+  ws.H1.v = "工作经历";
+  ws.I1.v = "AI 结论";
+  ws.J1.v = "结论标签";
+  ws.K1.v = "分数";
+  ws.L1.v = "综合评价";
+  ws.M1.v = "优点";
+  ws.N1.v = "顾虑";
+  ws.O1.v = "建议操作";
+  ws.P1.v = "初筛来源";
+  ws.Q1.v = "原始文件";
+  ws.R1.v = "批次ID";
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "AI初筛结果");
+
+  const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" }) as Uint8Array;
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const fileName = `AI初筛结果-${dateStr}.xlsx`;
+
+  return { buffer, fileName };
 }

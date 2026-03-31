@@ -126,6 +126,7 @@ export function useCandidatePageActions() {
     exportLoadingId,
     deleteLoadingId,
     clearFeedback,
+    setFeedback,
     goToCandidateDetail,
     goToImportPage,
     triggerImport,

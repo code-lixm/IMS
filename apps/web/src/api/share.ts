@@ -17,6 +17,12 @@ export const shareApi = {
       json: { candidateId, target },
     });
   },
+  batchSend(candidateIds: string[], target: { ip: string; port: number; deviceId?: string; name: string }) {
+    return api("/api/share/batch-send", {
+      method: "POST",
+      json: { candidateIds, target },
+    });
+  },
   import(filePath: string) {
     return api<ShareImportResult>("/api/share/import", {
       method: "POST",

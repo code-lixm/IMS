@@ -3,13 +3,13 @@
     <div
       role="button"
       tabindex="0"
-      class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+      class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border/60 text-foreground transition-colors hover:bg-accent hover:text-accent-foreground dark:border-border/80 dark:text-white dark:hover:bg-accent/50"
       :title="isDark ? '切换到浅色模式' : '切换到深色模式'"
       @click="toggleTheme"
       @keydown.enter.prevent="toggleTheme"
       @keydown.space.prevent="toggleTheme"
     >
-      <SunMedium v-if="isDark" class="h-4 w-4" />
+      <SunMedium v-if="isDark" class="h-4 w-4 text-white" />
       <MoonStar v-else class="h-4 w-4" />
     </div>
 
@@ -17,7 +17,7 @@
       <DropdownMenuTrigger as-child>
         <button
           type="button"
-          class="relative flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-primary/10 text-sm font-semibold text-primary transition-all hover:scale-[1.02] hover:bg-primary/15 hover:shadow-sm dark:bg-primary-foreground/10 dark:text-primary-foreground dark:hover:bg-primary-foreground/15"
+          class="relative flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-primary/10 text-sm font-semibold text-primary transition-all hover:scale-[1.02] hover:bg-primary/15 hover:shadow-sm dark:border-border/80 dark:bg-primary/20 dark:text-primary-foreground dark:hover:bg-primary/30"
         >
           <img
             v-if="userAvatarUrl"
@@ -27,7 +27,7 @@
           />
           <span
             v-else
-            class="flex h-8 w-8 items-center justify-center rounded-md bg-primary/5 dark:bg-primary-foreground/10"
+            class="flex h-8 w-8 items-center justify-center rounded-md bg-primary/5 dark:bg-primary/20 dark:text-primary-foreground"
           >
             {{ userInitial }}
           </span>

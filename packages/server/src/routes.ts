@@ -9,7 +9,7 @@ import { mkdir, writeFile, readFile, unlink } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { syncManager } from "./services/sync-manager";
-import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening } from "./services/import/pipeline";
+import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, exportScreeningResults } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
@@ -1812,6 +1812,25 @@ export async function route(request: Request): Promise<Response> {
     if (!task) return fail("NOT_FOUND", "task not found", 404);
     const result = await rerunFileScreening(taskId);
     return ok({ taskId, retried: result.retried, screeningStatus: result.screeningStatus });
+  }
+
+  // Screening export
+  if (path === "/api/screening/export" && request.method === "GET") {
+    const url = new URL(request.url);
+    const batchId = url.searchParams.get("batchId") || undefined;
+    try {
+      const { buffer, fileName } = await exportScreeningResults(batchId);
+      const encodedFileName = encodeURIComponent(fileName);
+      return new Response(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${encodedFileName}"`,
+        },
+      });
+    } catch (err) {
+      return fail("INTERNAL_ERROR", err instanceof Error ? err.message : "export failed", 500);
+    }
   }
 
   // Share
