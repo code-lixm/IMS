@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Interview Manager",
+  "productName": "I面试",
   "version": "0.1.0",
   "identifier": "com.company.interview-manager",
   "build": {
@@ -41,7 +41,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["../../packages/server/dist", "../../packages/server/node_modules"],
+    "resources": ["../../packages/server/dist"],
     "fileAssociations": [
       {
         "ext": ["imr"],

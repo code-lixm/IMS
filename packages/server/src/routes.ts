@@ -1864,9 +1864,15 @@ export async function route(request: Request): Promise<Response> {
     if (!body.candidateId) return fail("VALIDATION_ERROR", "candidateId is required", 422);
     if (!(await candidateOrFail(body.candidateId))) return fail("NOT_FOUND", "candidate not found", 404);
     try {
-      const { statSync } = await import("node:fs");
-      const filePath = await exportCandidate(body.candidateId);
-      return ok({ filePath, fileSize: statSync(filePath).size });
+      const { buffer, filename } = await exportCandidate(body.candidateId);
+      return new Response(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Content-Length": String(buffer.length),
+        },
+      });
     } catch (err) { return fail("SHARE_EXPORT_FAILED", (err as Error).message, 500); }
   }
 
@@ -1895,8 +1901,8 @@ export async function route(request: Request): Promise<Response> {
     const results: Array<{ candidateId: string; recordId: string; status: string; error?: string; transferredAt: number | null }> = [];
     for (const cid of validIds) {
       try {
-        const imrPath = await exportCandidate(cid);
-        const result = await sendToDevice(cid, body.target as any, imrPath);
+        const { buffer, filename } = await exportCandidate(cid);
+        const result = await sendToDevice(cid, body.target as any, buffer, filename);
         results.push({
           candidateId: cid,
           recordId: result.recordId,

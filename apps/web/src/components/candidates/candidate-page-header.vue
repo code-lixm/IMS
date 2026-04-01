@@ -1,10 +1,8 @@
 <template>
-  <AppPageHeader content-class="grid min-h-16 grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_minmax(200px,1fr)_1fr] md:items-center md:gap-3 md:px-4 md:py-0 lg:grid-cols-[1fr_minmax(320px,560px)_1fr] lg:gap-4 lg:px-6">
-      <div class="flex items-center gap-2 shrink-0 min-w-0">
+  <AppPageHeader content-class="grid min-h-16 grid-cols-[auto_1fr_auto] items-center gap-4 px-4 lg:px-6">
+      <div class="flex items-center gap-3 shrink-0">
         <AppBrandLink />
-      </div>
-
-      <div class="relative w-full min-w-0">
+        <div class="relative w-full max-w-md">
         <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           :model-value="search"
@@ -23,9 +21,10 @@
             :value="suggestion"
           />
         </datalist>
+        </div>
       </div>
 
-      <div class="flex items-center justify-end gap-2 shrink-0 min-w-0">
+      <div class="flex items-center justify-end gap-2 shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger as-child class="md:hidden">
             <Button variant="ghost" size="icon" class="h-9 w-9">

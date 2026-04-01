@@ -22,7 +22,7 @@ async function sha256(filePath: string): Promise<string> {
   return `sha256:${hashHex}`;
 }
 
-export async function exportCandidate(candidateId: string): Promise<string> {
+export async function exportCandidate(candidateId: string): Promise<{ buffer: Buffer; filename: string }> {
   const [cand] = await db.select().from(candidates).where(eq(candidates.id, candidateId)).limit(1);
   if (!cand) throw new Error(`candidate ${candidateId} not found`);
 
@@ -85,9 +85,6 @@ export async function exportCandidate(candidateId: string): Promise<string> {
   zip.file(`${base}/manifest.json`, JSON.stringify(manifest, null, 2));
   zip.file(`${base}/checksums.json`, JSON.stringify(checksums, null, 2));
 
-  const exportDir = join(config.filesDir, "exports");
-  mkdirSync(exportDir, { recursive: true });
-  const filePath = join(exportDir, `${base}.imr`);
-  writeFileSync(filePath, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } }));
-  return filePath;
+  const buffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
+  return { buffer, filename: `${base}.imr` };
 }

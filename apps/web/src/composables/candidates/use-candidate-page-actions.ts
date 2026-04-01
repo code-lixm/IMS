@@ -82,10 +82,21 @@ export function useCandidatePageActions() {
 
     exportLoadingId.value = candidateId;
     try {
-      const result = await shareApi.export(candidateId);
+      const { blob, filename } = await shareApi.export(candidateId);
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
       setFeedback({
         tone: "success",
-        message: `导出成功：${result.filePath}`,
+        message: `导出成功：${filename}`,
       });
     } catch (error: unknown) {
       setFeedback({

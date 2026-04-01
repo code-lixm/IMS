@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { db } from "../../db";
 import { shareRecords } from "../../schema";
 import { eq } from "drizzle-orm";
@@ -8,13 +7,11 @@ export interface TransferResult {
   success: boolean; recordId: string; importedCandidateId?: string; error?: string;
 }
 
-export async function sendToDevice(candidateId: string, target: Device, imrPath: string): Promise<TransferResult> {
+export async function sendToDevice(candidateId: string, target: Device, fileBuffer: Buffer, fileName: string): Promise<TransferResult> {
   const recordId = `share_${crypto.randomUUID()}`;
-  await db.insert(shareRecords).values({ id: recordId, type: "send", candidateId, targetDeviceJson: JSON.stringify(target), exportFilePath: imrPath, status: "pending", createdAt: Date.now() });
+  await db.insert(shareRecords).values({ id: recordId, type: "send", candidateId, targetDeviceJson: JSON.stringify(target), exportFilePath: fileName, status: "pending", createdAt: Date.now() });
 
   const targetUrl = `http://${target.ip}:${target.apiPort}/api/share/import`;
-  const fileName = imrPath.split("/").pop() ?? "candidate.imr";
-  const fileBuffer = readFileSync(imrPath);
 
   try {
     const res = await fetch(targetUrl, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Filename": fileName, "X-Candidate-Id": candidateId }, body: fileBuffer, signal: AbortSignal.timeout(30_000) });
