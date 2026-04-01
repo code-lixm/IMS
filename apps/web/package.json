@@ -15,6 +15,7 @@
     "check": "vue-tsc --noEmit && bun test && node ./scripts/check-frontend-governance.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.47",
     "@ai-sdk/vue": "^3.0.135",
     "@ims/shared": "workspace:*",
     "@rive-app/webgl2": "^2.35.4",
@@ -47,7 +48,8 @@
     "vue": "^3.5.13",
     "vue-router": "^4.5.0",
     "vue-stick-to-bottom": "^1.0.0",
-    "vue-stream-markdown": "^0.6.5"
+    "vue-stream-markdown": "^0.6.5",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.66",

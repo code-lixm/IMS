@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
       }),
       Components({
         dts: "src/components.d.ts",
-        dirs: ["src/components/ui"],
+        dirs: ["src/components/ui", "src/components/lui", "src/agents"],
       }),
       mockDevServerPlugin({
         enabled: mockEnabled,
