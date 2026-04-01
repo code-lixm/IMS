@@ -1690,3 +1690,1427 @@ for await (const chunk of stream) {
   console.log(chunk);
 }
 ```
+
+---
+
+## 11. 多 Worktree 并行开发方案
+
+### 11.1 概述
+
+为了支持多人并行开发,减少代码冲突,提高开发效率,本方案采用 Git Worktree 机制,将 Agent 扩展功能拆分为多个独立的工作树。每个 Worktree 负责一个独立的功能模块,可以并行开发,最后统一合并。
+
+### 11.2 Worktree 拆分策略
+
+根据架构设计和实施计划,将开发工作拆分为 **4 个独立的 Worktree**:
+
+| Worktree 名称 | 分支名 | 功能范围 | 预计工期 | 优先级 |
+|--------------|--------|---------|---------|--------|
+| **wt-core-infrastructure** | `wt/core-infrastructure` | 核心基础设施 | 3-5 天 | P0 |
+| **wt-builtin-agents** | `wt/builtin-agents` | 内置 Agent 实现 | 5-7 天 | P0 |
+| **wt-ui-integration** | `wt/ui-integration` | UI 组件集成 | 4-6 天 | P0 |
+| **wt-extension-system** | `wt/extension-system` | 扩展系统 | 3-5 天 | P1 |
+
+### 11.3 实施步骤
+
+#### 步骤 1: 创建主功能分支
+
+```bash
+# 确保在 master 分支
+git checkout master
+
+# 拉取最新代码
+git pull origin master
+
+# 创建主功能分支
+git checkout -b feature/agent-extension
+
+# 推送到远程
+git push origin feature/agent-extension
+```
+
+#### 步骤 2: 创建 Worktree 目录结构
+
+```bash
+# 在项目根目录创建 worktrees 目录
+mkdir -p .worktrees
+
+# 进入 worktrees 目录
+cd .worktrees
+```
+
+#### 步骤 3: 创建各个 Worktree
+
+##### 3.1 创建 wt-core-infrastructure
+
+```bash
+# 创建核心基础设施 worktree
+git worktree add wt-core-infrastructure -b wt/core-infrastructure
+
+# 进入 worktree
+cd wt-core-infrastructure
+
+# 设置上游分支
+git branch --set-upstream-to=origin/feature/agent-extension wt/core-infrastructure
+
+# 返回 worktrees 目录
+cd ..
+```
+
+**作用范围:**
+- `apps/web/src/agents/host.ts` - AgentHost 核心类
+- `apps/web/src/agents/context-bridge.ts` - Context Bridge
+- `apps/web/src/agents/permissions.ts` - 权限系统
+- `apps/web/src/agents/index.ts` - 统一导出
+- `apps/web/vite.config.ts` - Vite 配置更新
+- `package.json` - 依赖安装
+
+**实施细节:**
+
+<details>
+<summary>📋 wt-core-infrastructure 详细任务清单</summary>
+
+**任务 1: 安装依赖**
+
+```bash
+# 在项目根目录执行
+pnpm add @deepagents/agent ai zod @ai-sdk/openai
+```
+
+**任务 2: 实现 AgentHost 核心类**
+
+文件: `apps/web/src/agents/host.ts`
+
+```typescript
+// 实现内容参考第 3.1 节
+// 关键点:
+// 1. 单例模式
+// 2. Agent 注册与发现
+// 3. 流式执行 (stream)
+// 4. 非流式执行 (generate)
+// 5. Swarm 多 Agent 协作
+```
+
+**任务 3: 实现 Context Bridge**
+
+文件: `apps/web/src/agents/context-bridge.ts`
+
+```typescript
+// 实现内容参考第 3.2 节
+// 关键点:
+// 1. IMSContext 接口定义
+// 2. getIMSContext 工具函数
+// 3. useAgentContext Vue Composable
+// 4. createStaticContext 静态上下文
+```
+
+**任务 4: 实现权限系统**
+
+文件: `apps/web/src/agents/permissions.ts`
+
+```typescript
+// 实现内容参考第 5.2 节
+// 关键点:
+// 1. AgentPermission 类型定义
+// 2. PermissionChecker 权限校验器
+// 3. PermissionDeniedError 错误类
+// 4. withPermission 装饰器
+```
+
+**任务 5: 更新 Vite 配置**
+
+文件: `apps/web/vite.config.ts`
+
+```typescript
+// 添加以下配置:
+export default defineConfig({
+  optimizeDeps: {
+    exclude: ['@deepagents/agent'],
+  },
+  server: {
+    headers: {
+      'Content-Security-Policy': [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-eval' https:",
+        "connect-src 'self' https:",
+      ].join('; '),
+    },
+  },
+});
+```
+
+**任务 6: 创建统一导出**
+
+文件: `apps/web/src/agents/index.ts`
+
+```typescript
+export { agentHost, AgentNotFoundError } from './host';
+export type { AgentManifest, AgentFactory } from './host';
+export { getIMSContext, useAgentContext, createStaticContext } from './context-bridge';
+export type { IMSContext } from './context-bridge';
+export { PermissionChecker, PermissionDeniedError, withPermission } from './permissions';
+export type { AgentPermission } from './permissions';
+```
+
+**验收标准:**
+- [ ] 所有依赖正确安装
+- [ ] AgentHost 类可以正常实例化
+- [ ] Context Bridge 可以正确同步 Pinia Store 状态
+- [ ] 权限系统可以正确校验权限
+- [ ] TypeScript 类型检查通过
+- [ ] 可以成功构建项目
+
+</details>
+
+##### 3.2 创建 wt-builtin-agents
+
+```bash
+# 创建内置 Agent worktree
+git worktree add wt-builtin-agents -b wt/builtin-agents
+
+# 进入 worktree
+cd wt-builtin-agents
+
+# 设置上游分支
+git branch --set-upstream-to=origin/feature/agent-extension wt/builtin-agents
+
+# 返回 worktrees 目录
+cd ..
+```
+
+**作用范围:**
+- `apps/web/src/agents/builtin/` - 所有内置 Agent
+  - `index.ts` - 自动导入
+  - `resume-analyzer.ts` - 简历分析 Agent
+  - `interview-coordinator.ts` - 面试协调 Agent
+  - `tech-interviewer.ts` - 技术面试官 Agent
+  - `hr-interviewer.ts` - HR 面试官 Agent
+  - `salary-advisor.ts` - 薪资顾问 Agent
+  - `search-assistant.ts` - 搜索助手 Agent
+
+**实施细节:**
+
+<details>
+<summary>📋 wt-builtin-agents 详细任务清单</summary>
+
+**前置依赖:**
+- wt-core-infrastructure 已完成并合并
+
+**任务 1: 创建 builtin 目录结构**
+
+```bash
+mkdir -p apps/web/src/agents/builtin
+```
+
+**任务 2: 实现 ResumeAnalyzer Agent**
+
+文件: `apps/web/src/agents/builtin/resume-analyzer.ts`
+
+```typescript
+// 实现内容参考第 3.3 节
+// 关键点:
+// 1. Manifest 定义
+// 2. Factory 函数
+// 3. Tools 定义 (getResume, saveAnalysis, searchJobRequirements)
+// 4. 自动注册
+```
+
+**任务 3: 实现 InterviewCoordinator Agent**
+
+文件: `apps/web/src/agents/builtin/interview-coordinator.ts`
+
+```typescript
+// 实现内容参考第 3.4 节
+// 关键点:
+// 1. 定义子 Agent (TechInterviewer, HRInterviewer, SalaryAdvisor)
+// 2. 协调者 Agent 实现
+// 3. Handoff 配置
+// 4. Swarm 模式支持
+```
+
+**任务 4: 实现 TechInterviewer Agent**
+
+文件: `apps/web/src/agents/builtin/tech-interviewer.ts`
+
+```typescript
+import { agent, instructions } from '@deepagents/agent';
+import { openai } from '@ai-sdk/openai';
+import { tool } from 'ai';
+import { z } from 'zod';
+
+export const techInterviewerManifest = {
+  id: 'tech-interviewer',
+  name: '技术面试官',
+  description: '深入评估候选人的技术能力和解决问题的能力',
+  capabilities: ['technical-evaluation', 'coding-assessment', 'system-design'],
+  model: openai('gpt-4o'),
+  category: 'builtin',
+  permissions: ['candidate:read', 'interview:write'],
+};
+
+export function createTechInterviewerAgent() {
+  return agent({
+    name: techInterviewerManifest.id,
+    model: techInterviewerManifest.model,
+    prompt: instructions({
+      purpose: ['你是一位资深技术面试官', '负责深入评估候选人的技术能力'],
+      routine: [
+        '根据简历中的技术栈设计针对性问题',
+        '深入考察候选人的技术深度和广度',
+        '评估解决问题的能力和思维方式',
+        '给出客观的技术能力评分（1-10分）',
+        '列出需要进一步验证的技术点',
+      ],
+    }),
+    tools: {
+      getTechnicalQuestions: tool({
+        description: '根据技术栈生成面试问题',
+        parameters: z.object({
+          techStack: z.array(z.string()).describe('技术栈列表'),
+          level: z.enum(['junior', 'mid', 'senior']).describe('候选人级别'),
+        }),
+        execute: async ({ techStack, level }) => {
+          // 实现问题生成逻辑
+          return { questions: [] };
+        },
+      }),
+    },
+    handoffDescription: '当需要评估候选人技术能力时使用',
+  });
+}
+
+import { agentHost } from '../host';
+agentHost.register(techInterviewerManifest, createTechInterviewerAgent);
+```
+
+**任务 5: 实现 HRInterviewer Agent**
+
+文件: `apps/web/src/agents/builtin/hr-interviewer.ts`
+
+```typescript
+// 类似 TechInterviewer 的结构
+// 重点关注软技能、文化契合度、职业规划等
+```
+
+**任务 6: 实现 SalaryAdvisor Agent**
+
+文件: `apps/web/src/agents/builtin/salary-advisor.ts`
+
+```typescript
+// 类似结构
+// 重点关注薪资建议、市场分析、Offer 方案等
+```
+
+**任务 7: 实现 SearchAssistant Agent**
+
+文件: `apps/web/src/agents/builtin/search-assistant.ts`
+
+```typescript
+// 实现候选人搜索、筛选、排序等功能
+```
+
+**任务 8: 创建自动导入文件**
+
+文件: `apps/web/src/agents/builtin/index.ts`
+
+```typescript
+// 自动导入所有内置 Agent
+import './resume-analyzer';
+import './interview-coordinator';
+import './tech-interviewer';
+import './hr-interviewer';
+import './salary-advisor';
+import './search-assistant';
+```
+
+**验收标准:**
+- [ ] 所有 Agent 可以正确注册到 AgentHost
+- [ ] ResumeAnalyzer 可以分析简历并保存结果
+- [ ] InterviewCoordinator 可以协调多个子 Agent
+- [ ] Swarm 模式下 Handoff 正常工作
+- [ ] 所有 Agent 的 TypeScript 类型检查通过
+- [ ] 可以在控制台列出所有已注册的 Agent
+
+</details>
+
+##### 3.3 创建 wt-ui-integration
+
+```bash
+# 创建 UI 集成 worktree
+git worktree add wt-ui-integration -b wt/ui-integration
+
+# 进入 worktree
+cd wt-ui-integration
+
+# 设置上游分支
+git branch --set-upstream-to=origin/feature/agent-extension wt/ui-integration
+
+# 返回 worktrees 目录
+cd ..
+```
+
+**作用范围:**
+- `apps/web/src/components/lui/` - LUI 组件
+  - `AgentChat.vue` - Agent 对话主组件
+  - `AgentSelector.vue` - Agent 选择器
+  - `HandoffBanner.vue` - Handoff 指示器
+  - `ActiveAgentIndicator.vue` - 活跃 Agent 指示器
+- `apps/web/src/stores/agent.ts` - Agent Store (Pinia)
+- `apps/web/src/composables/useAgent.ts` - Agent Composables
+
+**实施细节:**
+
+<details>
+<summary>📋 wt-ui-integration 详细任务清单</summary>
+
+**前置依赖:**
+- wt-core-infrastructure 已完成并合并
+- wt-builtin-agents 已完成并合并
+
+**任务 1: 实现 Agent Store**
+
+文件: `apps/web/src/stores/agent.ts`
+
+```typescript
+// 实现内容参考第 4.2 节
+// 关键点:
+// 1. currentAgentId 状态
+// 2. isSwarmMode 状态
+// 3. recentAgents 和 favoriteAgents
+// 4. allAgents, currentAgent 等 getters
+// 5. setCurrentAgent, toggleFavorite 等 actions
+```
+
+**任务 2: 实现 AgentChat.vue 组件**
+
+文件: `apps/web/src/components/lui/AgentChat.vue`
+
+```vue
+<!-- 实现内容参考第 4.1 节 -->
+<!-- 关键点:
+1. Agent 选择器集成
+2. Swarm 模式切换
+3. 消息列表渲染
+4. 流式响应处理
+5. Handoff 指示器
+6. 输入框和发送逻辑
+-->
+```
+
+**任务 3: 实现 AgentSelector.vue 组件**
+
+文件: `apps/web/src/components/lui/AgentSelector.vue`
+
+```vue
+<template>
+  <div class="agent-selector">
+    <select v-model="selectedAgentId" :disabled="disabled">
+      <optgroup label="内置 Agent">
+        <option 
+          v-for="agent in builtinAgents" 
+          :key="agent.id" 
+          :value="agent.id"
+        >
+          {{ agent.name }}
+        </option>
+      </optgroup>
+      <optgroup label="扩展 Agent" v-if="extensionAgents.length">
+        <option 
+          v-for="agent in extensionAgents" 
+          :key="agent.id" 
+          :value="agent.id"
+        >
+          {{ agent.name }}
+        </option>
+      </optgroup>
+    </select>
+    
+    <div class="agent-info" v-if="currentAgent">
+      <p class="description">{{ currentAgent.description }}</p>
+      <div class="capabilities">
+        <span 
+          v-for="cap in currentAgent.capabilities" 
+          :key="cap" 
+          class="capability-tag"
+        >
+          {{ cap }}
+        </span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+import { agentHost } from '@/agents/host';
+import type { AgentManifest } from '@/agents/host';
+
+const props = defineProps<{
+  modelValue: string;
+  disabled?: boolean;
+}>();
+
+const emit = defineEmits<{
+  'update:modelValue': [value: string];
+}>();
+
+const selectedAgentId = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value),
+});
+
+const builtinAgents = computed(() => agentHost.listByCategory('builtin'));
+const extensionAgents = computed(() => agentHost.listByCategory('extension'));
+const currentAgent = computed(() => agentHost.getManifest(selectedAgentId.value));
+</script>
+```
+
+**任务 4: 实现 HandoffBanner.vue 组件**
+
+文件: `apps/web/src/components/lui/HandoffBanner.vue`
+
+```vue
+<template>
+  <div class="handoff-banner">
+    <div class="handoff-icon">↔️</div>
+    <div class="handoff-info">
+      <span class="from-agent">{{ fromAgentName }}</span>
+      <span class="arrow">→</span>
+      <span class="to-agent">{{ toAgentName }}</span>
+    </div>
+    <div class="handoff-reason" v-if="reason">{{ reason }}</div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+import { agentHost } from '@/agents/host';
+
+const props = defineProps<{
+  from: string;
+  to: string;
+  reason?: string;
+}>();
+
+const fromAgentName = computed(() => 
+  agentHost.getManifest(props.from)?.name || props.from
+);
+
+const toAgentName = computed(() => 
+  agentHost.getManifest(props.to)?.name || props.to
+);
+</script>
+
+<style scoped>
+.handoff-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: linear-gradient(90deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-left: 3px solid #0ea5e9;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+.handoff-icon {
+  font-size: 20px;
+}
+
+.handoff-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.from-agent, .to-agent {
+  font-weight: 600;
+  color: #0284c7;
+}
+
+.arrow {
+  color: #94a3b8;
+}
+
+.handoff-reason {
+  font-size: 12px;
+  color: #64748b;
+  margin-left: auto;
+}
+</style>
+```
+
+**任务 5: 实现 ActiveAgentIndicator.vue 组件**
+
+文件: `apps/web/src/components/lui/ActiveAgentIndicator.vue`
+
+```vue
+<template>
+  <div class="active-agent-indicator">
+    <div class="agent-avatar" :style="{ backgroundColor: agent.ui?.color }">
+      {{ agent.ui?.icon || '🤖' }}
+    </div>
+    <div class="agent-name">{{ agent.name }}</div>
+    <div class="pulse-dot"></div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import type { AgentManifest } from '@/agents/host';
+
+defineProps<{
+  agent: AgentManifest;
+}>();
+</script>
+
+<style scoped>
+.active-agent-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.agent-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.agent-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+</style>
+```
+
+**任务 6: 实现 useAgent Composable**
+
+文件: `apps/web/src/composables/useAgent.ts`
+
+```typescript
+import { ref, computed } from 'vue';
+import { agentHost } from '@/agents/host';
+import { useAgentContext } from '@/agents/context-bridge';
+import type { AgentManifest } from '@/agents/host';
+
+export function useAgentChat(agentId: string) {
+  const messages = ref<Array<{
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    agentId?: string;
+  }>>([]);
+  
+  const isStreaming = ref(false);
+  const streamingContent = ref('');
+  const abortController = ref<AbortController | null>(null);
+  
+  const agentContext = useAgentContext();
+  const currentAgent = computed(() => agentHost.getManifest(agentId));
+  
+  async function sendMessage(content: string) {
+    if (!content.trim() || isStreaming.value) return;
+    
+    messages.value.push({ role: 'user', content });
+    
+    isStreaming.value = true;
+    streamingContent.value = '';
+    abortController.value = new AbortController();
+    
+    try {
+      const stream = agentHost.stream(agentId, content, agentContext.value);
+      
+      for await (const chunk of stream) {
+        if (abortController.value?.signal.aborted) {
+          throw new Error('AbortError');
+        }
+        streamingContent.value += chunk;
+      }
+      
+      messages.value.push({
+        role: 'assistant',
+        content: streamingContent.value,
+        agentId,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        messages.value.push({
+          role: 'assistant',
+          content: streamingContent.value + '\n\n[已中断]',
+          agentId,
+        });
+      } else {
+        throw error;
+      }
+    } finally {
+      isStreaming.value = false;
+      streamingContent.value = '';
+      abortController.value = null;
+    }
+  }
+  
+  function stop() {
+    abortController.value?.abort();
+  }
+  
+  return {
+    messages,
+    isStreaming,
+    streamingContent,
+    currentAgent,
+    sendMessage,
+    stop,
+  };
+}
+```
+
+**验收标准:**
+- [ ] Agent Store 可以正确管理 Agent 状态
+- [ ] AgentChat 组件可以正常渲染
+- [ ] AgentSelector 可以正确列出和选择 Agent
+- [ ] HandoffBanner 可以正确显示 Handoff 信息
+- [ ] ActiveAgentIndicator 可以正确显示当前活跃 Agent
+- [ ] 流式响应正常工作
+- [ ] 可以中断流式响应
+- [ ] 所有组件的 TypeScript 类型检查通过
+
+</details>
+
+##### 3.4 创建 wt-extension-system
+
+```bash
+# 创建扩展系统 worktree
+git worktree add wt-extension-system -b wt/extension-system
+
+# 进入 worktree
+cd wt-extension-system
+
+# 设置上游分支
+git branch --set-upstream-to=origin/feature/agent-extension wt/extension-system
+
+# 返回 worktrees 目录
+cd ..
+```
+
+**作用范围:**
+- `apps/web/src/agents/extensions/` - 扩展系统
+  - `loader.ts` - 扩展加载器
+  - `registry.ts` - 扩展注册表
+- `apps/web/src/views/ExtensionManager.vue` - 扩展管理界面
+- `docs/extension-development.md` - 扩展开发文档
+
+**实施细节:**
+
+<details>
+<summary>📋 wt-extension-system 详细任务清单</summary>
+
+**前置依赖:**
+- wt-core-infrastructure 已完成并合并
+
+**任务 1: 实现 AgentExtensionLoader**
+
+文件: `apps/web/src/agents/extensions/loader.ts`
+
+```typescript
+// 实现内容参考第 5.1 节
+// 关键点:
+// 1. loadFromURL - 从远程 URL 加载
+// 2. loadFromFile - 从本地文件加载
+// 3. validateManifest - 验证 Manifest
+// 4. validatePermissions - 验证权限
+// 5. unload - 卸载扩展
+```
+
+**任务 2: 实现扩展注册表**
+
+文件: `apps/web/src/agents/extensions/registry.ts`
+
+```typescript
+import { ref } from 'vue';
+import type { AgentManifest } from '../host';
+
+interface ExtensionRegistry {
+  id: string;
+  manifest: AgentManifest;
+  url?: string;
+  loadedAt: Date;
+  status: 'active' | 'inactive' | 'error';
+  error?: string;
+}
+
+class ExtensionRegistryManager {
+  private registry = ref<Map<string, ExtensionRegistry>>(new Map());
+  
+  register(extension: ExtensionRegistry) {
+    this.registry.value.set(extension.id, extension);
+  }
+  
+  unregister(extensionId: string) {
+    this.registry.value.delete(extensionId);
+  }
+  
+  get(extensionId: string): ExtensionRegistry | undefined {
+    return this.registry.value.get(extensionId);
+  }
+  
+  list(): ExtensionRegistry[] {
+    return Array.from(this.registry.value.values());
+  }
+  
+  listByStatus(status: ExtensionRegistry['status']): ExtensionRegistry[] {
+    return this.list().filter(e => e.status === status);
+  }
+}
+
+export const extensionRegistry = new ExtensionRegistryManager();
+```
+
+**任务 3: 实现扩展管理界面**
+
+文件: `apps/web/src/views/ExtensionManager.vue`
+
+```vue
+<template>
+  <div class="extension-manager">
+    <div class="header">
+      <h2>Agent 扩展管理</h2>
+      <button @click="showLoadDialog = true" class="btn-primary">
+        加载扩展
+      </button>
+    </div>
+    
+    <!-- 扩展列表 -->
+    <div class="extension-list">
+      <div 
+        v-for="ext in extensions" 
+        :key="ext.id" 
+        class="extension-card"
+        :class="{ inactive: ext.status === 'inactive', error: ext.status === 'error' }"
+      >
+        <div class="extension-header">
+          <h3>{{ ext.manifest.name }}</h3>
+          <span class="status-badge" :class="ext.status">
+            {{ statusText(ext.status) }}
+          </span>
+        </div>
+        
+        <p class="description">{{ ext.manifest.description }}</p>
+        
+        <div class="capabilities">
+          <span 
+            v-for="cap in ext.manifest.capabilities" 
+            :key="cap" 
+            class="capability-tag"
+          >
+            {{ cap }}
+          </span>
+        </div>
+        
+        <div class="permissions">
+          <strong>权限:</strong>
+          <span v-for="perm in ext.manifest.permissions" :key="perm" class="permission-tag">
+            {{ perm }}
+          </span>
+        </div>
+        
+        <div class="actions">
+          <button 
+            v-if="ext.status === 'active'" 
+            @click="deactivateExtension(ext.id)"
+            class="btn-secondary"
+          >
+            停用
+          </button>
+          <button 
+            v-else-if="ext.status === 'inactive'" 
+            @click="activateExtension(ext.id)"
+            class="btn-secondary"
+          >
+            激活
+          </button>
+          <button @click="unloadExtension(ext.id)" class="btn-danger">
+            卸载
+          </button>
+        </div>
+        
+        <div v-if="ext.error" class="error-message">
+          {{ ext.error }}
+        </div>
+      </div>
+    </div>
+    
+    <!-- 加载对话框 -->
+    <div v-if="showLoadDialog" class="dialog-overlay">
+      <div class="dialog">
+        <h3>加载 Agent 扩展</h3>
+        
+        <div class="form-group">
+          <label>扩展 URL (HTTPS)</label>
+          <input 
+            v-model="loadUrl" 
+            type="url" 
+            placeholder="https://example.com/agent-extension.js"
+          />
+        </div>
+        
+        <div class="form-group">
+          <label>或选择本地文件</label>
+          <input type="file" @change="handleFileSelect" accept=".js,.ts" />
+        </div>
+        
+        <div class="form-group">
+          <label>权限白名单 (可选)</label>
+          <select v-model="selectedPermissions" multiple>
+            <option value="candidate:read">candidate:read</option>
+            <option value="candidate:write">candidate:write</option>
+            <option value="interview:read">interview:read</option>
+            <option value="interview:write">interview:write</option>
+            <option value="resume:read">resume:read</option>
+            <option value="system:read">system:read</option>
+          </select>
+        </div>
+        
+        <div class="dialog-actions">
+          <button @click="showLoadDialog = false" class="btn-secondary">
+            取消
+          </button>
+          <button @click="loadExtension" class="btn-primary" :disabled="!canLoad">
+            加载
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import { extensionLoader } from '@/agents/extensions/loader';
+import { extensionRegistry } from '@/agents/extensions/registry';
+
+const showLoadDialog = ref(false);
+const loadUrl = ref('');
+const selectedFile = ref<File | null>(null);
+const selectedPermissions = ref<string[]>([]);
+
+const extensions = computed(() => extensionRegistry.list());
+
+const canLoad = computed(() => loadUrl.value || selectedFile.value);
+
+function statusText(status: string) {
+  const map: Record<string, string> = {
+    active: '已激活',
+    inactive: '已停用',
+    error: '错误',
+  };
+  return map[status] || status;
+}
+
+async function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (target.files && target.files[0]) {
+    selectedFile.value = target.files[0];
+  }
+}
+
+async function loadExtension() {
+  try {
+    let extension;
+    
+    if (loadUrl.value) {
+      extension = await extensionLoader.loadFromURL(loadUrl.value, {
+        allowedPermissions: selectedPermissions.value.length > 0 
+          ? selectedPermissions.value 
+          : undefined,
+      });
+    } else if (selectedFile.value) {
+      extension = await extensionLoader.loadFromFile(selectedFile.value, {
+        allowedPermissions: selectedPermissions.value.length > 0 
+          ? selectedPermissions.value 
+          : undefined,
+      });
+    }
+    
+    if (extension) {
+      extensionRegistry.register({
+        id: extension.manifest.id,
+        manifest: extension.manifest,
+        url: loadUrl.value || undefined,
+        loadedAt: new Date(),
+        status: 'active',
+      });
+    }
+    
+    showLoadDialog.value = false;
+    loadUrl.value = '';
+    selectedFile.value = null;
+    selectedPermissions.value = [];
+  } catch (error) {
+    alert(`加载失败: ${error instanceof Error ? error.message : '未知错误'}`);
+  }
+}
+
+async function unloadExtension(extensionId: string) {
+  if (confirm('确定要卸载此扩展吗?')) {
+    extensionLoader.unload(extensionId);
+    extensionRegistry.unregister(extensionId);
+  }
+}
+
+function activateExtension(extensionId: string) {
+  const ext = extensionRegistry.get(extensionId);
+  if (ext) {
+    ext.status = 'active';
+  }
+}
+
+function deactivateExtension(extensionId: string) {
+  const ext = extensionRegistry.get(extensionId);
+  if (ext) {
+    ext.status = 'inactive';
+  }
+}
+</script>
+```
+
+**任务 4: 编写扩展开发文档**
+
+文件: `docs/extension-development.md`
+
+```markdown
+# Agent 扩展开发指南
+
+## 概述
+
+本文档介绍如何开发 IMS Agent 扩展。
+
+## 扩展结构
+
+一个 Agent 扩展是一个 ESM 模块,需要导出以下内容:
+
+\`\`\`typescript
+import type { AgentManifest } from '@ims/web/agents';
+import type { Agent } from '@deepagents/agent';
+
+interface AgentExtension {
+  manifest: AgentManifest;
+  factory: () => Agent;
+  ui?: {
+    settingsComponent?: () => Promise<Component>;
+    messageRenderer?: () => Promise<Component>;
+  };
+}
+
+export default {
+  manifest: { ... },
+  factory: () => { ... },
+} satisfies AgentExtension;
+\`\`\`
+
+## 示例: 自定义简历分析 Agent
+
+\`\`\`typescript
+import { agent, instructions } from '@deepagents/agent';
+import { openai } from '@ai-sdk/openai';
+import { tool } from 'ai';
+import { z } from 'zod';
+import type { AgentManifest } from '@ims/web/agents';
+
+const manifest: AgentManifest = {
+  id: 'custom-resume-analyzer',
+  name: '自定义简历分析',
+  description: '使用自定义规则分析简历',
+  capabilities: ['resume-analysis', 'custom-rules'],
+  model: openai('gpt-4o'),
+  category: 'extension',
+  permissions: ['candidate:read', 'resume:read'],
+};
+
+function factory() {
+  return agent({
+    name: manifest.id,
+    model: manifest.model,
+    prompt: instructions({
+      purpose: ['你是自定义简历分析助手'],
+      routine: [
+        '读取简历内容',
+        '应用自定义分析规则',
+        '生成分析报告',
+      ],
+    }),
+    tools: {
+      customAnalysis: tool({
+        description: '应用自定义分析规则',
+        parameters: z.object({
+          rules: z.array(z.string()).describe('自定义规则列表'),
+        }),
+        execute: async ({ rules }) => {
+          // 实现自定义分析逻辑
+          return { analysis: '...' };
+        },
+      }),
+    },
+  });
+}
+
+export default {
+  manifest,
+  factory,
+} satisfies AgentExtension;
+\`\`\`
+
+## 发布扩展
+
+1. 将扩展打包为 ESM 模块
+2. 部署到 HTTPS 服务器
+3. 在 IMS 扩展管理界面中加载
+
+## 安全要求
+
+- 必须通过 HTTPS 加载
+- 必须声明所需权限
+- 权限会被运行时校验
+```
+
+**验收标准:**
+- [ ] AgentExtensionLoader 可以从 URL 加载扩展
+- [ ] AgentExtensionLoader 可以从本地文件加载扩展
+- [ ] 权限系统可以正确限制扩展权限
+- [ ] 扩展管理界面可以正常工作
+- [ ] 可以加载、激活、停用、卸载扩展
+- [ ] 扩展开发文档清晰易懂
+- [ ] 所有 TypeScript 类型检查通过
+
+</details>
+
+### 11.4 Worktree 开发流程
+
+#### 11.4.1 开发前准备
+
+```bash
+# 1. 确保所有 worktree 都基于最新的 feature/agent-extension 分支
+cd /path/to/IMS/.worktrees/wt-core-infrastructure
+git pull origin feature/agent-extension
+
+cd /path/to/IMS/.worktrees/wt-builtin-agents
+git pull origin feature/agent-extension
+
+cd /path/to/IMS/.worktrees/wt-ui-integration
+git pull origin feature/agent-extension
+
+cd /path/to/IMS/.worktrees/wt-extension-system
+git pull origin feature/agent-extension
+```
+
+#### 11.4.2 并行开发
+
+每个 worktree 可以独立开发,互不干扰:
+
+```bash
+# 开发者 A: 在 wt-core-infrastructure 中工作
+cd /path/to/IMS/.worktrees/wt-core-infrastructure
+# ... 实现核心基础设施 ...
+
+# 开发者 B: 在 wt-builtin-agents 中工作
+cd /path/to/IMS/.worktrees/wt-builtin-agents
+# ... 实现内置 Agent ...
+
+# 开发者 C: 在 wt-ui-integration 中工作
+cd /path/to/IMS/.worktrees/wt-ui-integration
+# ... 实现 UI 组件 ...
+
+# 开发者 D: 在 wt-extension-system 中工作
+cd /path/to/IMS/.worktrees/wt-extension-system
+# ... 实现扩展系统 ...
+```
+
+#### 11.4.3 提交和推送
+
+```bash
+# 在每个 worktree 中提交代码
+cd /path/to/IMS/.worktrees/wt-core-infrastructure
+git add .
+git commit -m "feat(agents): implement AgentHost core class"
+git push origin wt/core-infrastructure
+
+# 其他 worktree 类似
+```
+
+### 11.5 合并流程
+
+#### 11.5.1 合并顺序
+
+按照依赖关系,合并顺序如下:
+
+1. **wt-core-infrastructure** (无依赖,最先合并)
+2. **wt-builtin-agents** (依赖 core-infrastructure)
+3. **wt-ui-integration** (依赖 core-infrastructure 和 builtin-agents)
+4. **wt-extension-system** (依赖 core-infrastructure)
+
+#### 11.5.2 合并步骤
+
+##### 步骤 1: 合并 wt-core-infrastructure
+
+```bash
+# 切换到主功能分支
+cd /path/to/IMS
+git checkout feature/agent-extension
+
+# 合并 wt-core-infrastructure
+git merge wt/core-infrastructure --no-ff
+
+# 解决冲突(如果有)
+# ...
+
+# 推送到远程
+git push origin feature/agent-extension
+
+# 通知其他开发者更新
+# "wt-core-infrastructure 已合并,请更新其他 worktree"
+```
+
+##### 步骤 2: 更新其他 worktree
+
+```bash
+# 更新 wt-builtin-agents
+cd /path/to/IMS/.worktrees/wt-builtin-agents
+git pull origin feature/agent-extension
+
+# 更新 wt-ui-integration
+cd /path/to/IMS/.worktrees/wt-ui-integration
+git pull origin feature/agent-extension
+
+# 更新 wt-extension-system
+cd /path/to/IMS/.worktrees/wt-extension-system
+git pull origin feature/agent-extension
+```
+
+##### 步骤 3: 合并 wt-builtin-agents
+
+```bash
+cd /path/to/IMS
+git checkout feature/agent-extension
+git merge wt/builtin-agents --no-ff
+# 解决冲突
+git push origin feature/agent-extension
+```
+
+##### 步骤 4: 合并 wt-ui-integration
+
+```bash
+cd /path/to/IMS
+git checkout feature/agent-extension
+git merge wt/ui-integration --no-ff
+# 解决冲突
+git push origin feature/agent-extension
+```
+
+##### 步骤 5: 合并 wt-extension-system
+
+```bash
+cd /path/to/IMS
+git checkout feature/agent-extension
+git merge wt/extension-system --no-ff
+# 解决冲突
+git push origin feature/agent-extension
+```
+
+##### 步骤 6: 合并到 master
+
+```bash
+# 创建 Pull Request
+gh pr create --base master --head feature/agent-extension \
+  --title "feat: Agent Extension Architecture" \
+  --body "实现 Agent 扩展架构,支持多 Agent 协作和第三方扩展"
+
+# 等待 Code Review 和 CI 通过
+
+# 合并 PR
+gh pr merge --squash
+```
+
+### 11.6 清理 Worktree
+
+合并完成后,清理 worktree:
+
+```bash
+# 列出所有 worktree
+git worktree list
+
+# 删除 worktree
+git worktree remove .worktrees/wt-core-infrastructure
+git worktree remove .worktrees/wt-builtin-agents
+git worktree remove .worktrees/wt-ui-integration
+git worktree remove .worktrees/wt-extension-system
+
+# 删除分支
+git branch -d wt/core-infrastructure
+git branch -d wt/builtin-agents
+git branch -d wt/ui-integration
+git branch -d wt/extension-system
+
+# 删除远程分支
+git push origin --delete wt/core-infrastructure
+git push origin --delete wt/builtin-agents
+git push origin --delete wt/ui-integration
+git push origin --delete wt/extension-system
+
+# 删除 .worktrees 目录
+rm -rf .worktrees
+```
+
+### 11.7 冲突处理策略
+
+#### 11.7.1 常见冲突场景
+
+1. **package.json 冲突** - 多个 worktree 都修改了依赖
+2. **vite.config.ts 冲突** - 多个 worktree 都修改了配置
+3. **agents/index.ts 冲突** - 多个 worktree 都添加了导出
+
+#### 11.7.2 解决方案
+
+**方案 1: 提前约定**
+
+- 在实施前,明确每个 worktree 可以修改的文件范围
+- 共享文件(如 package.json)由最后一个合并的 worktree 统一处理
+
+**方案 2: 中间层抽象**
+
+```typescript
+// agents/index.ts
+// 使用 barrel export,每个 worktree 只需添加自己的导出
+export * from './host';
+export * from './context-bridge';
+export * from './permissions';
+// builtin agents 在 builtin/index.ts 中导出
+export * from './builtin';
+// extensions 在 extensions/index.ts 中导出
+export * from './extensions';
+```
+
+**方案 3: 合并时手动解决**
+
+```bash
+# 合并时遇到冲突
+git merge wt/builtin-agents
+
+# 查看冲突文件
+git status
+
+# 手动编辑冲突文件
+# ...
+
+# 标记为已解决
+git add <conflicted-file>
+
+# 继续合并
+git merge --continue
+```
+
+### 11.8 验收清单
+
+#### 11.8.1 功能验收
+
+- [ ] AgentHost 可以正确注册和管理 Agent
+- [ ] Context Bridge 可以正确同步 IMS 业务状态
+- [ ] 权限系统可以正确限制 Agent 权限
+- [ ] 所有内置 Agent 可以正常工作
+- [ ] Swarm 多 Agent 协作正常
+- [ ] UI 组件可以正确渲染和交互
+- [ ] 流式响应正常工作
+- [ ] Agent 切换功能正常
+- [ ] Handoff 指示器正常显示
+- [ ] 扩展系统可以加载第三方 Agent
+- [ ] 扩展权限被正确限制
+
+#### 11.8.2 代码质量验收
+
+- [ ] 所有 TypeScript 类型检查通过
+- [ ] 无 ESLint 错误
+- [ ] 代码格式符合项目规范
+- [ ] 无 console.log 调试代码
+- [ ] 关键函数有注释
+- [ ] 复杂逻辑有文档说明
+
+#### 11.8.3 性能验收
+
+- [ ] Agent 懒加载正常工作
+- [ ] 流式响应无明显延迟
+- [ ] UI 渲染流畅,无明显卡顿
+- [ ] 内存占用合理
+
+#### 11.8.4 安全验收
+
+- [ ] 扩展必须通过 HTTPS 加载
+- [ ] 权限系统正确限制 Agent 访问
+- [ ] 无敏感信息泄露
+- [ ] CSP 配置正确
+
+### 11.9 时间估算
+
+| Worktree | 开发时间 | 测试时间 | 总计 |
+|----------|---------|---------|------|
+| wt-core-infrastructure | 3 天 | 1 天 | 4 天 |
+| wt-builtin-agents | 5 天 | 2 天 | 7 天 |
+| wt-ui-integration | 4 天 | 2 天 | 6 天 |
+| wt-extension-system | 3 天 | 1 天 | 4 天 |
+| **合并和集成测试** | - | - | 3 天 |
+| **总计** | **15 天** | **6 天** | **24 天** |
+
+### 11.10 风险与应对
+
+| 风险 | 影响 | 可能性 | 应对策略 |
+|------|------|--------|----------|
+| Worktree 之间依赖关系复杂 | 高 | 中 | 明确依赖顺序,提前约定接口 |
+| 合并时冲突频繁 | 中 | 中 | 提前约定文件修改范围,使用中间层抽象 |
+| DeepAgents 库 API 变化 | 高 | 低 | 封装抽象层,便于适配 |
+| 开发人员不足 | 中 | 中 | 优先完成 P0 任务,P1 任务可延后 |
+| 测试覆盖不足 | 中 | 中 | 每个阶段完成后进行验收测试 |
+
+---
+
+## 12. 总结
+
+本设计方案提供了一个完整的 Agent 扩展架构,支持:
+
+1. **多 Agent 协作** - 通过 DeepAgents Swarm 模式实现
+2. **业务状态桥接** - 通过 Context Bridge 同步 IMS 状态
+3. **流式响应** - 保持与现有 LUI 组件一致的体验
+4. **扩展性** - 支持第三方 Agent 插件
+5. **类型安全** - 全链路 TypeScript 支持
+
+通过多 Worktree 并行开发方案,可以:
+
+1. **提高开发效率** - 多人并行开发,互不干扰
+2. **减少代码冲突** - 每个 worktree 负责独立模块
+3. **便于代码审查** - 每个 worktree 独立提交和审查
+4. **降低风险** - 独立开发,逐步合并
+
+建议按照本文档的实施步骤,逐步完成 Agent 扩展功能的开发。
