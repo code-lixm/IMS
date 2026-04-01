@@ -22,7 +22,7 @@ export interface AgentManifest {
   name: string;
   description: string;
   capabilities: string[];
-  model: string; // 模型名称,如 'gpt-4o'
+  model: any; // LanguageModelV3 from @ai-sdk/openai
   category: 'builtin' | 'extension';
   permissions: AgentPermission[];
   handoffTargets?: string[]; // 可移交的目标 Agent ID
