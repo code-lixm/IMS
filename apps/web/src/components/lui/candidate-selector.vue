@@ -15,11 +15,13 @@
       <Button
         variant="outline"
         size="sm"
-        class="h-8 rounded-md gap-1 border-border/60 bg-background px-1.5 text-xs font-medium leading-none text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground"
+        class="h-8 max-w-[16rem] rounded-md gap-1 border-border/60 bg-background px-1.5 text-xs font-medium leading-none text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground"
         @click="open = true"
       >
         <User class="h-3.5 w-3.5" />
-        <span class="hidden sm:inline">候选人</span>
+        <span class="hidden max-w-[11rem] truncate sm:inline" :title="currentCandidate?.name">
+          {{ currentCandidate?.name ?? "候选人" }}
+        </span>
         <ChevronsUpDown class="ml-auto h-3.5 w-3.5 opacity-70" />
       </Button>
       <Button variant="ghost" size="icon" class="h-8 w-8" @click="handleRemove">

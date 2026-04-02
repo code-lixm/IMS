@@ -13,7 +13,7 @@ mkdirSync(FILES_DIR, { recursive: true });
 
 export const config = {
   host: process.env.IMS_HOST || "127.0.0.1",
-  port: parseInt(process.env.IMS_PORT || "3000", 10),
+  port: parseInt(process.env.IMS_PORT || "9092", 10),
   runtimeDir: RUNTIME_DIR,
   dataDir: DATA_DIR,
   filesDir: FILES_DIR,

@@ -29,7 +29,7 @@ export class DiscoveryService {
   private localApiPort: number;
   private discovering = false;
 
-  constructor(deviceName: string, apiPort = 3000) {
+  constructor(deviceName: string, apiPort = 9092) {
     this.localDeviceId = DiscoveryService.loadOrCreateDeviceId();
     this.localDeviceName = deviceName;
     this.localApiPort = apiPort;

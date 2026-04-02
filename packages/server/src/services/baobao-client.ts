@@ -311,6 +311,27 @@ export class BaobaoClient {
   }
 
   // -------------------------------------------------------------------------
+  // Auth APIs
+  // -------------------------------------------------------------------------
+
+  /**
+   * Logout from baobao server
+   */
+  async logout(): Promise<void> {
+    const requestTime = Date.now();
+    await this.request<{
+      errno: number;
+      errmsg: string;
+      data?: unknown;
+    }>(`/auth/user/logout?t=${requestTime}`, {
+      method: "POST",
+      base: "api",
+    });
+    // Note: baobao logout API returns errno 0 on success
+    // We don't need to check the response as the server-side session is cleared
+  }
+
+  // -------------------------------------------------------------------------
   // File APIs
   // -------------------------------------------------------------------------
 

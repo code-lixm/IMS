@@ -125,7 +125,7 @@ async function requestEnvelope<T>(path: string, options: BaseRequestOptions = {}
   }
 }
 
-async function requestRaw(path: string, options: BaseRequestOptions = {}): Promise<Response> {
+export async function requestRaw(path: string, options: BaseRequestOptions = {}): Promise<Response> {
   const { timeoutMs, signal, headers, ...rest } = options;
   const { signal: mergedSignal, cleanup } = mergeSignals(signal, timeoutMs);
 

@@ -536,10 +536,12 @@ export interface LuiPresetProviderListData {
 
 export interface LuiSettingsData {
   customEndpoints: LuiGatewayEndpointData[];
+  defaultEndpointId: string | null;
 }
 
 export interface UpdateLuiSettingsInput {
   customEndpoints: LuiGatewayEndpointData[];
+  defaultEndpointId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -550,6 +552,7 @@ export interface AgentData {
   id: string;
   name: string;
   description: string | null;
+  engine: "builtin" | "deepagents";
   mode: "all" | "chat" | "ask" | "workflow";
   temperature: number;
   systemPrompt: string | null;
@@ -566,6 +569,7 @@ export interface AgentListData {
 export interface CreateAgentInput {
   name: string;
   description?: string;
+  engine?: "builtin" | "deepagents";
   mode?: "all" | "chat" | "ask" | "workflow";
   temperature?: number;
   systemPrompt?: string;
@@ -575,6 +579,7 @@ export interface CreateAgentInput {
 
 export interface UpdateAgentInput {
   description?: string;
+  engine?: "builtin" | "deepagents";
   mode?: "all" | "chat" | "ask" | "workflow";
   temperature?: number;
   systemPrompt?: string;

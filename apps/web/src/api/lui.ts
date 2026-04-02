@@ -217,7 +217,7 @@ export const luiApi = {
   },
 
   getAgent(id: string) {
-    return api<{ id: string; name: string; description: string | null; mode: string; temperature: number; systemPrompt: string | null; tools: string[]; isDefault: boolean }>(`/api/lui/agents/${id}`);
+    return api<{ id: string; name: string; description: string | null; engine: "builtin" | "deepagents"; mode: string; temperature: number; systemPrompt: string | null; tools: string[]; isDefault: boolean }>(`/api/lui/agents/${id}`);
   },
 
   createAgent(input: CreateAgentInput) {

@@ -3,7 +3,9 @@ import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import {
+  loadDefaultGatewayEndpointIdFromStorage,
   loadGatewayEndpointsFromStorage,
+  saveDefaultGatewayEndpointIdToStorage,
   saveGatewayEndpointsToStorage,
   type GatewayEndpoint,
 } from "@/lib/ai-gateway-config";
@@ -12,6 +14,7 @@ import type { ModelConfig, ModelProvider } from "./types";
 interface LuiModelModuleOptions {
   providers: Ref<ModelProvider[]>;
   customEndpoints: Ref<GatewayEndpoint[]>;
+  defaultEndpointId: Ref<string | null>;
   selectedId: Ref<string | null>;
   selectedProviderId: Ref<string | null>;
   isLoading: Ref<boolean>;
@@ -19,6 +22,7 @@ interface LuiModelModuleOptions {
 
 export interface LuiModelModule {
   customEndpoints: Ref<GatewayEndpoint[]>;
+  defaultEndpointId: Ref<string | null>;
   models: ComputedRef<ModelConfig[]>;
   selectedModel: ComputedRef<ModelConfig | undefined>;
   getModelById: (id: string) => ModelConfig | undefined;
@@ -26,12 +30,13 @@ export interface LuiModelModule {
   registerCustomEndpoint: (endpoint: GatewayEndpoint) => Promise<void>;
   updateCustomEndpoint: (originalId: string, endpoint: GatewayEndpoint) => Promise<void>;
   removeCustomEndpoint: (endpointId: string) => Promise<void>;
+  setDefaultCustomEndpoint: (endpointId: string | null) => Promise<void>;
   testCustomEndpoint: (endpoint: GatewayEndpoint) => Promise<{ providerCount: number; modelCount: number }>;
   selectModel: (id: string | null) => void;
 }
 
 export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelModule {
-  const { providers, customEndpoints, selectedId, selectedProviderId, isLoading } = options;
+  const { providers, customEndpoints, defaultEndpointId, selectedId, selectedProviderId, isLoading } = options;
   const { notifyError } = useAppNotifications();
   let baseProviders: ModelProvider[] = [];
 
@@ -69,12 +74,19 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
   async function persistCustomEndpoints(nextEndpoints: GatewayEndpoint[]): Promise<GatewayEndpoint[]> {
     const normalizedEndpoints = nextEndpoints.map(normalizeEndpoint);
     saveGatewayEndpointsToStorage(normalizedEndpoints);
+    const nextDefaultEndpointId = defaultEndpointId.value && normalizedEndpoints.some((endpoint) => endpoint.id === defaultEndpointId.value)
+      ? defaultEndpointId.value
+      : null;
+    saveDefaultGatewayEndpointIdToStorage(nextDefaultEndpointId);
 
     const response = await luiApi.updateSettings({
       customEndpoints: normalizedEndpoints,
+      defaultEndpointId: nextDefaultEndpointId,
     });
 
     saveGatewayEndpointsToStorage(response.customEndpoints);
+    saveDefaultGatewayEndpointIdToStorage(response.defaultEndpointId);
+    defaultEndpointId.value = response.defaultEndpointId;
     return response.customEndpoints;
   }
 
@@ -89,6 +101,7 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     }
 
     const previousEndpoints = [...customEndpoints.value];
+    const previousDefaultEndpointId = defaultEndpointId.value;
     const nextEndpoints = [...customEndpoints.value];
     const index = nextEndpoints.findIndex((item) => item.id === normalized.id);
     if (index >= 0) {
@@ -105,7 +118,9 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
       await loadModels();
     } catch (err) {
       customEndpoints.value = previousEndpoints;
+      defaultEndpointId.value = previousDefaultEndpointId;
       saveGatewayEndpointsToStorage(previousEndpoints);
+      saveDefaultGatewayEndpointIdToStorage(previousDefaultEndpointId);
       notifyError(reportAppError("lui/save-custom-endpoints", err, {
         title: "保存 AI Gateway 端点失败",
         fallbackMessage: "自定义端点未能写入本地服务",
@@ -137,6 +152,7 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     }
 
     const previousEndpoints = [...customEndpoints.value];
+    const previousDefaultEndpointId = defaultEndpointId.value;
     const nextEndpoints = [...customEndpoints.value];
     nextEndpoints[originalIndex] = normalized;
 
@@ -148,6 +164,10 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
       selectedId.value = null;
     }
 
+    if (defaultEndpointId.value === normalizedOriginalId) {
+      defaultEndpointId.value = normalized.id;
+    }
+
     customEndpoints.value = nextEndpoints;
     saveGatewayEndpointsToStorage(customEndpoints.value);
 
@@ -156,7 +176,9 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
       await loadModels();
     } catch (err) {
       customEndpoints.value = previousEndpoints;
+      defaultEndpointId.value = previousDefaultEndpointId;
       saveGatewayEndpointsToStorage(previousEndpoints);
+      saveDefaultGatewayEndpointIdToStorage(previousDefaultEndpointId);
       selectedProviderId.value = previousSelectedProviderId;
       selectedId.value = previousSelectedId;
       notifyError(reportAppError("lui/update-custom-endpoint", err, {
@@ -179,6 +201,7 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     }
 
     const previousEndpoints = [...customEndpoints.value];
+    const previousDefaultEndpointId = defaultEndpointId.value;
     customEndpoints.value = nextEndpoints;
     saveGatewayEndpointsToStorage(customEndpoints.value);
 
@@ -190,12 +213,19 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
       selectedId.value = null;
     }
 
+    if (defaultEndpointId.value === normalizedEndpointId) {
+      defaultEndpointId.value = null;
+      saveDefaultGatewayEndpointIdToStorage(null);
+    }
+
     try {
       customEndpoints.value = await persistCustomEndpoints(nextEndpoints);
       await loadModels();
     } catch (err) {
       customEndpoints.value = previousEndpoints;
+      defaultEndpointId.value = previousDefaultEndpointId;
       saveGatewayEndpointsToStorage(previousEndpoints);
+      saveDefaultGatewayEndpointIdToStorage(previousDefaultEndpointId);
       selectedProviderId.value = previousSelectedProviderId;
       selectedId.value = previousSelectedId;
       notifyError(reportAppError("lui/remove-custom-endpoint", err, {
@@ -241,7 +271,40 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     };
   }
 
+  async function setDefaultCustomEndpoint(endpointId: string | null) {
+    const normalizedEndpointId = endpointId?.trim() || null;
+    if (normalizedEndpointId && !customEndpoints.value.some((endpoint) => endpoint.id === normalizedEndpointId)) {
+      throw new Error("默认端点不存在");
+    }
+
+    const previousDefaultEndpointId = defaultEndpointId.value;
+    defaultEndpointId.value = normalizedEndpointId;
+    saveDefaultGatewayEndpointIdToStorage(normalizedEndpointId);
+
+    try {
+      const response = await luiApi.updateSettings({
+        customEndpoints: customEndpoints.value,
+        defaultEndpointId: normalizedEndpointId,
+      });
+
+      customEndpoints.value = response.customEndpoints;
+      defaultEndpointId.value = response.defaultEndpointId;
+      saveGatewayEndpointsToStorage(response.customEndpoints);
+      saveDefaultGatewayEndpointIdToStorage(response.defaultEndpointId);
+      await loadModels();
+    } catch (err) {
+      defaultEndpointId.value = previousDefaultEndpointId;
+      saveDefaultGatewayEndpointIdToStorage(previousDefaultEndpointId);
+      notifyError(reportAppError("lui/set-default-custom-endpoint", err, {
+        title: "设置默认 AI Gateway 端点失败",
+        fallbackMessage: "默认端点未能保存到本地服务",
+      }));
+      throw err;
+    }
+  }
+
   customEndpoints.value = loadGatewayEndpointsFromStorage();
+  defaultEndpointId.value = loadDefaultGatewayEndpointIdFromStorage();
   syncProviders();
 
   const models = computed(() =>
@@ -268,17 +331,17 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     try {
       try {
         const settings = await luiApi.getSettings();
+        defaultEndpointId.value = settings.defaultEndpointId;
+        saveDefaultGatewayEndpointIdToStorage(settings.defaultEndpointId);
         if (settings.customEndpoints.length > 0) {
-          // 后端有配置，使用后端的配置
           customEndpoints.value = settings.customEndpoints;
           saveGatewayEndpointsToStorage(settings.customEndpoints);
         } else {
-          // 后端无配置，回退到 localStorage
           customEndpoints.value = loadGatewayEndpointsFromStorage();
         }
       } catch {
-        // 后端请求失败，回退到 localStorage
         customEndpoints.value = loadGatewayEndpointsFromStorage();
+        defaultEndpointId.value = loadDefaultGatewayEndpointIdFromStorage();
       }
 
       if (customEndpoints.value.length > 0) {
@@ -336,6 +399,7 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
 
   return {
     customEndpoints,
+    defaultEndpointId,
     models,
     selectedModel,
     getModelById,
@@ -343,6 +407,7 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     registerCustomEndpoint,
     updateCustomEndpoint,
     removeCustomEndpoint,
+    setDefaultCustomEndpoint,
     testCustomEndpoint,
     selectModel,
   };

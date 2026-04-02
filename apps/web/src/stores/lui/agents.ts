@@ -24,10 +24,11 @@ export interface LuiAgentModule {
 export interface CreateAgentInput {
   name: string;
   description: string;
+  engine?: "builtin" | "deepagents";
+  mode?: "all" | "chat" | "ask" | "workflow";
   systemPrompt: string;
   tools: string[];
-  defaultModel: string;
-  defaultTemperature: number;
+  temperature: number;
 }
 
 export interface UpdateAgentInput extends Partial<CreateAgentInput> {
@@ -56,10 +57,11 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
         id: item.id,
         name: item.name,
         description: item.description ?? "",
+        engine: item.engine ?? "builtin",
+        mode: item.mode,
         systemPrompt: item.systemPrompt ?? "",
         tools: item.tools ?? [],
-        defaultModel: item.mode === "all" ? "gpt-4" : "gpt-3.5-turbo",
-        defaultTemperature: item.temperature,
+        temperature: item.temperature,
         isDefault: item.isDefault,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -89,16 +91,25 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
     error.value = null;
 
     try {
-      const result = await luiApi.createAgent(input);
+      const result = await luiApi.createAgent({
+        name: input.name,
+        description: input.description,
+        engine: input.engine,
+        mode: input.mode,
+        temperature: input.temperature,
+        systemPrompt: input.systemPrompt,
+        tools: input.tools,
+      });
       const now = new Date();
       const agent: Agent = {
         id: result.id,
         name: input.name,
         description: input.description,
+        engine: input.engine ?? "builtin",
+        mode: input.mode ?? "chat",
         systemPrompt: input.systemPrompt,
         tools: input.tools,
-        defaultModel: input.defaultModel,
-        defaultTemperature: input.defaultTemperature,
+        temperature: input.temperature,
         isDefault: false,
         createdAt: now,
         updatedAt: now,
@@ -123,17 +134,26 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
     error.value = null;
 
     try {
-      await luiApi.updateAgent(id, input);
+      await luiApi.updateAgent(id, {
+        description: input.description,
+        engine: input.engine,
+        mode: input.mode,
+        temperature: input.temperature,
+        systemPrompt: input.systemPrompt,
+        tools: input.tools,
+        isDefault: input.isDefault,
+      });
       const index = agents.value.findIndex((a) => a.id === id);
       if (index >= 0) {
         const updated: Agent = {
           ...agents.value[index],
           ...(input.name !== undefined && { name: input.name }),
           ...(input.description !== undefined && { description: input.description }),
+          ...(input.engine !== undefined && { engine: input.engine }),
+          ...(input.mode !== undefined && { mode: input.mode }),
           ...(input.systemPrompt !== undefined && { systemPrompt: input.systemPrompt }),
           ...(input.tools !== undefined && { tools: input.tools }),
-          ...(input.defaultModel !== undefined && { defaultModel: input.defaultModel }),
-          ...(input.defaultTemperature !== undefined && { defaultTemperature: input.defaultTemperature }),
+          ...(input.temperature !== undefined && { temperature: input.temperature }),
           ...(input.isDefault !== undefined && { isDefault: input.isDefault }),
           updatedAt: new Date(),
         };

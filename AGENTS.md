@@ -125,10 +125,16 @@ pnpm clean            # Turbo clean + rm node_modules
 | Desktop | `apps/desktop/src/main.rs` → `lib.rs` | Rust 薄入口 → Tauri 应用 |
 | Shared | `packages/shared/src/index.ts` | Barrel 导出 |
 
-## NOTES
+## KNOWN ISSUES
 
+- **端口不一致** — Vite proxy 指向 `:9092`，但 server 监听 `:3000`
 - **无 CI/CD** — 无 GitHub Actions/Docker
 - **无测试** — 当前阶段未配置测试基础设施
-- **runtime/ 目录** — 本地运行时数据，应配置 `.gitignore` 避免意外提交
+- **runtime/ 未忽略** — SQLite 和日志在仓库内，应配置 `.gitignore`
+- **packages/runtime 幽灵包** — 目录存在但非 workspace 成员
+- **双 schema 系统** — `server/schema.ts` (Drizzle) + `shared/db-schema.ts` (TS) 需同步维护
+
+## NOTES
+
 - **.imr 文件关联** — Tauri 配置了 `imr://` deep link 和文件关联
-- **Vite 代理** — `/api` 代理到 `http://127.0.0.1:3000`
+- **Vite 代理** — `/api` 代理到 `http://127.0.0.1:3000`（注意：与 vite.config.ts 中的 :9092 不一致）

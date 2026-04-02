@@ -235,6 +235,7 @@ export const agents = sqliteTable("agents", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
   description: text("description"),
+  engine: text("engine", { enum: ["builtin", "deepagents"] }).notNull().default("builtin"),
   mode: text("mode", { enum: ["all", "chat", "ask", "workflow"] }).notNull().default("chat"),
   temperature: integer("temperature").notNull().default(0),
   systemPrompt: text("system_prompt"),

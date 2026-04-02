@@ -92,3 +92,4 @@ import {
 - 组件通过 `unplugin-vue-components` 自动导入，无需手动 import
 - 组件设计遵循 shadcn-vue 风格指南
 - 表单相关组件可能依赖 `vee-validate` 或类似库
+- **大文件**: `pagination/` 目录有 ~6 个子组件，组合使用

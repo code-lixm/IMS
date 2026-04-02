@@ -4,7 +4,6 @@
  * 分析候选人简历，提取关键技能、工作经验，并给出匹配度评估
  */
 
-import { openai } from '@ai-sdk/openai';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { agentHost, type AgentManifest } from '../host';
@@ -22,7 +21,7 @@ export const resumeAnalyzerManifest: AgentManifest = {
     'experience-analysis',
     'job-matching',
   ],
-  model: openai('gpt-4o'),
+  model: 'gpt-4o',
   category: 'builtin',
   permissions: ['candidate:read', 'resume:read'],
   handoffTargets: ['interview-coordinator', 'salary-advisor'],

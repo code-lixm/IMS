@@ -4,7 +4,6 @@
  * 提供薪资建议、市场分析和 Offer 方案
  */
 
-import { openai } from '@ai-sdk/openai';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { agentHost, type AgentManifest } from '../host';
@@ -21,7 +20,7 @@ export const salaryAdvisorManifest: AgentManifest = {
     'market-research',
     'offer-recommendation',
   ],
-  model: openai('gpt-4o'),
+  model: 'gpt-4o',
   category: 'builtin',
   permissions: ['candidate:read', 'interview:read'],
   handoffTargets: ['interview-coordinator'],

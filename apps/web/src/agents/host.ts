@@ -10,8 +10,41 @@
  */
 
 import { streamText, generateText, tool, stepCountIs } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
+import { getPreferredGatewayEndpointConfig } from '@/lib/ai-gateway-config';
 import type { ZodSchema } from 'zod';
+
+type AgentLanguageModel = Parameters<typeof streamText>[0]['model'];
+type OpenAIProviderFactory = (modelId: string) => AgentLanguageModel;
+
+interface OpenAIModuleShape {
+  createOpenAI: (options: {
+    apiKey: string;
+    baseURL?: string;
+  }) => OpenAIProviderFactory;
+}
+
+function isOpenAIModule(value: unknown): value is OpenAIModuleShape {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const createOpenAI = Reflect.get(value, 'createOpenAI');
+  return typeof createOpenAI === 'function';
+}
+
+async function createModelProvider(): Promise<OpenAIProviderFactory> {
+  const preferredEndpoint = getPreferredGatewayEndpointConfig();
+  const module = await import(/* @vite-ignore */ '@ai-sdk/openai');
+
+  if (!isOpenAIModule(module)) {
+    throw new Error('Invalid @ai-sdk/openai module');
+  }
+
+  return module.createOpenAI({
+    apiKey: preferredEndpoint?.apiKey || import.meta.env.VITE_OPENAI_API_KEY || '',
+    baseURL: preferredEndpoint?.baseURL || import.meta.env.VITE_OPENAI_BASE_URL,
+  });
+}
 
 /**
  * Agent 清单定义
@@ -22,7 +55,7 @@ export interface AgentManifest {
   name: string;
   description: string;
   capabilities: string[];
-  model: any; // LanguageModelV3 from @ai-sdk/openai
+  model: string;
   category: 'builtin' | 'extension';
   permissions: AgentPermission[];
   handoffTargets?: string[]; // 可移交的目标 Agent ID
@@ -236,10 +269,7 @@ export class AgentHost {
     }
 
     // 创建 OpenAI 客户端
-    const openai = createOpenAI({
-      apiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
-      baseURL: import.meta.env.VITE_OPENAI_BASE_URL,
-    });
+    const openai = await createModelProvider();
 
     const model = openai(manifest.model);
 
@@ -288,10 +318,7 @@ export class AgentHost {
     }
 
     // 创建 OpenAI 客户端
-    const openai = createOpenAI({
-      apiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
-      baseURL: import.meta.env.VITE_OPENAI_BASE_URL,
-    });
+    const openai = await createModelProvider();
 
     const model = openai(manifest.model);
 
@@ -326,6 +353,8 @@ export class AgentHost {
    */
   unload(id: string): void {
     this.configs.delete(id);
+    this.factories.delete(id);
+    this.manifests.delete(id);
   }
 
   /**

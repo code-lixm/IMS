@@ -46,6 +46,7 @@ export const useLuiStore = defineStore("lui", () => {
   const selectedAgentId = ref<string | null>(null);
   const providers = ref<ModelProvider[]>([]);
   const customEndpoints = ref<GatewayEndpoint[]>([]);
+  const defaultEndpointId = ref<string | null>(null);
   const selectedModelId = ref<string | null>(null);
   const selectedModelProvider = ref<string | null>(null);
   const credentials = ref<Record<string, Credential>>({});
@@ -84,6 +85,7 @@ export const useLuiStore = defineStore("lui", () => {
   const modelModule = createLuiModelModule({
     providers,
     customEndpoints,
+    defaultEndpointId,
     selectedId: selectedModelId,
     selectedProviderId: selectedModelProvider,
     isLoading,
@@ -167,6 +169,8 @@ export const useLuiStore = defineStore("lui", () => {
     agents,
     selectedAgentId,
     providers,
+    customEndpoints,
+    defaultEndpointId,
     selectedModelId,
     selectedModelProvider,
     credentials,

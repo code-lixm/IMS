@@ -3,7 +3,7 @@
  */
 
 export const SERVER_HOST = "127.0.0.1";
-export const SERVER_PORT = 3000;
+export const SERVER_PORT = 9092;
 export const SERVER_BASE_URL = `http://${SERVER_HOST}:${SERVER_PORT}` as const;
 
 export const OPENCODE_DEFAULT_PORT = 4096;

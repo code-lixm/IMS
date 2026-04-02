@@ -4,7 +4,6 @@
  * 协调多个专业 Agent 完成面试流程
  */
 
-import { openai } from '@ai-sdk/openai';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { agentHost, type AgentManifest } from '../host';
@@ -21,7 +20,7 @@ export const interviewCoordinatorManifest: AgentManifest = {
     'task-delegation',
     'result-aggregation',
   ],
-  model: openai('gpt-4o'),
+  model: 'gpt-4o',
   category: 'builtin',
   permissions: ['candidate:read', 'interview:read', 'interview:write'],
   handoffTargets: ['tech-interviewer', 'hr-interviewer', 'salary-advisor'],

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.company.interview-manager",
   "build": {
-    "devUrl": "http://127.0.0.1:5173",
+    "devUrl": "http://127.0.0.1:9091",
     "beforeDevCommand": "pnpm --filter @ims/server dev & pnpm --filter @ims/web dev",
     "beforeBuildCommand": "cd ../.. && pnpm --filter @ims/shared build && pnpm --filter @ims/server build && pnpm --filter @ims/web build",
     "frontendDist": "../web/dist"

@@ -80,10 +80,11 @@ export interface Agent {
   id: string;
   name: string;
   description: string;
+  engine: "builtin" | "deepagents";
+  mode: "all" | "chat" | "ask" | "workflow";
   systemPrompt: string;
   tools: string[];
-  defaultModel: string;
-  defaultTemperature: number;
+  temperature: number;
   isDefault: boolean;
   createdAt: Date;
   updatedAt: Date;

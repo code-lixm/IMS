@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   description TEXT,
+  engine TEXT NOT NULL DEFAULT 'builtin',
   mode TEXT NOT NULL DEFAULT 'chat',
   temperature INTEGER NOT NULL DEFAULT 0,
   system_prompt TEXT,
@@ -273,6 +274,7 @@ ensureColumn("interviews", "arrival_date", "TEXT");
 ensureColumn("interviews", "eliminate_reason_string", "TEXT");
 ensureColumn("interviews", "remark", "TEXT");
 ensureColumn("file_resources", "file_path", "TEXT");
+ensureColumn("agents", "engine", "TEXT NOT NULL DEFAULT 'builtin'");
 
 export const db = drizzle(sqlite);
 export const rawDb = sqlite;

@@ -4,7 +4,6 @@
  * 帮助用户搜索、筛选和排序候选人
  */
 
-import { openai } from '@ai-sdk/openai';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { agentHost, type AgentManifest } from '../host';
@@ -21,7 +20,7 @@ export const searchAssistantManifest: AgentManifest = {
     'filter-building',
     'result-sorting',
   ],
-  model: openai('gpt-4o'),
+  model: 'gpt-4o',
   category: 'builtin',
   permissions: ['candidate:read'],
   handoffTargets: [],

@@ -4,7 +4,6 @@
  * 深入评估候选人的技术能力和解决问题的能力
  */
 
-import { openai } from '@ai-sdk/openai';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { agentHost, type AgentManifest } from '../host';
@@ -21,7 +20,7 @@ export const techInterviewerManifest: AgentManifest = {
     'coding-assessment',
     'system-design',
   ],
-  model: openai('gpt-4o'),
+  model: 'gpt-4o',
   category: 'builtin',
   permissions: ['candidate:read', 'interview:write'],
   handoffTargets: ['interview-coordinator'],

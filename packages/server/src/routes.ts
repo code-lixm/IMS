@@ -14,7 +14,7 @@ import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
 import { sendToDevice } from "./services/share/transfer";
-import { BaobaoClient, setBaobaoClient } from "./services/baobao-client";
+import { BaobaoClient, setBaobaoClient, getBaobaoClient } from "./services/baobao-client";
 import { clearBaobaoLoginSession, fetchBaobaoLoginQrCode, getBaobaoLoginSessionStatus } from "./services/baobao-login";
 import { config } from "./config";
 import { db, rawDb } from "./db";
@@ -42,6 +42,7 @@ import {
   executeAgent,
   WorkflowStage,
 } from "./services/lui-workflow";
+import { executeDeepAgent } from "./services/deepagents-runtime";
 import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
 import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcription";
@@ -179,6 +180,7 @@ type LuiGatewayEndpoint = {
 
 type LuiSettings = {
   customEndpoints: LuiGatewayEndpoint[];
+  defaultEndpointId: string | null;
 };
 
 const PRESET_PROVIDERS: Record<string, {
@@ -421,8 +423,13 @@ function parseAgentTools(toolsJson: string | null | undefined): string[] {
 function serializeAgent(row: typeof agents.$inferSelect) {
   return {
     ...row,
+    engine: row.engine,
     tools: parseAgentTools(row.toolsJson),
   };
+}
+
+function parseAgentEngine(value: unknown): "builtin" | "deepagents" {
+  return value === "deepagents" ? "deepagents" : "builtin";
 }
 
 function buildAgentToolConstraints(agentName: string, allowedToolNames: string[]): string {
@@ -807,7 +814,14 @@ function extractLuiSettings(settings: Record<string, unknown>): LuiSettings {
         .filter((endpoint): endpoint is LuiGatewayEndpoint => endpoint !== null)
     : [];
 
-  return { customEndpoints };
+  const requestedDefaultEndpointId = isRecord(rawLui) && typeof rawLui.defaultEndpointId === "string"
+    ? rawLui.defaultEndpointId.trim()
+    : "";
+  const defaultEndpointId = requestedDefaultEndpointId && customEndpoints.some((endpoint) => endpoint.id === requestedDefaultEndpointId)
+    ? requestedDefaultEndpointId
+    : null;
+
+  return { customEndpoints, defaultEndpointId };
 }
 
 function mergeLuiSettings(settings: Record<string, unknown>, luiSettings: LuiSettings): Record<string, unknown> {
@@ -816,6 +830,7 @@ function mergeLuiSettings(settings: Record<string, unknown>, luiSettings: LuiSet
   nextSettings.lui = {
     ...existingLui,
     customEndpoints: luiSettings.customEndpoints,
+    defaultEndpointId: luiSettings.defaultEndpointId,
   };
   return nextSettings;
 }
@@ -1200,6 +1215,17 @@ export async function route(request: Request): Promise<Response> {
   }
 
   if (path === "/api/auth/logout" && request.method === "POST") {
+    // Call baobao logout first to clear remote session
+    const client = getBaobaoClient();
+    if (client) {
+      try {
+        await client.logout();
+      } catch (err) {
+        // Log but don't fail - local logout should still proceed
+        console.log("[baobao-logout] Remote logout failed:", (err as Error).message);
+      }
+    }
+    
     await db.update(users).set({ tokenStatus: "unauthenticated" });
     await db.delete(remoteUsers).where(eq(remoteUsers.provider, "baobao"));
     setBaobaoClient(null);
@@ -2320,10 +2346,11 @@ Always be concise and helpful in your responses.`;
 
     // Route to workflow orchestrator if in workflow mode
     if (isWorkflowMode && conv.candidateId) {
+      const workflowModelProvider = typeof modelProvider === "string" ? modelProvider : undefined;
       const workflowResponse = await executeAgent(convId, body.content.trim(), {
         agentId: body.agentId,
         candidateId: conv.candidateId,
-        modelProvider,
+        modelProvider: workflowModelProvider,
         modelId,
         runtimeModelName: actualModelName,
         endpointBaseURL: resolvedBaseURL,
@@ -2393,6 +2420,7 @@ Always be concise and helpful in your responses.`;
       name: string;
       description?: string;
       mode?: string;
+      engine?: "builtin" | "deepagents";
       temperature?: number;
       systemPrompt?: string;
       tools?: string[];
@@ -2414,6 +2442,7 @@ Always be concise and helpful in your responses.`;
       name: body.name.trim(),
       description: body.description || null,
       mode: (body.mode as "all" | "chat" | "ask" | "workflow") || "chat",
+      engine: parseAgentEngine(body.engine),
       temperature: body.temperature ?? 0,
       systemPrompt: body.systemPrompt || null,
       toolsJson: body.tools ? JSON.stringify(body.tools) : null,
@@ -2427,6 +2456,7 @@ Always be concise and helpful in your responses.`;
       name: body.name.trim(),
       description: body.description || null,
       mode: (body.mode as "all" | "chat" | "ask" | "workflow") || "chat",
+      engine: parseAgentEngine(body.engine),
       temperature: body.temperature ?? 0,
       systemPrompt: body.systemPrompt || null,
       tools: body.tools || [],
@@ -2454,6 +2484,7 @@ Always be concise and helpful in your responses.`;
     const body = await parseJson<{
       description?: string;
       mode?: string;
+      engine?: "builtin" | "deepagents";
       temperature?: number;
       systemPrompt?: string;
       tools?: string[];
@@ -2470,6 +2501,7 @@ Always be concise and helpful in your responses.`;
     const updates: Record<string, unknown> = { updatedAt: now };
     if (body.description !== undefined) updates.description = body.description;
     if (body.mode !== undefined) updates.mode = body.mode;
+    if (body.engine !== undefined) updates.engine = parseAgentEngine(body.engine);
     if (body.temperature !== undefined) updates.temperature = body.temperature;
     if (body.systemPrompt !== undefined) updates.systemPrompt = body.systemPrompt;
     if (body.tools !== undefined) updates.toolsJson = JSON.stringify(body.tools);
@@ -2572,7 +2604,7 @@ Always be concise and helpful in your responses.`;
   }
 
   if (path === "/api/lui/settings" && request.method === "PUT") {
-    let body: { customEndpoints?: unknown };
+    let body: { customEndpoints?: unknown; defaultEndpointId?: unknown };
     try {
       body = await parseJson<{ customEndpoints?: unknown }>(request);
     } catch {
@@ -2585,13 +2617,20 @@ Always be concise and helpful in your responses.`;
           .filter((endpoint): endpoint is LuiGatewayEndpoint => endpoint !== null)
       : [];
 
+    const requestedDefaultEndpointId = typeof body.defaultEndpointId === "string"
+      ? body.defaultEndpointId.trim()
+      : "";
+    const defaultEndpointId = requestedDefaultEndpointId && customEndpoints.some((endpoint) => endpoint.id === requestedDefaultEndpointId)
+      ? requestedDefaultEndpointId
+      : null;
+
     const user = await getOrCreateLocalUser();
     if (!user) {
       return fail("INTERNAL_ERROR", "failed to initialize local user", 500);
     }
 
     const existingSettings = parseUserSettings(user.settingsJson);
-    const nextLuiSettings = { customEndpoints };
+    const nextLuiSettings = { customEndpoints, defaultEndpointId };
     const nextSettings = mergeLuiSettings(existingSettings, nextLuiSettings);
 
     await db.update(users)
@@ -2833,7 +2872,10 @@ Always be concise and helpful in your responses.`;
       conversationId: string;
       message: string;
       candidateId?: string;
+      modelProvider?: string;
       modelId?: string;
+      endpointBaseURL?: string;
+      endpointApiKey?: string;
       temperature?: number;
     }>(request);
 
@@ -2850,8 +2892,7 @@ Always be concise and helpful in your responses.`;
         return fail("NOT_FOUND", "agent not found", 404);
       }
 
-      const response = await executeAgent(body.conversationId, body.message.trim(), {
-        agentId,
+      const executionOptions = {
         candidateId: body.candidateId,
         modelProvider: body.modelProvider,
         modelId: body.modelId,
@@ -2861,7 +2902,18 @@ Always be concise and helpful in your responses.`;
         temperature: body.temperature,
         allowedToolNames: parseAgentTools(agent.toolsJson),
         agentSystemPrompt: agent.systemPrompt,
-      });
+      };
+
+      const response = agent.engine === "deepagents"
+        ? await executeDeepAgent(body.conversationId, body.message.trim(), {
+            agentName: agent.name,
+            ...executionOptions,
+          })
+        : await executeAgent(body.conversationId, body.message.trim(), {
+            agentId,
+            ...executionOptions,
+          });
+
       return response;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

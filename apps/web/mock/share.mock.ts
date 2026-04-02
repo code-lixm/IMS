@@ -2,8 +2,8 @@
 import { defineMock } from 'vite-plugin-mock-dev-server'
 
 const devices = [
-  { id: 'device_001', name: 'MacBook Pro', userName: 'zhangsan', userDisplayName: '张三', ip: '192.168.1.100', port: 3000 },
-  { id: 'device_002', name: 'iPhone 15', userName: 'lisi', userDisplayName: '李四', ip: '192.168.1.101', port: 3000 },
+  { id: 'device_001', name: 'MacBook Pro', userName: 'zhangsan', userDisplayName: '张三', ip: '192.168.1.100', port: 9092 },
+  { id: 'device_002', name: 'iPhone 15', userName: 'lisi', userDisplayName: '李四', ip: '192.168.1.101', port: 9092 },
 ]
 
 const records = [

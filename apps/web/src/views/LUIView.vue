@@ -9,14 +9,16 @@
       class="min-h-0 flex-1"
       @layout="onMainSplitLayout"
     >
-      <template v-if="leftSidebarOpen">
-        <ResizablePanel
-          id="lui-left-panel"
-          :default-size="leftPanelWidth"
-          :min-size="22"
-          :max-size="42"
-          class="border-r bg-background"
-        >
+      <ResizablePanel
+        id="lui-left-panel"
+        ref="leftPanelRef"
+        :collapsible="true"
+        :collapsed-size="0"
+        :default-size="leftPanelWidth"
+        :min-size="22"
+        :max-size="42"
+        class="border-r bg-background"
+      >
           <div class="flex h-full min-h-0 flex-col">
             <div class="flex items-center justify-between border-b px-2 py-2">
               <AppBrandLink to="/candidates" />
@@ -306,32 +308,31 @@
           </div>
         </ResizablePanel>
 
-        <ResizableHandle
-          id="lui-main-handle"
-          class="w-4 cursor-col-resize bg-transparent hover:bg-muted/15"
-        >
-          <div
-            class="h-15 w-1.5 rounded-full bg-border/90 shadow-md transition-colors group-hover/handle:bg-primary/75"
-          />
-        </ResizableHandle>
-      </template>
+      <ResizableHandle
+        id="lui-main-handle"
+        class="w-4 cursor-col-resize bg-transparent hover:bg-muted/15"
+      >
+        <div
+          class="h-15 w-1.5 rounded-full bg-border/90 shadow-md transition-colors group-hover/handle:bg-primary/75"
+        />
+      </ResizableHandle>
 
       <ResizablePanel
         id="lui-chat-panel"
-        :default-size="leftSidebarOpen ? 100 - leftPanelWidth : 100"
+        :default-size="100 - leftPanelWidth"
         :min-size="58"
         class="min-h-0"
       >
         <main class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           <div class="flex items-center gap-2 border-b pr-2 py-2">
             <div class="flex shrink-0 items-center gap-1.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-8 w-8 shrink-0 rounded-md shadow-none"
-                :title="leftSidebarOpen ? '收起会话列表' : '展开会话列表'"
-                @click="leftSidebarOpen = !leftSidebarOpen"
-              >
+<Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 w-8 shrink-0 rounded-md shadow-none"
+                  :title="leftPanelRef?.isCollapsed ? '展开会话列表' : '收起会话列表'"
+                  @click="leftPanelRef?.isCollapsed ? leftPanelRef?.expand() : leftPanelRef?.collapse()"
+                >
                 <PanelLeft class="h-4 w-4" />
               </Button>
 
@@ -369,6 +370,10 @@
               <CandidateSelector
                 :model-value="workspaceCandidateId"
                 @select="onCandidateSelect"
+              />
+              <AgentSelector
+                :model-value="store.selectedAgentId"
+                @select="onAgentSelect"
               />
             </div>
           </div>
@@ -768,6 +773,7 @@ import {
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
+import AgentSelector from "@/components/lui/agent-selector.vue";
 import CandidateSelector from "@/components/lui/candidate-selector.vue";
 import ConversationList from "@/components/lui/conversation-list.vue";
 import FileResources from "@/components/lui/file-resources.vue";
@@ -822,6 +828,7 @@ const { notifyError } = useAppNotifications();
 const inputText = ref("");
 const workflow = ref<WorkflowState | null>(null);
 const leftSidebarOpen = ref(true);
+const leftPanelRef = ref<InstanceType<typeof ResizablePanel> | null>(null);
 const leftWorkbenchTab = ref("listener");
 const listenerExpanded = ref(false);
 const modelSelectorOpen = ref(false);
@@ -1937,6 +1944,23 @@ async function onSelectModel(modelId: string) {
 function selectModel(modelId: string) {
   void onSelectModel(modelId);
   modelSelectorOpen.value = false;
+}
+
+async function onAgentSelect(
+  agent: {
+    id: string;
+  } | null,
+) {
+  const agentId = agent?.id ?? null;
+  store.selectedAgentId = agentId;
+
+  if (!store.selectedId) {
+    return;
+  }
+
+  await store.updateConversationAiConfig({
+    agentId,
+  });
 }
 
 function getProviderLogo(providerId: string): string | null {

@@ -4,7 +4,6 @@
  * 评估候选人的软技能、文化契合度和职业规划
  */
 
-import { openai } from '@ai-sdk/openai';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { agentHost, type AgentManifest } from '../host';
@@ -21,7 +20,7 @@ export const hrInterviewerManifest: AgentManifest = {
     'culture-fit-assessment',
     'career-planning',
   ],
-  model: openai('gpt-4o'),
+  model: 'gpt-4o',
   category: 'builtin',
   permissions: ['candidate:read', 'interview:write'],
   handoffTargets: ['interview-coordinator'],

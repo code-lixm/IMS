@@ -35,11 +35,11 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5173,
-      host: process.env.VITE_DEV_HOST || "127.0.0.1",
+      port: 9091,
+      host: process.env.VITE_DEV_HOST || true,
       proxy: {
         "/api": {
-          target: "http://127.0.0.1:3000",
+          target: "http://127.0.0.1:9092",
           changeOrigin: true,
         },
       },

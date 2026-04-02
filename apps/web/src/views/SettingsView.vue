@@ -246,13 +246,29 @@
             </div>
 
             <div v-else class="space-y-2">
+              <div class="flex items-center justify-between gap-3 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                <span>
+                  {{ luiStore.defaultEndpointId ? `当前默认端点：${luiStore.defaultEndpointId}` : '当前未设置默认端点，将回退到首个可用端点' }}
+                </span>
+                <Button
+                  v-if="luiStore.defaultEndpointId"
+                  variant="ghost"
+                  size="sm"
+                  @click="clearDefaultGatewayEndpoint"
+                >
+                  清除默认
+                </Button>
+              </div>
               <div
                 v-for="endpoint in luiStore.customEndpoints"
                 :key="endpoint.id"
                 class="flex items-center justify-between gap-3 rounded-md border p-3"
               >
                 <div class="min-w-0 space-y-1">
-                  <p class="text-sm font-medium">{{ endpoint.name }}</p>
+                  <div class="flex items-center gap-2">
+                    <p class="text-sm font-medium">{{ endpoint.name }}</p>
+                    <Badge v-if="luiStore.defaultEndpointId === endpoint.id" variant="secondary">默认</Badge>
+                  </div>
                   <p class="text-xs text-muted-foreground break-all">
                     <template v-if="endpoint.providerId">
                       {{ endpoint.providerId }} · 预设提供商
@@ -263,6 +279,15 @@
                   </p>
                 </div>
                 <div class="flex shrink-0 items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-8 px-2"
+                    :disabled="luiStore.defaultEndpointId === endpoint.id"
+                    @click="setDefaultGatewayEndpoint(endpoint.id)"
+                  >
+                    {{ luiStore.defaultEndpointId === endpoint.id ? '已默认' : '设为默认' }}
+                  </Button>
                   <Button variant="ghost" size="icon" class="h-8 w-8" title="编辑" @click="openEditGatewayEndpointDialog(endpoint)">
                     <Pencil class="h-4 w-4" />
                   </Button>
@@ -278,6 +303,173 @@
                     <FlaskConical v-else class="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive" title="删除" @click="removeGatewayEndpoint(endpoint.id)">
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card class="p-5">
+          <h2 class="text-sm font-semibold mb-4">Agent 管理</h2>
+          <Separator class="mb-4" />
+
+          <div class="space-y-4">
+            <p class="text-xs text-muted-foreground">
+              管理 LUI 可选智能体，并为单个智能体指定执行引擎、模式、工具与系统提示词。
+            </p>
+
+            <div class="flex items-center justify-between gap-3 rounded-md border border-dashed p-3">
+              <div>
+                <p class="text-sm font-medium">管理智能体</p>
+                <p class="text-xs text-muted-foreground">支持新增、编辑、设为默认与删除。</p>
+              </div>
+              <Button size="sm" class="gap-1.5" @click="openCreateAgentDialog">
+                <Plus class="h-3.5 w-3.5" />
+                添加 Agent
+              </Button>
+            </div>
+
+            <Dialog :open="isAgentDialogOpen" @update:open="handleAgentDialogOpenChange">
+              <template #content>
+                <DialogHeader>
+                  <DialogTitle>{{ agentDialogTitle }}</DialogTitle>
+                  <DialogDescription>
+                    {{ editingAgentId ? '更新智能体引擎、模式、工具和提示词。' : '创建一个新的 LUI 智能体。' }}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <Separator class="my-4" />
+
+                <div class="space-y-4">
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">名称</label>
+                    <Input v-model="agentForm.name" placeholder="例如：面试流程协调员" :disabled="editingAgentId !== null" />
+                    <p v-if="editingAgentId" class="text-xs text-muted-foreground">当前接口暂不支持重命名，编辑时仅可修改其他配置。</p>
+                  </div>
+
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">描述</label>
+                    <Input v-model="agentForm.description" placeholder="说明该智能体负责什么任务" />
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                      <label class="text-xs text-muted-foreground">执行引擎</label>
+                      <select
+                        v-model="agentForm.engine"
+                        class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      >
+                        <option value="builtin">builtin</option>
+                        <option value="deepagents">deepagents</option>
+                      </select>
+                    </div>
+                    <div class="space-y-1.5">
+                      <label class="text-xs text-muted-foreground">模式</label>
+                      <select
+                        v-model="agentForm.mode"
+                        class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      >
+                        <option v-for="mode in AGENT_MODE_OPTIONS" :key="mode" :value="mode">
+                          {{ mode }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">温度</label>
+                    <Input v-model="agentForm.temperature" type="number" min="0" max="2" step="0.1" />
+                  </div>
+
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">系统提示词</label>
+                    <Textarea v-model="agentForm.systemPrompt" class="min-h-[120px]" placeholder="定义这个智能体的职责、边界与输出要求" />
+                  </div>
+
+                  <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                      <label class="text-xs text-muted-foreground">可用工具</label>
+                      <span class="text-xs text-muted-foreground">已选 {{ agentForm.tools.length }} 个</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 rounded-md border p-3">
+                      <label
+                        v-for="toolName in AGENT_TOOL_OPTIONS"
+                        :key="toolName"
+                        class="flex items-center gap-2 text-xs cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="agentForm.tools.includes(toolName)"
+                          class="rounded border-border"
+                          @change="toggleAgentTool(toolName, ($event.target as HTMLInputElement).checked)"
+                        />
+                        <span>{{ toolName }}</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <label class="flex items-center gap-2 text-sm cursor-pointer">
+                    <input v-model="agentForm.isDefault" type="checkbox" class="rounded border-border" />
+                    设为默认智能体
+                  </label>
+                </div>
+
+                <DialogFooter class="mt-6 gap-2">
+                  <Button variant="secondary" :disabled="isSavingAgent" @click="closeAgentDialog">
+                    取消
+                  </Button>
+                  <Button :disabled="isSavingAgent" @click="saveAgent">
+                    <Loader2 v-if="isSavingAgent" class="mr-2 h-3.5 w-3.5 animate-spin" />
+                    {{ editingAgentId ? '保存修改' : '创建智能体' }}
+                  </Button>
+                </DialogFooter>
+              </template>
+            </Dialog>
+
+            <div
+              v-if="luiStore.agents.length === 0"
+              class="rounded-md border border-dashed p-3 text-xs text-muted-foreground"
+            >
+              暂无 Agent
+            </div>
+
+            <div v-else class="space-y-2">
+              <div
+                v-for="agent in luiStore.agents"
+                :key="agent.id"
+                class="flex items-center justify-between gap-3 rounded-md border p-3"
+              >
+                <div class="min-w-0 space-y-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <p class="text-sm font-medium">{{ agent.name }}</p>
+                    <Badge v-if="agent.isDefault" variant="secondary">默认</Badge>
+                    <Badge variant="outline">{{ agent.engine }}</Badge>
+                    <Badge variant="outline">{{ agent.mode }}</Badge>
+                  </div>
+                  <p v-if="agent.description" class="text-xs text-muted-foreground break-all">
+                    {{ agent.description }}
+                  </p>
+                  <p class="text-xs text-muted-foreground">
+                    工具：{{ agent.tools.length > 0 ? agent.tools.join('、') : '无' }}
+                  </p>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-8 px-2"
+                    :disabled="agent.isDefault"
+                    @click="setDefaultAgent(agent.id)"
+                  >
+                    {{ agent.isDefault ? '已默认' : '设为默认' }}
+                  </Button>
+                  <Button variant="ghost" size="icon" class="h-8 w-8" title="编辑" @click="openEditAgentDialog(agent)">
+                    <Pencil class="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive" title="删除" @click="removeAgent(agent.id)">
                     <Trash2 class="h-4 w-4" />
                   </Button>
                 </div>
@@ -327,8 +519,10 @@ import DialogHeader from "@/components/ui/dialog-header.vue";
 import DialogTitle from "@/components/ui/dialog-title.vue";
 import Input from "@/components/ui/input.vue";
 import Separator from "@/components/ui/separator.vue";
+import Textarea from "@/components/ui/textarea/Textarea.vue";
 import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
 import { luiApi } from "@/api/lui";
+import type { Agent as LuiAgent } from "@/stores/lui";
 
 interface PresetProvider {
   id: string;
@@ -362,11 +556,36 @@ const isTestingGatewayEndpoint = ref(false);
 const isSavingGatewayEndpoint = ref(false);
 const presetProviders = ref<PresetProvider[]>([]);
 const showApiKey = ref(false);
+const isAgentDialogOpen = ref(false);
+const editingAgentId = ref<string | null>(null);
+const isSavingAgent = ref(false);
 const gatewayEndpointForm = reactive({
   providerId: "",
   apiKey: "",
 });
+const AGENT_ENGINE_OPTIONS = ["builtin", "deepagents"] as const;
+const AGENT_MODE_OPTIONS = ["chat", "ask", "all", "workflow"] as const;
+const AGENT_TOOL_OPTIONS = [
+  "ensureWorkspace",
+  "resolveRound",
+  "buildWechatCopyText",
+  "scanPdf",
+  "sanitizeInterviewNotes",
+  "batchScreenResumes",
+  "writeMarkdown",
+] as const;
+const agentForm = reactive({
+  name: "",
+  description: "",
+  engine: AGENT_ENGINE_OPTIONS[0] as (typeof AGENT_ENGINE_OPTIONS)[number],
+  mode: AGENT_MODE_OPTIONS[0] as (typeof AGENT_MODE_OPTIONS)[number],
+  temperature: 0.5,
+  systemPrompt: "",
+  tools: [] as string[],
+  isDefault: false,
+});
 const gatewayEndpointDialogTitle = computed(() => editingGatewayEndpointId.value ? "编辑自定义端点" : "添加自定义端点");
+const agentDialogTitle = computed(() => editingAgentId.value ? "编辑智能体" : "创建智能体");
 
 const selectedPresetProvider = computed(() => {
   return presetProviders.value.find(p => p.id === gatewayEndpointForm.providerId);
@@ -419,6 +638,8 @@ onMounted(async () => {
       { id: "grok", name: "Grok", icon: "Grok", baseURL: "https://api.x.ai/v1" },
     ];
   }
+
+  await luiStore.loadAgents();
 });
 
 function fmtTime(ts: number) {
@@ -510,6 +731,124 @@ function closeGatewayEndpointDialog() {
   resetGatewayEndpointForm();
 }
 
+function resetAgentForm() {
+  agentForm.name = "";
+  agentForm.description = "";
+  agentForm.engine = AGENT_ENGINE_OPTIONS[0];
+  agentForm.mode = AGENT_MODE_OPTIONS[0];
+  agentForm.temperature = 0.5;
+  agentForm.systemPrompt = "";
+  agentForm.tools = [];
+  agentForm.isDefault = false;
+}
+
+function fillAgentForm(agent: LuiAgent) {
+  agentForm.name = agent.name;
+  agentForm.description = agent.description;
+  agentForm.engine = agent.engine;
+  agentForm.mode = agent.mode;
+  agentForm.temperature = agent.temperature;
+  agentForm.systemPrompt = agent.systemPrompt;
+  agentForm.tools = [...agent.tools];
+  agentForm.isDefault = agent.isDefault;
+}
+
+function openCreateAgentDialog() {
+  editingAgentId.value = null;
+  resetAgentForm();
+  isAgentDialogOpen.value = true;
+}
+
+function openEditAgentDialog(agent: LuiAgent) {
+  editingAgentId.value = agent.id;
+  fillAgentForm(agent);
+  isAgentDialogOpen.value = true;
+}
+
+function closeAgentDialog() {
+  isAgentDialogOpen.value = false;
+  editingAgentId.value = null;
+  resetAgentForm();
+}
+
+function handleAgentDialogOpenChange(open: boolean) {
+  if (!open && isSavingAgent.value) {
+    return;
+  }
+  isAgentDialogOpen.value = open;
+  if (!open) {
+    closeAgentDialog();
+  }
+}
+
+function toggleAgentTool(toolName: string, checked: boolean) {
+  if (checked) {
+    if (!agentForm.tools.includes(toolName)) {
+      agentForm.tools = [...agentForm.tools, toolName];
+    }
+    return;
+  }
+
+  agentForm.tools = agentForm.tools.filter((name) => name !== toolName);
+}
+
+async function saveAgent() {
+  if (!agentForm.name.trim()) {
+    notifyWarning("请输入智能体名称");
+    return;
+  }
+
+  isSavingAgent.value = true;
+
+  try {
+    if (editingAgentId.value) {
+      await luiStore.updateAgent(editingAgentId.value, {
+        description: agentForm.description.trim(),
+        engine: agentForm.engine,
+        mode: agentForm.mode,
+        temperature: agentForm.temperature,
+        systemPrompt: agentForm.systemPrompt.trim(),
+        tools: agentForm.tools,
+        isDefault: agentForm.isDefault,
+      });
+      notifySuccess("已更新智能体");
+    } else {
+      const created = await luiStore.createAgent({
+        name: agentForm.name.trim(),
+        description: agentForm.description.trim(),
+        engine: agentForm.engine,
+        mode: agentForm.mode,
+        temperature: agentForm.temperature,
+        systemPrompt: agentForm.systemPrompt.trim(),
+        tools: agentForm.tools,
+      });
+
+      if (agentForm.isDefault) {
+        await luiStore.updateAgent(created.id, { isDefault: true });
+      }
+
+      notifySuccess("已创建智能体");
+    }
+
+    await luiStore.loadAgents();
+    closeAgentDialog();
+  } catch {
+  } finally {
+    isSavingAgent.value = false;
+  }
+}
+
+async function setDefaultAgent(agentId: string) {
+  await luiStore.updateAgent(agentId, { isDefault: true });
+  await luiStore.loadAgents();
+  notifySuccess("已更新默认智能体");
+}
+
+async function removeAgent(agentId: string) {
+  await luiStore.deleteAgent(agentId);
+  notifySuccess("已删除智能体");
+}
+
 function handleGatewayEndpointDialogOpenChange(open: boolean) {
   if (!open && (isSavingGatewayEndpoint.value || isTestingGatewayEndpoint.value)) {
     return;
@@ -594,5 +933,15 @@ async function testGatewayEndpointFromDialog() {
 
 async function removeGatewayEndpoint(endpointId: string) {
   await luiStore.removeCustomEndpoint(endpointId);
+}
+
+async function setDefaultGatewayEndpoint(endpointId: string) {
+  await luiStore.setDefaultCustomEndpoint(endpointId);
+  notifySuccess("已更新默认端点");
+}
+
+async function clearDefaultGatewayEndpoint() {
+  await luiStore.setDefaultCustomEndpoint(null);
+  notifySuccess("已清除默认端点");
 }
 </script>
