@@ -69,6 +69,24 @@
                   : 'bg-muted'
               ]"
             >
+              <!-- reasoning 折叠面板 -->
+              <Collapsible
+                v-if="message.reasoning"
+                v-model:open="reasoningOpenStates[index]"
+                class="mb-2"
+              >
+                <CollapsibleTrigger class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                  <Brain class="h-3 w-3" />
+                  <span>思考过程</span>
+                  <ChevronDown class="h-3 w-3 transition-transform" :class="{ 'rotate-180': reasoningOpenStates[index] }" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div class="mt-2 p-2 rounded bg-background/50 text-xs text-muted-foreground whitespace-pre-wrap">
+                    {{ message.reasoning }}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+              
               <div class="text-sm whitespace-pre-wrap">{{ message.content }}</div>
               <div v-if="message.agentId" class="mt-1 text-xs opacity-60">
                 {{ getAgentName(message.agentId) }}
@@ -78,8 +96,26 @@
         </template>
         
         <!-- 流式内容 -->
-        <div v-if="streamingContent" class="flex gap-3 justify-start">
+        <div v-if="streamingContent || streamingReasoning" class="flex gap-3 justify-start">
           <div class="max-w-[80%] rounded-lg bg-muted px-4 py-2">
+            <!-- 流式 reasoning 折叠面板 -->
+            <Collapsible
+              v-if="streamingReasoning"
+              v-model:open="reasoningOpenStates[-1]"
+              class="mb-2"
+            >
+              <CollapsibleTrigger class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                <Brain class="h-3 w-3" />
+                <span>思考过程</span>
+                <ChevronDown class="h-3 w-3 transition-transform" :class="{ 'rotate-180': reasoningOpenStates[-1] }" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div class="mt-2 p-2 rounded bg-background/50 text-xs text-muted-foreground whitespace-pre-wrap">
+                  {{ streamingReasoning }}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+            
             <div class="text-sm whitespace-pre-wrap">{{ streamingContent }}</div>
           </div>
         </div>
@@ -119,7 +155,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { Bot, HelpCircle, Send, Square } from 'lucide-vue-next';
+import { Bot, HelpCircle, Send, Square, Brain, ChevronDown } from 'lucide-vue-next';
 import { agentHost } from '@/agents/host';
 import { useAgentContext } from '@/agents/context-bridge';
 import { useAgentStore } from '@/stores/agent';
@@ -135,12 +171,14 @@ import Tooltip from '@/components/ui/tooltip.vue';
 import TooltipProvider from '@/components/ui/tooltip-provider.vue';
 import TooltipTrigger from '@/components/ui/tooltip-trigger.vue';
 import TooltipContent from '@/components/ui/tooltip-content.vue';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 
 // ==================== State ====================
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  reasoning?: string;
   agentId?: string;
   handoffInfo?: {
     from: string;
@@ -152,11 +190,15 @@ interface Message {
 const messages = ref<Message[]>([]);
 const inputMessage = ref('');
 const streamingContent = ref('');
+const streamingReasoning = ref('');
 const isStreaming = ref(false);
 const activeSwarmAgent = ref<AgentManifest | null>(null);
 
 // 用于中断流式响应
 const abortController = ref<AbortController | null>(null);
+
+// 管理 reasoning 展开状态
+const reasoningOpenStates = ref<Record<number, boolean>>({});
 
 // ==================== Store ====================
 
@@ -205,6 +247,7 @@ async function handleSend() {
   // 开始流式响应
   isStreaming.value = true;
   streamingContent.value = '';
+  streamingReasoning.value = '';
   abortController.value = new AbortController();
   
   try {
@@ -219,6 +262,7 @@ async function handleSend() {
       messages.value.push({
         role: 'assistant',
         content: streamingContent.value + '\n\n[已中断]',
+        reasoning: streamingReasoning.value || undefined,
         agentId: currentAgentId.value,
       });
     } else {
@@ -230,6 +274,7 @@ async function handleSend() {
   } finally {
     isStreaming.value = false;
     streamingContent.value = '';
+    streamingReasoning.value = '';
     abortController.value = null;
     activeSwarmAgent.value = null;
   }
@@ -249,10 +294,11 @@ async function runSingleAgent(message: string) {
     streamingContent.value += chunk;
   }
   
-  // 完成，保存消息
+  // 完成，保存消息（包含 reasoning）
   messages.value.push({
     role: 'assistant',
     content: streamingContent.value,
+    reasoning: streamingReasoning.value || undefined,
     agentId: currentAgentId.value,
   });
 }
@@ -271,6 +317,15 @@ function handleStop() {
 function toggleSwarmMode() {
   agentStore.toggleSwarmMode();
 }
+
+// ==================== 自动展开流式消息的 reasoning ====================
+
+watch(streamingReasoning, (newVal) => {
+  if (newVal && isStreaming.value) {
+    // 流式消息自动展开 reasoning，使用 -1 作为流式消息的索引
+    reasoningOpenStates.value[-1] = true;
+  }
+});
 
 // ==================== 监听候选人变化 ====================
 

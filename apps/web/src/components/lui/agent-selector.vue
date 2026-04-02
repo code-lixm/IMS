@@ -119,13 +119,13 @@ interface AgentProfileView {
 }
 
 const INTERVIEW_AGENT_PROFILE: AgentProfileView = {
-  title: "面试专家 Agent",
-  subtitle: "主调度 · 初筛 → 出题 → 评估",
-  description: "围绕候选人简历、面试流程和评估结论统一编排，负责把每一轮输入收束成可执行的面试工作流。",
-  skills: ["面试编排", "初筛分析", "问题设计", "面试评估"],
-  tools: ["建立工作区", "轮次解析", "微信摘要", "PDF 扫描", "批量筛选"],
+  title: "面试专家",
+  subtitle: "智能面试助手",
+  description: "帮你筛选简历、设计面试题、评估候选人",
+  skills: ["简历分析", "题目设计", "综合评估"],
+  tools: ["读取简历", "生成题目", "输出报告"],
   entrySkill: "interview-orchestrator",
-  supportSkills: ["interview-screening", "interview-questioning", "interview-assessment"],
+  supportSkills: [],
 }
 
 const MODE_LABELS: Record<string, string> = {

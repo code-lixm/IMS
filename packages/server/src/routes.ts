@@ -46,6 +46,9 @@ import { executeDeepAgent } from "./services/deepagents-runtime";
 import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
 import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcription";
+import { messagesRoute } from "./routes/messages";
+import { memoryRoute } from "./routes/memory";
+import { sessionMemoryRoute } from "./routes/session-memory";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
 
@@ -3055,5 +3058,13 @@ Always be concise and helpful in your responses.`;
     return ok(workflow);
   }
 
+  // ---------------------------------------------------------------------------
+  // Memory Routes (Phase 2.2)
+  // ---------------------------------------------------------------------------
+  const memoryResponse = await memoryRoute(request);
+  if (memoryResponse) return memoryResponse;
+
+
+  // ---------------------------------------------------------------------------n  // Session Memory Routes (Phase 2.3)n  // ---------------------------------------------------------------------------n  const sessionMemoryResponse = await sessionMemoryRoute(request);n  if (sessionMemoryResponse) return sessionMemoryResponse;
   return fail("NOT_FOUND", "route not found", 404);
 }

@@ -276,6 +276,40 @@ export interface Agent {
 }
 
 // ---------------------------------------------------------------------------
+// LUI - Memory (Phase 2.2)
+// ---------------------------------------------------------------------------
+
+export type MemoryType = "fact" | "insight" | "preference";
+export type MemoryScope = "global" | "candidate";
+
+export interface AgentMemory {
+  id: string;
+  type: MemoryType;
+  scope: MemoryScope;
+  content: string;
+  embedding: string | null;
+  importance: number;
+  createdAt: number;
+}
+
+
+// ---------------------------------------------------------------------------
+// LUI - Session Memory (Phase 2.3)
+// ---------------------------------------------------------------------------
+
+export type SessionMemoryType = "context" | "summary" | "decision" | "action_item";
+
+export interface SessionMemory {
+  id: string;
+  conversationId: string;
+  type: SessionMemoryType;
+  content: string;
+  metadata: string | null;
+  importance: number;
+  createdAt: number;
+  expiresAt: number | null;
+}
+// ---------------------------------------------------------------------------
 // LUI - Provider Credential
 // ---------------------------------------------------------------------------
 

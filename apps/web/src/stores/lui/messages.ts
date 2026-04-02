@@ -2,7 +2,7 @@ import { computed, type ComputedRef, type Ref } from "vue";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
-import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
+import { type GatewayEndpoint } from "@/lib/ai-gateway-config";
 import { convertFileResource, type FileResource, type Message } from "./types";
 
 interface LuiMessageModuleOptions {

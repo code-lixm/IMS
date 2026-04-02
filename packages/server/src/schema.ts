@@ -257,6 +257,19 @@ export const providerCredentials = sqliteTable("provider_credentials", {
 });
 
 // ---------------------------------------------------------------------------
+// LUI - Memory (Phase 2.2)
+// ---------------------------------------------------------------------------
+export const memories = sqliteTable("memories", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: ["fact", "insight", "preference"] }).notNull(),
+  scope: text("scope", { enum: ["global", "candidate"] }).notNull(),
+  content: text("content").notNull(),
+  embedding: text("embedding"),
+  importance: integer("importance").notNull().default(5),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // Remote User (Baobao)
 // ---------------------------------------------------------------------------
 export const remoteUsers = sqliteTable("remote_users", {
@@ -287,4 +300,18 @@ export const luiWorkflows = sqliteTable("lui_workflows", {
   status: text("status", { enum: ["active", "paused", "completed", "error"] }).notNull().default("active"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// LUI - Session Memory (Phase 2.3)
+// ---------------------------------------------------------------------------
+export const sessionMemories = sqliteTable("session_memories", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull().references(() => conversations.id),
+  type: text("type", { enum: ["context", "summary", "decision", "action_item"] }).notNull(),
+  content: text("content").notNull(),
+  metadata: text("metadata"),
+  importance: integer("importance").notNull().default(5),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }),
 });

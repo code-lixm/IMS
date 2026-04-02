@@ -149,6 +149,18 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
   }
 
   async function createConversation(title?: string, candidateId?: string) {
+    // 检查是否已存在相同候选人的会话
+    if (candidateId) {
+      const existingConversation = conversations.value.find(
+        (c) => c.candidateId === candidateId
+      );
+
+      if (existingConversation) {
+        await selectConversation(existingConversation.id);
+        return existingConversation;
+      }
+    }
+
     isLoading.value = true;
     error.value = null;
 
