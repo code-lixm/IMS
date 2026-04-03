@@ -88,6 +88,7 @@ export async function getSessionMemories(
   total: number;
 }> {
   const { conversationId, type, limit = 50, offset = 0, includeExpired = false } = filters;
+  const now = new Date();
 
   // Build where conditions
   const conditions = [];
@@ -100,7 +101,7 @@ export async function getSessionMemories(
   // Filter out expired memories unless explicitly included
   if (!includeExpired) {
     conditions.push(
-      sql`(${sessionMemories.expiresAt} IS NULL OR ${sessionMemories.expiresAt} > NOW())`
+      sql`(${sessionMemories.expiresAt} IS NULL OR ${sessionMemories.expiresAt} > ${now})`
     );
   }
 
@@ -234,9 +235,10 @@ export async function deleteSessionMemoriesByConversation(
  * 清理过期的会话记忆
  */
 export async function cleanupExpiredSessionMemories(): Promise<number> {
+  const now = new Date();
   const deleted = await db
     .delete(sessionMemories)
-    .where(sql`${sessionMemories.expiresAt} IS NOT NULL AND ${sessionMemories.expiresAt} < NOW()`)
+    .where(sql`${sessionMemories.expiresAt} IS NOT NULL AND ${sessionMemories.expiresAt} < ${now}`)
     .returning({ id: sessionMemories.id });
   return deleted.length;
 }

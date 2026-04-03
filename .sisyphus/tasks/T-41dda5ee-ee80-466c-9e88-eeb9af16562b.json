@@ -1,0 +1,12 @@
+{
+  "id": "T-41dda5ee-ee80-466c-9e88-eeb9af16562b",
+  "subject": "修复阻塞性问题并完成验证",
+  "description": "针对集成测试暴露的阻塞性问题进行最小修复，并完成类型诊断与构建验证",
+  "status": "in_progress",
+  "activeForm": "正在修复阻塞性问题并完成验证",
+  "blocks": [],
+  "blockedBy": [
+    "T-561a27d6-1593-4bb3-82ad-bab40d161668"
+  ],
+  "threadID": "ses_2ad3f1734ffeJPXbqpFpMjyKxW"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "T-411fc41f-4040-4901-b72e-eca07c901ae6",
+  "subject": "整理测试报告并追加到 notepad",
+  "description": "输出测试用例、结果、问题清单，追加到 .sisyphus/notepads/ims-master-plan/issues.md",
+  "status": "pending",
+  "activeForm": "正在整理测试报告并追加到 notepad",
+  "blocks": [],
+  "blockedBy": [
+    "T-41dda5ee-ee80-466c-9e88-eeb9af16562b"
+  ],
+  "threadID": "ses_2ad3f1734ffeJPXbqpFpMjyKxW"
+}

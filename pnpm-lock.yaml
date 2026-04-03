@@ -47,9 +47,6 @@ importers:
       '@ims/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@langchain/core':
-        specifier: ^1.1.38
-        version: 1.1.38(@opentelemetry/api@1.9.0)(openai@5.12.2(ws@8.20.0)(zod@3.25.76))(ws@8.20.0)
       '@langchain/langgraph':
         specifier: ^0.0.13
         version: 0.0.13(openai@5.12.2(ws@8.20.0)(zod@3.25.76))
@@ -213,6 +210,9 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
+      nodemailer:
+        specifier: ^8.0.4
+        version: 8.0.4
       pdf-parse:
         specifier: ^1.1.1
         version: 1.1.4
@@ -4264,6 +4264,10 @@ packages:
 
   node-releases@2.0.36:
     resolution: {integrity: sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA==}
+
+  nodemailer@8.0.4:
+    resolution: {integrity: sha512-k+jf6N8PfQJ0Fe8ZhJlgqU5qJU44Lpvp2yvidH3vp1lPnVQMgi4yEEMPXg5eJS1gFIJTVq1NHBk7Ia9ARdSBdQ==}
+    engines: {node: '>=6.0.0'}
 
   npm-run-path@4.0.1:
     resolution: {integrity: sha512-S48WzZW777zhNIrn7gxOlISNAqi9ZC/uQFnRdbeIHhZhCA6UqpkOT8T1G7BvfdgP4Er8gF4sUbaS0i7QvIfCWw==}
@@ -9582,6 +9586,8 @@ snapshots:
       he: 1.2.0
 
   node-releases@2.0.36: {}
+
+  nodemailer@8.0.4: {}
 
   npm-run-path@4.0.1:
     dependencies:

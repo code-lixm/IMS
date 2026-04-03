@@ -1,0 +1,12 @@
+{
+  "id": "T-561a27d6-1593-4bb3-82ad-bab40d161668",
+  "subject": "执行 IMS 核心集成测试并记录结果",
+  "description": "启动相关服务，覆盖消息、文件工具、记忆、Agent 协作、邮件、评估流程，记录通过/失败",
+  "status": "completed",
+  "activeForm": "正在执行 IMS 核心集成测试并记录结果",
+  "blocks": [],
+  "blockedBy": [
+    "T-39ca8870-5283-4dd1-b5b7-60ab61283a60"
+  ],
+  "threadID": "ses_2ad3f1734ffeJPXbqpFpMjyKxW"
+}

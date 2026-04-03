@@ -284,6 +284,27 @@ CREATE TABLE IF NOT EXISTS file_resources (
   size INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  content TEXT NOT NULL,
+  embedding TEXT,
+  importance INTEGER NOT NULL DEFAULT 5,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_memories (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  metadata TEXT,
+  importance INTEGER NOT NULL DEFAULT 5,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER
+);
 `);
 
 function ensureColumn(table: string, column: string, definition: string) {
@@ -319,6 +340,11 @@ ensureColumn("interviews", "eliminate_reason_string", "TEXT");
 ensureColumn("interviews", "remark", "TEXT");
 ensureColumn("interview_assessments", "report_markdown", "TEXT");
 ensureColumn("file_resources", "file_path", "TEXT");
+ensureColumn("memories", "embedding", "TEXT");
+ensureColumn("memories", "importance", "INTEGER NOT NULL DEFAULT 5");
+ensureColumn("session_memories", "metadata", "TEXT");
+ensureColumn("session_memories", "importance", "INTEGER NOT NULL DEFAULT 5");
+ensureColumn("session_memories", "expires_at", "INTEGER");
 ensureColumn("agents", "engine", "TEXT NOT NULL DEFAULT 'builtin'");
 
 export const db = drizzle(sqlite);
