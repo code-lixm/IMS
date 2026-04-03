@@ -149,10 +149,11 @@ const TEST_AGENT_PATTERN = /(validation|gate|smoke|test)/i
 const CJK_TEXT_PATTERN = /[\u4e00-\u9fff]/
 
 const props = defineProps<AgentSelectorProps>()
-const emit = defineEmits<{
-  (e: "update:modelValue", value: string | null): void
-  (e: "select", agent: AgentInfo | null): void
-}>()
+// Emit definitions reserved for future use
+// const _emit = defineEmits<{
+//   (e: "update:modelValue", value: string | null): void
+//   (e: "select", agent: AgentInfo | null): void
+// }>()
 
 const open = ref(false)
 const agents = ref<AgentInfo[]>([])
@@ -259,13 +260,7 @@ function formatEngineLabel(engine: AgentInfo["engine"]) {
   return engine === 'deepagents' ? 'Deepagents 引擎' : '内置引擎'
 }
 
-function getAgentDisplayName(agent: AgentInfo) {
-  if (TEST_AGENT_PATTERN.test(agent.name)) {
-    return INTERVIEW_AGENT_PROFILE.title
-  }
 
-  return agent.name
-}
 
 function getAgentSummary(agent: AgentInfo) {
   const description = agent.description?.trim()

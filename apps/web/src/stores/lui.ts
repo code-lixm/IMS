@@ -169,8 +169,6 @@ export const useLuiStore = defineStore("lui", () => {
     agents,
     selectedAgentId,
     providers,
-    customEndpoints,
-    defaultEndpointId,
     selectedModelId,
     selectedModelProvider,
     credentials,

@@ -827,7 +827,7 @@ const { notifyError } = useAppNotifications();
 
 const inputText = ref("");
 const workflow = ref<WorkflowState | null>(null);
-const leftSidebarOpen = ref(true);
+// const leftSidebarOpen = ref(true);
 const leftPanelRef = ref<InstanceType<typeof ResizablePanel> | null>(null);
 const leftWorkbenchTab = ref("listener");
 const listenerExpanded = ref(false);

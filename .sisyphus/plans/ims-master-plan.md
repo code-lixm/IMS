@@ -743,7 +743,7 @@ export interface AgentMemory {
 
 | 任务 | 工期 | 状态 |
 |------|------|------|
-| Agent 工具系统 | 4d | ✅ |
+| Agent 工具系统 | 4d | ⚠️ 部分（file-tools.ts 已删除，缺少后端 API） |
 | 全局记忆系统 | 5d | ✅ |
 | 会话记忆系统 | 2d | ✅ |
 | 集成测试 | 2d | ⬜ |
@@ -785,7 +785,7 @@ export interface AgentMemory {
 
 | 任务 | 工期 | 状态 |
 |------|------|------|
-| LangGraph 基础设施 | 3d | ⬜ |
+| LangGraph 基础设施 | 3d | ❌ 需重新规划（技术选型错误，应使用 AgentHost + Vercel AI SDK） |
 | Worker Agent 实现 | 5d | ⬜ |
 | Supervisor 协调器 | 3d | ⬜ |
 | 集成测试 | 3d | ⬜ |
