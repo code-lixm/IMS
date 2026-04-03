@@ -820,9 +820,9 @@ export interface AgentMemory {
 
 | 任务 | 工期 | 状态 |
 |------|------|------|
-| AgentHost 架构增强 | 3d | ⬜ |
+| AgentHost 架构增强 | 3d | ✅ |
 | Worker Agent 完善 | 5d | ⬜ |
-| Handoff 机制实现 | 3d | ⬜ |
+| Handoff 机制实现 | 3d | ✅ |
 | 集成测试 | 3d | ⬜ |
 | **总计** | **~14d** | |
 
