@@ -753,9 +753,15 @@ export interface AgentMemory {
 
 ## 5. Phase 3: 多 Agent 架构重构
 
-**目标**: 迁移到 LangGraph Supervisor 架构  
+**目标**: 基于 AgentHost + Vercel AI SDK 实现专业 Agent 协作  
 **工期**: 2 周  
 **关键交付物**: 专业 Agent 协作系统
+
+**技术选型**:
+- ✅ AgentHost（现有架构，apps/web/src/agents/host.ts）
+- ✅ Vercel AI SDK（ai package）
+- ✅ Swarm 模式（Agent 间 handoff）
+- ❌ LangGraph（不使用）
 
 ---
 
@@ -763,31 +769,60 @@ export interface AgentMemory {
 
 ```
 ┌─────────────────────────────────────────┐
-│         面试专家 (Supervisor)           │
+│     面试协调员 (interview-coordinator)   │
 │  ┌─────┬─────┬─────┬─────┐             │
-│  │初筛 │出题 │评估 │邮件 │  Worker     │
-│  │Agent│Agent│Agent│Agent│  Agents     │
+│  │技术 │ HR  │薪资 │简历 │  Worker     │
+│  │面试官│面试官│顾问 │分析器│  Agents     │
 │  └─────┴─────┴─────┴─────┘             │
 └─────────────────────────────────────────┘
+
+现有 Agents:
+- interview-coordinator (协调员)
+- tech-interviewer (技术面试官)
+- hr-interviewer (HR 面试官)
+- salary-advisor (薪资顾问)
+- resume-analyzer (简历分析器)
+- search-assistant (搜索助手)
 ```
 
-### 5.2 文件变更清单
+### 5.2 实现方案
+
+**基于现有 AgentHost 架构**:
+
+1. **增强 interview-coordinator**:
+   - 添加更智能的任务分配逻辑
+   - 实现 Agent 间的 handoff 机制
+   - 添加结果聚合功能
+
+2. **完善 Worker Agents**:
+   - tech-interviewer: 技术面试问题生成
+   - hr-interviewer: HR 面试问题生成
+   - salary-advisor: 薪资建议
+   - resume-analyzer: 简历分析
+
+3. **添加新功能**:
+   - 面试结果填报
+   - 邮件发送（Phase 4）
+
+### 5.3 文件变更清单
 
 | 操作 | 文件路径 | 说明 |
 |------|----------|------|
-| 新增 | `apps/web/src/agents/supervisor.ts` | Supervisor 协调器 |
-| 新增 | `apps/web/src/agents/workers/*.ts` | 专业 Worker Agent |
+| 修改 | `apps/web/src/agents/builtin/interview-coordinator.ts` | 增强协调逻辑 |
+| 修改 | `apps/web/src/agents/builtin/tech-interviewer.ts` | 完善技术面试 |
+| 修改 | `apps/web/src/agents/builtin/hr-interviewer.ts` | 完善 HR 面试 |
+| 修改 | `apps/web/src/agents/host.ts` | 添加 handoff 支持 |
 | 修改 | `apps/web/src/components/lui/AgentChat.vue` | 适配新架构 |
 
 ---
 
-### 5.3 Phase 3 时间计划
+### 5.4 Phase 3 时间计划
 
 | 任务 | 工期 | 状态 |
 |------|------|------|
-| LangGraph 基础设施 | 3d | ❌ 需重新规划（技术选型错误，应使用 AgentHost + Vercel AI SDK） |
-| Worker Agent 实现 | 5d | ⬜ |
-| Supervisor 协调器 | 3d | ⬜ |
+| AgentHost 架构增强 | 3d | ⬜ |
+| Worker Agent 完善 | 5d | ⬜ |
+| Handoff 机制实现 | 3d | ⬜ |
 | 集成测试 | 3d | ⬜ |
 | **总计** | **~14d** | |
 
