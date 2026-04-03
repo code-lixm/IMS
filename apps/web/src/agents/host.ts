@@ -92,6 +92,62 @@ export interface AgentTool {
   execute: (params: Record<string, unknown>, context: unknown) => Promise<unknown>;
 }
 
+export interface HandoffPayload {
+  from: string;
+  to: string;
+  reason?: string;
+  message?: string;
+  timestamp: string;
+  candidateId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DelegationTask {
+  agentId: string;
+  task: string;
+  priority?: 'high' | 'medium' | 'low';
+  reason?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DelegationResult {
+  agentId: string;
+  task: string;
+  priority?: 'high' | 'medium' | 'low';
+  success: boolean;
+  output?: string;
+  error?: string;
+  startedAt: string;
+  completedAt: string;
+}
+
+export interface AggregatedDelegationResult {
+  totalTasks: number;
+  successCount: number;
+  failureCount: number;
+  failedAgentIds: string[];
+  summary: string;
+  results: DelegationResult[];
+}
+
+export interface AgentHostRuntime {
+  handoff: (
+    fromAgentId: string,
+    toAgentId: string,
+    context: IMSContext,
+    payload?: Omit<HandoffPayload, 'from' | 'to' | 'timestamp' | 'candidateId'>,
+  ) => Promise<SwarmChunk>;
+  executeAgent: (agentId: string, message: string, context: IMSContext) => Promise<string>;
+  aggregateResults: (results: DelegationResult[]) => AggregatedDelegationResult;
+}
+
+export interface AgentExecutionOptions {
+  state: IMSContext;
+  agentId: string;
+  host: AgentHostRuntime;
+  emit?: (chunk: SwarmChunk) => void;
+}
+
 /**
  * Agent 配置
  */
@@ -194,6 +250,21 @@ export interface SwarmChunk {
   activeAgentId?: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getStringField(record: Record<string, unknown>, fields: string[]): string | undefined {
+  for (const field of fields) {
+    const value = record[field];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * AgentHost - 单例模式
  * 
@@ -208,10 +279,22 @@ export class AgentHost {
   private manifests = new Map<string, AgentManifest>();
   private factories = new Map<string, AgentFactory>();
 
-  private buildTools(configTools: Record<string, AgentTool> | undefined, context: IMSContext) {
+  private buildTools(
+    configTools: Record<string, AgentTool> | undefined,
+    context: IMSContext,
+    agentId: string,
+    emit?: (chunk: SwarmChunk) => void
+  ) {
     const mergedTools = {
       ...fileTools,
       ...(configTools ?? {}),
+    };
+
+    const runtimeContext: AgentExecutionOptions = {
+      state: context,
+      agentId,
+      host: this,
+      emit,
     };
 
     return Object.fromEntries(
@@ -221,11 +304,76 @@ export class AgentHost {
           description: toolDef.description,
           inputSchema: toolDef.inputSchema,
           execute: async (params: Record<string, unknown>) => {
-            return toolDef.execute(params, context);
+            return toolDef.execute(params, runtimeContext);
           },
         })
       ])
     );
+  }
+
+  private resolveAgent(agentId: string): { config: AgentConfig; manifest: AgentManifest } {
+    const config = this.getConfig(agentId);
+    const manifest = this.getManifest(agentId);
+
+    if (!config || !manifest) {
+      throw new AgentNotFoundError(agentId);
+    }
+
+    return { config, manifest };
+  }
+
+  private mapFullStreamPartToChunk(part: unknown, agentId: string): SwarmChunk | null {
+    if (!isRecord(part) || typeof part.type !== 'string') {
+      return null;
+    }
+
+    switch (part.type) {
+      case 'text-delta': {
+        const delta = getStringField(part, ['textDelta', 'text']);
+
+        if (!delta) {
+          return null;
+        }
+
+        return {
+          type: 'text',
+          content: delta,
+          activeAgentId: agentId,
+        };
+      }
+      case 'tool-call':
+        return {
+          type: 'tool-call',
+          content: part,
+          activeAgentId: agentId,
+        };
+      case 'tool-result':
+        return {
+          type: 'tool-result',
+          content: part,
+          activeAgentId: agentId,
+        };
+      default:
+        return null;
+    }
+  }
+
+  private validateHandoff(fromAgentId: string, toAgentId: string): void {
+    const fromManifest = this.getManifest(fromAgentId);
+    const toManifest = this.getManifest(toAgentId);
+
+    if (!fromManifest) {
+      throw new AgentNotFoundError(fromAgentId);
+    }
+
+    if (!toManifest) {
+      throw new AgentNotFoundError(toAgentId);
+    }
+
+    const allowedTargets = fromManifest.handoffTargets ?? [];
+    if (!allowedTargets.includes(toAgentId)) {
+      throw new AgentHandoffError(fromAgentId, toAgentId, 'Target agent is not declared in handoffTargets');
+    }
   }
 
   /**
@@ -284,22 +432,50 @@ export class AgentHost {
     message: string,
     context: IMSContext
   ): AsyncGenerator<string, void, unknown> {
-    const config = this.getConfig(agentId);
-    const manifest = this.getManifest(agentId);
-
-    if (!config || !manifest) {
-      throw new AgentNotFoundError(agentId);
+    for await (const chunk of this.executeWithDelegation(agentId, message, context)) {
+      if (chunk.type === 'text' && typeof chunk.content === 'string') {
+        yield chunk.content;
+      }
     }
+  }
 
-    // 创建 OpenAI 客户端
+  async handoff(
+    fromAgentId: string,
+    toAgentId: string,
+    context: IMSContext,
+    payload: Omit<HandoffPayload, 'from' | 'to' | 'timestamp' | 'candidateId'> = {}
+  ): Promise<SwarmChunk> {
+    this.validateHandoff(fromAgentId, toAgentId);
+
+    return {
+      type: 'handoff',
+      activeAgentId: toAgentId,
+      content: {
+        from: fromAgentId,
+        to: toAgentId,
+        reason: payload.reason,
+        message: payload.message,
+        metadata: payload.metadata,
+        timestamp: new Date().toISOString(),
+        candidateId: context.currentCandidate?.id,
+      } satisfies HandoffPayload,
+    };
+  }
+
+  async *executeWithDelegation(
+    agentId: string,
+    message: string,
+    context: IMSContext
+  ): AsyncGenerator<SwarmChunk, void, unknown> {
+    const { config, manifest } = this.resolveAgent(agentId);
+
+    const emittedChunks: SwarmChunk[] = [];
     const openai = await createModelProvider();
-
     const model = openai(manifest.model);
+    const tools = this.buildTools(config.tools, context, agentId, chunk => {
+      emittedChunks.push(chunk);
+    });
 
-    // 转换工具定义
-    const tools = this.buildTools(config.tools, context);
-
-    // 流式生成
     const result = streamText({
       model,
       system: config.systemPrompt,
@@ -308,9 +484,53 @@ export class AgentHost {
       stopWhen: config.maxSteps ? stepCountIs(config.maxSteps) : undefined,
     });
 
-    for await (const chunk of result.textStream) {
-      yield chunk;
+    for await (const part of result.fullStream) {
+      while (emittedChunks.length > 0) {
+        const chunk = emittedChunks.shift();
+        if (chunk) {
+          yield chunk;
+        }
+      }
+
+      const mappedChunk = this.mapFullStreamPartToChunk(part, agentId);
+      if (mappedChunk) {
+        yield mappedChunk;
+      }
     }
+
+    while (emittedChunks.length > 0) {
+      const chunk = emittedChunks.shift();
+      if (chunk) {
+        yield chunk;
+      }
+    }
+  }
+
+  executeAgent(agentId: string, message: string, context: IMSContext): Promise<string> {
+    return this.generate(agentId, message, context);
+  }
+
+  aggregateResults(results: DelegationResult[]): AggregatedDelegationResult {
+    const successCount = results.filter(result => result.success).length;
+    const failureCount = results.length - successCount;
+    const failedAgentIds = results.filter(result => !result.success).map(result => result.agentId);
+
+    const summary = results.map(result => {
+      if (result.success) {
+        return `[${result.agentId}] ${result.output ?? '已完成，但未返回内容'}`;
+      }
+
+      return `[${result.agentId}] 执行失败：${result.error ?? '未知错误'}`;
+    }).join('\n\n');
+
+    return {
+      totalTasks: results.length,
+      successCount,
+      failureCount,
+      failedAgentIds,
+      summary,
+      results,
+    };
   }
 
   /**
@@ -322,12 +542,7 @@ export class AgentHost {
     message: string,
     context: IMSContext
   ): Promise<string> {
-    const config = this.getConfig(agentId);
-    const manifest = this.getManifest(agentId);
-
-    if (!config || !manifest) {
-      throw new AgentNotFoundError(agentId);
-    }
+    const { config, manifest } = this.resolveAgent(agentId);
 
     // 创建 OpenAI 客户端
     const openai = await createModelProvider();
@@ -335,7 +550,7 @@ export class AgentHost {
     const model = openai(manifest.model);
 
     // 转换工具定义
-    const tools = this.buildTools(config.tools, context);
+    const tools = this.buildTools(config.tools, context, agentId);
 
     // 非流式生成
     const result = await generateText({
@@ -378,5 +593,12 @@ export class AgentNotFoundError extends Error {
   constructor(agentId: string) {
     super(`Agent "${agentId}" not found. Did you forget to forget to register it?`);
     this.name = 'AgentNotFoundError';
+  }
+}
+
+export class AgentHandoffError extends Error {
+  constructor(fromAgentId: string, toAgentId: string, reason: string) {
+    super(`Agent "${fromAgentId}" cannot hand off to "${toAgentId}": ${reason}`);
+    this.name = 'AgentHandoffError';
   }
 }

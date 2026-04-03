@@ -1,0 +1,10 @@
+{
+  "id": "T-1a53e41c-d06b-4b16-b8a2-c49a157cbaf0",
+  "subject": "分析 AgentHost 与协调员现状",
+  "description": "阅读现有 host、协调员与注册代码，结合搜索结果明确 handoff/分配/聚合切入点",
+  "status": "completed",
+  "activeForm": "正在分析 AgentHost 与协调员现状",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2ad8b8dbeffe89lhlpsYM85lp7"
+}

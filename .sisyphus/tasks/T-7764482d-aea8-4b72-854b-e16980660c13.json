@@ -1,0 +1,12 @@
+{
+  "id": "T-7764482d-aea8-4b72-854b-e16980660c13",
+  "subject": "实现 AgentHost handoff 与聚合",
+  "description": "在 host.ts 中补充 handoff、委派执行与结果聚合能力，并保持现有注册方式不变",
+  "status": "completed",
+  "activeForm": "正在实现 AgentHost handoff 与聚合",
+  "blocks": [],
+  "blockedBy": [
+    "T-1a53e41c-d06b-4b16-b8a2-c49a157cbaf0"
+  ],
+  "threadID": "ses_2ad8b8dbeffe89lhlpsYM85lp7"
+}

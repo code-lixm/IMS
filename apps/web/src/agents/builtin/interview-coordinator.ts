@@ -6,7 +6,13 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { agentHost, type AgentManifest } from '../host';
+import {
+  agentHost,
+  type AgentExecutionOptions,
+  type IMSContext,
+  type AgentManifest,
+  type DelegationResult,
+} from '../host';
 import { getIMSContext } from '../context-bridge';
 
 // ==================== 1. Manifest ====================
@@ -89,20 +95,75 @@ const coordinateAgentsTool = tool({
       priority: z.enum(['high', 'medium', 'low']).describe('优先级'),
     })).describe('任务列表'),
   }),
-  execute: async ({ candidateId, tasks }: any) => {
-    // TODO: 实现任务协调逻辑
-    // 可以使用 AgentHost 的 executeAgent 方法来调用子 Agent
+  execute: async (
+    { candidateId, tasks }: {
+      candidateId: string;
+      tasks: Array<{
+        agentId: 'tech-interviewer' | 'hr-interviewer' | 'salary-advisor';
+        task: string;
+        priority: 'high' | 'medium' | 'low';
+      }>;
+    },
+    options: unknown,
+  ) => {
+    const runtime = getAgentRuntime(options);
+    const ctx = getIMSContext(runtime);
+
+    if (tasks.length === 0) {
+      throw new Error('至少需要分配一个子任务');
+    }
+
+    const sortedTasks = [...tasks].sort((left, right) => priorityWeight[right.priority] - priorityWeight[left.priority]);
+    const results: DelegationResult[] = [];
+
+    for (const task of sortedTasks) {
+      const startedAt = new Date().toISOString();
+
+      try {
+        const handoffChunk = await runtime.host.handoff(runtime.agentId, task.agentId, ctx, {
+          reason: `协调员分配 ${task.priority} 优先级任务`,
+          message: task.task,
+          metadata: { candidateId, priority: task.priority },
+        });
+        runtime.emit?.(handoffChunk);
+
+        const output = await runtime.host.executeAgent(
+          task.agentId,
+          buildDelegationPrompt(candidateId, task.task, task.priority, ctx),
+          ctx,
+        );
+
+        results.push({
+          agentId: task.agentId,
+          task: task.task,
+          priority: task.priority,
+          success: true,
+          output,
+          startedAt,
+          completedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        results.push({
+          agentId: task.agentId,
+          task: task.task,
+          priority: task.priority,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          startedAt,
+          completedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    const aggregation = runtime.host.aggregateResults(results);
 
     return {
-      success: true,
-      message: '任务已分配',
+      success: aggregation.failureCount === 0,
+      message: aggregation.failureCount === 0 ? '任务已完成分配并执行' : '任务分配完成，部分子 Agent 执行失败',
       data: {
         candidateId,
-        tasks: tasks.map((task: any) => ({
-          ...task,
-          status: 'pending',
-          assignedAt: new Date().toISOString(),
-        })),
+        tasks: results,
+        aggregation,
       },
     };
   },
@@ -122,14 +183,43 @@ const aggregateResultsTool = tool({
       recommendations: z.array(z.string()).describe('建议'),
     })).describe('各 Agent 的评估结果'),
   }),
-  execute: async ({ candidateId, results }: any, options: any) => {
-    const ctx = getIMSContext(options);
+  execute: async (
+    {
+      candidateId,
+      results,
+    }: {
+      candidateId: string;
+      results: Array<{
+        agentId: string;
+        score: number;
+        summary: string;
+        recommendations: string[];
+      }>;
+    },
+    options: unknown,
+  ) => {
+    const runtime = getAgentRuntime(options);
+    const ctx = getIMSContext(runtime);
+
+    if (results.length === 0) {
+      throw new Error('至少需要一个评估结果才能汇总');
+    }
 
     // 计算综合评分
     const overallScore = results.reduce((sum: number, r: any) => sum + r.score, 0) / results.length;
 
     // 生成综合建议
-    const allRecommendations = results.flatMap((r: any) => r.recommendations);
+    const allRecommendations = Array.from(new Set(results.flatMap(result => result.recommendations)));
+    const aggregation = runtime.host.aggregateResults(
+      results.map(result => ({
+        agentId: result.agentId,
+        task: `汇总 ${result.agentId} 评估结果`,
+        success: true,
+        output: `${result.summary}\n建议：${result.recommendations.join('；')}`,
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      })),
+    );
 
     // TODO: 调用 API 保存汇总结果
     // await api.interviews.saveAggregatedResults({
@@ -148,6 +238,8 @@ const aggregateResultsTool = tool({
         results,
         overallScore: Math.round(overallScore * 10) / 10,
         allRecommendations,
+        summary: aggregation.summary,
+        successCount: aggregation.successCount,
         aggregatedBy: ctx.currentUser.id,
         aggregatedAt: new Date().toISOString(),
       },
@@ -188,3 +280,55 @@ export function createInterviewCoordinatorAgent(): any {
 
 // 文件导入时自动注册
 agentHost.register(interviewCoordinatorManifest, createInterviewCoordinatorAgent);
+
+const priorityWeight: Record<'high' | 'medium' | 'low', number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+function getAgentRuntime(options: unknown): AgentExecutionOptions {
+  if (
+    !options ||
+    typeof options !== 'object' ||
+    !('state' in options) ||
+    !('agentId' in options) ||
+    !('host' in options)
+  ) {
+    throw new Error('Agent 运行时上下文不可用');
+  }
+
+  return options as AgentExecutionOptions;
+}
+
+function buildDelegationPrompt(
+  candidateId: string,
+  task: string,
+  priority: 'high' | 'medium' | 'low',
+  context: IMSContext,
+): string {
+  const candidate = context.currentCandidate;
+  const candidateSummary = candidate
+    ? [
+        `候选人姓名：${candidate.name}`,
+        `候选人邮箱：${candidate.email}`,
+        `候选人状态：${candidate.status}`,
+        candidate.tags.length > 0 ? `候选人标签：${candidate.tags.join('、')}` : undefined,
+        candidate.resumeData.rawText
+          ? `简历摘要：${candidate.resumeData.rawText.slice(0, 800)}`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : '当前上下文没有候选人详细信息，请基于任务本身给出结论。';
+
+  return [
+    `请处理候选人 ${candidateId} 的子任务。`,
+    `任务优先级：${priority}`,
+    `任务说明：${task}`,
+    '',
+    candidateSummary,
+    '',
+    '请输出结构化、可执行的专业结论，便于协调员后续聚合。',
+  ].join('\n');
+}

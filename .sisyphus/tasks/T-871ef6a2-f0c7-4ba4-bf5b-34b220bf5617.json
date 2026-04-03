@@ -1,0 +1,12 @@
+{
+  "id": "T-871ef6a2-f0c7-4ba4-bf5b-34b220bf5617",
+  "subject": "增强协调员任务分配逻辑",
+  "description": "在 interview-coordinator 中接入 AgentHost handoff 与子任务协调，并补充错误处理",
+  "status": "completed",
+  "activeForm": "正在增强协调员任务分配逻辑",
+  "blocks": [],
+  "blockedBy": [
+    "T-7764482d-aea8-4b72-854b-e16980660c13"
+  ],
+  "threadID": "ses_2ad8b8dbeffe89lhlpsYM85lp7"
+}
