@@ -823,7 +823,7 @@ export interface AgentMemory {
 | AgentHost 架构增强 | 3d | ✅ |
 | Worker Agent 完善 | 5d | ✅ |
 | Handoff 机制实现 | 3d | ✅ |
-| 集成测试 | 3d | ⬜ |
+| 集成测试 | 2d | ✅ |
 | **总计** | **~14d** | |
 
 ---
@@ -891,7 +891,7 @@ bun add -d @types/nodemailer
 | 邮件配置功能 | 3d | ✅ |
 | 邮件发送服务 | 2d | ✅ |
 | 面试结果填报 | 3d | ✅ |
-| 集成测试 | 2d | ⬜ |
+| 集成测试 | 2d | ✅ |
 | **总计** | **~10d** | |
 
 ---
