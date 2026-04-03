@@ -11,12 +11,11 @@ import { mkdir, access, writeFile, readFile, readdir, stat, mkdtemp, rm } from "
 import path from "node:path";
 import { spawn } from "node:child_process";
 import os from "node:os";
-import { createHash } from "node:crypto";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { tool } from "ai";
 import { db } from "../db";
-import { candidates, resumes, interviews, artifacts, luiWorkflows } from "../schema";
+import { candidates, resumes, interviews, luiWorkflows } from "../schema";
 
 // ============================================================================
 // Tool Context
@@ -293,35 +292,9 @@ function parseRound(text: string | null | undefined): number | null {
   return null;
 }
 
-function runCommand(command: string, args: string[], timeoutMs = 120000): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    let finished = false;
-    const timer = setTimeout(() => {
-      if (!finished) { child.kill("SIGKILL"); reject(new Error(`Command timeout after ${timeoutMs}ms`)); }
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.on("error", (error) => { clearTimeout(timer); if (!finished) { finished = true; reject(error); } });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (finished) return;
-      finished = true;
-      if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`Command failed (${command}), code=${code}: ${stderr || stdout}`));
-    });
-  });
-}
-
 // ============================================================================
 // Tool Implementations
 // ============================================================================
-
-interface ToolContext {
-  directory: string;
-}
 
 export async function executeTool(
   toolName: string,
@@ -447,7 +420,7 @@ export async function executeScanPdf(
     const content = (pdfData.text ?? "").trim();
 
     // Calculate quality metrics
-    const wordCount = content.split(/\s+/).filter(w => w.length > 0).length;
+    const wordCount = content.split(/\s+/).filter((w: string) => w.length > 0).length;
     const charCount = content.length;
 
     // Quality assessment
@@ -625,7 +598,7 @@ export async function executeBatchScreenResumes(
         const content = (pdfData.text ?? "").trim();
 
         // Calculate metrics
-        const wordCount = content.split(/\s+/).filter(w => w.length > 0).length;
+        const wordCount = content.split(/\s+/).filter((w: string) => w.length > 0).length;
         const charCount = content.length;
 
         // Quality assessment

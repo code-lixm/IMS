@@ -5,11 +5,10 @@ import {
   lookupLabelOrDefault,
   resolveApplicationStatusCode,
 } from "@ims/shared";
-import { mkdir, writeFile, readFile, unlink } from "fs/promises";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { mkdir, writeFile } from "fs/promises";
+import { join } from "path";
 import { syncManager } from "./services/sync-manager";
-import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, exportScreeningResults } from "./services/import/pipeline";
+import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, exportScreeningResults } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
@@ -49,6 +48,7 @@ import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcripti
 import { messagesRoute } from "./routes/messages";
 import { memoryRoute } from "./routes/memory";
 import { sessionMemoryRoute } from "./routes/session-memory";
+import { fileResourcesRoute } from "./routes/file-resources";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
 
@@ -70,29 +70,12 @@ function logBaobaoAuth(stage: string, details?: Record<string, unknown>, importa
   console.log("[baobao-auth]", stage, details ?? {});
 }
 
-// File storage configuration
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const FILES_STORAGE_DIR = process.env.FILES_STORAGE_DIR || join(__dirname, "..", "..", "runtime", "files");
-
 async function ensureDir(dirPath: string): Promise<void> {
   try {
     await mkdir(dirPath, { recursive: true });
   } catch (error) {
     console.error("[FileStorage] Failed to create directory:", dirPath, error);
   }
-}
-
-async function saveFileToLocal(conversationId: string, fileName: string, content: string): Promise<string> {
-  const dirPath = join(FILES_STORAGE_DIR, conversationId);
-  await ensureDir(dirPath);
-  
-  // Sanitize filename
-  const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
-  const filePath = join(dirPath, sanitizedName);
-  
-  await writeFile(filePath, content, "utf-8");
-  return filePath;
 }
 
 async function saveImportUploadToLocal(batchId: string, file: File): Promise<string> {
@@ -106,21 +89,12 @@ async function saveImportUploadToLocal(batchId: string, file: File): Promise<str
   return filePath;
 }
 
-async function deleteFileFromLocal(filePath: string): Promise<void> {
-  try {
-    await unlink(filePath);
-  } catch (error) {
-    // File may not exist, ignore error
-    console.warn("[FileStorage] Failed to delete file:", filePath, error);
-  }
-}
-
 // Global queue for import batches - ensures all batches run serially
 let importBatchQueue: Promise<void> = Promise.resolve();
 
 async function runBatchInQueue<T>(job: () => Promise<T>): Promise<T> {
   const previous = importBatchQueue;
-  let release: () => void;
+  let release!: () => void;
   const next = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -1850,7 +1824,7 @@ export async function route(request: Request): Promise<Response> {
     try {
       const { buffer, fileName } = await exportScreeningResults(batchId);
       const encodedFileName = encodeURIComponent(fileName);
-      return new Response(buffer, {
+      return new Response(new Blob([Uint8Array.from(buffer)]), {
         status: 200,
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1894,7 +1868,7 @@ export async function route(request: Request): Promise<Response> {
     if (!(await candidateOrFail(body.candidateId))) return fail("NOT_FOUND", "candidate not found", 404);
     try {
       const { buffer, filename } = await exportCandidate(body.candidateId);
-      return new Response(buffer, {
+      return new Response(new Blob([Uint8Array.from(buffer)]), {
         status: 200,
         headers: {
           "Content-Type": "application/octet-stream",
@@ -2785,85 +2759,6 @@ Always be concise and helpful in your responses.`;
   }
 
   // ---------------------------------------------------------------------------
-  // LUI - Files
-  // ---------------------------------------------------------------------------
-
-  // GET /api/lui/files - List all files
-  if (path === "/api/lui/files" && request.method === "GET") {
-    const conversationId = url.searchParams.get("conversationId");
-    const filters = conversationId ? [eq(fileResources.conversationId, conversationId)] : [];
-    const rows = await db.select().from(fileResources).where(filters.length ? and(...filters) : undefined).orderBy(desc(fileResources.createdAt));
-    return ok({ items: rows });
-  }
-
-  // POST /api/lui/files - Upload file
-  if (path === "/api/lui/files" && request.method === "POST") {
-    try {
-      const formData = await request.formData();
-      const file = formData.get("file") as File | null;
-      const conversationId = formData.get("conversationId") as string | null;
-
-      if (!file) return fail("VALIDATION_ERROR", "file is required", 422);
-      if (!conversationId) return fail("VALIDATION_ERROR", "conversationId is required", 422);
-
-      const [conv] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-      if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
-
-      const content = await file.text();
-      const fileType = file.name.match(/\.(ts|js|tsx|jsx|py|go|java|cpp|c|h)$/) ? "code" :
-                       file.name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/) ? "image" : "document";
-      const language = fileType === "code" ? file.name.split(".").pop() || "text" : null;
-
-      // Save file to local filesystem
-      const filePath = await saveFileToLocal(conversationId, file.name, content);
-      console.log("[FileStorage] Saved file to:", filePath);
-
-      const now = new Date();
-      const id = `file_${crypto.randomUUID()}`;
-      await db.insert(fileResources).values({
-        id,
-        conversationId,
-        name: file.name,
-        type: fileType,
-        content,
-        filePath,
-        language,
-        size: file.size,
-        createdAt: now,
-      });
-
-      return ok({ id, name: file.name, type: fileType, size: file.size, content, filePath }, { status: 201 });
-    } catch (err) {
-      return fail("INTERNAL_ERROR", `File upload error: ${(err as Error).message}`, 500);
-    }
-  }
-
-  // GET /api/lui/files/:id - Get file content
-  const fileMatch = path.match(/^\/api\/lui\/files\/([^/]+)$/);
-  if (fileMatch && request.method === "GET") {
-    const id = fileMatch[1];
-    const [row] = await db.select().from(fileResources).where(eq(fileResources.id, id)).limit(1);
-    if (!row) return fail("NOT_FOUND", "file not found", 404);
-    return ok({ content: row.content, name: row.name, type: row.type });
-  }
-
-  // DELETE /api/lui/files/:id - Delete file
-  if (fileMatch && request.method === "DELETE") {
-    const id = fileMatch[1];
-    const [row] = await db.select().from(fileResources).where(eq(fileResources.id, id)).limit(1);
-    if (!row) return fail("NOT_FOUND", "file not found", 404);
-    
-    // Delete file from local filesystem if filePath exists
-    if (row.filePath) {
-      await deleteFileFromLocal(row.filePath);
-      console.log("[FileStorage] Deleted file from:", row.filePath);
-    }
-    
-    await db.delete(fileResources).where(eq(fileResources.id, id));
-    return ok({ id });
-  }
-
-  // ---------------------------------------------------------------------------
   // LUI - Agent Execute (Workflow Mode)
   // ---------------------------------------------------------------------------
 
@@ -3058,13 +2953,19 @@ Always be concise and helpful in your responses.`;
     return ok(workflow);
   }
 
+  const messagesResponse = await messagesRoute(request);
+  if (messagesResponse) return messagesResponse;
+
   // ---------------------------------------------------------------------------
   // Memory Routes (Phase 2.2)
   // ---------------------------------------------------------------------------
   const memoryResponse = await memoryRoute(request);
   if (memoryResponse) return memoryResponse;
 
+  const fileResourcesResponse = await fileResourcesRoute(request);
+  if (fileResourcesResponse) return fileResourcesResponse;
 
-  // ---------------------------------------------------------------------------n  // Session Memory Routes (Phase 2.3)n  // ---------------------------------------------------------------------------n  const sessionMemoryResponse = await sessionMemoryRoute(request);n  if (sessionMemoryResponse) return sessionMemoryResponse;
+  const sessionMemoryResponse = await sessionMemoryRoute(request);
+  if (sessionMemoryResponse) return sessionMemoryResponse;
   return fail("NOT_FOUND", "route not found", 404);
 }

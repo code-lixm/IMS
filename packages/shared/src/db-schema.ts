@@ -251,6 +251,7 @@ export interface FileResource {
   name: string;
   type: FileResourceType;
   content: string;
+  filePath: string | null;
   language: string | null;
   size: number;
   createdAt: number;

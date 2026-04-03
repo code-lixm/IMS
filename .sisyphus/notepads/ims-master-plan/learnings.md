@@ -1,0 +1,4 @@
+- 2026-04-03：Phase 2 file-tools 已接入会话级 file-resources API，后端采用 `packages/server/src/routes/file-resources.ts` + `packages/server/src/services/file-resource.ts` 模式，主路由在 `packages/server/src/routes.ts` 统一分发。
+- 2026-04-03：前端 `apps/web/src/agents/tools/file-tools.ts` 不直接调用 `tool()`，而是遵循现有 AgentHost 模式，由 `apps/web/src/agents/host.ts` 统一包装；新增 `IMSContext.currentConversationId` 并在 `apps/web/src/agents/context-bridge.ts` 从 `useLuiStore().selectedId` 注入，文件工具即可默认操作当前会话。
+- 2026-04-03：`packages/shared/src/db-schema.ts` 的 `FileResource` 需要包含 `filePath` 字段，否则服务层返回值与共享类型不一致。
+- 2026-04-03：仓库当前 `pnpm typecheck` 会在 `@ims/web` 的治理脚本 `node ./scripts/check-frontend-governance.mjs` 失败，属于现有代码库的治理违规，不是本次 file-tools 变更引入；定向校验 `pnpm --filter @ims/server check` 与 `pnpm --filter @ims/web exec vue-tsc --noEmit` 可通过。

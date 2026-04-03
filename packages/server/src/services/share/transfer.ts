@@ -14,7 +14,7 @@ export async function sendToDevice(candidateId: string, target: Device, fileBuff
   const targetUrl = `http://${target.ip}:${target.apiPort}/api/share/import`;
 
   try {
-    const res = await fetch(targetUrl, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Filename": fileName, "X-Candidate-Id": candidateId }, body: fileBuffer, signal: AbortSignal.timeout(30_000) });
+    const res = await fetch(targetUrl, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Filename": fileName, "X-Candidate-Id": candidateId }, body: new Blob([Uint8Array.from(fileBuffer)]), signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const resultData = (await res.json()) as { result?: string; candidateId?: string };
     await db.update(shareRecords).set({ status: "success", resultJson: JSON.stringify(resultData), completedAt: Date.now() }).where(eq(shareRecords.id, recordId));

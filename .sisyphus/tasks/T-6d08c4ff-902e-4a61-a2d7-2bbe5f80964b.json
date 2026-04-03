@@ -1,0 +1,10 @@
+{
+  "id": "T-6d08c4ff-902e-4a61-a2d7-2bbe5f80964b",
+  "subject": "梳理 file-resources 实现模式",
+  "description": "并行研究后端路由、服务层、前端工具模式以及 fileResources schema 与相关上下文",
+  "status": "completed",
+  "activeForm": "正在梳理 file-resources 实现模式",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2ad9d8b57ffeDF1N35NGex4hZM"
+}

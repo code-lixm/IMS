@@ -1,0 +1,13 @@
+{
+  "id": "T-4b69da70-5872-4b69-81b5-d8d93ee5a0fe",
+  "subject": "实现前端 file-tools",
+  "description": "新增前端 file-tools.ts 并补充共享类型",
+  "status": "completed",
+  "activeForm": "正在实现前端 file-tools",
+  "blocks": [],
+  "blockedBy": [
+    "T-6d08c4ff-902e-4a61-a2d7-2bbe5f80964b",
+    "T-2db843c0-f10d-4ff1-89e7-0d703ef6049d"
+  ],
+  "threadID": "ses_2ad9d8b57ffeDF1N35NGex4hZM"
+}

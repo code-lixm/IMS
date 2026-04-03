@@ -12,6 +12,7 @@
 import { streamText, generateText, tool, stepCountIs } from 'ai';
 import { getPreferredGatewayEndpointConfig } from '@/lib/ai-gateway-config';
 import type { ZodSchema } from 'zod';
+import { fileTools } from './tools/file-tools';
 
 type AgentLanguageModel = Parameters<typeof streamText>[0]['model'];
 type OpenAIProviderFactory = (modelId: string) => AgentLanguageModel;
@@ -112,6 +113,8 @@ export type AgentFactory = () => AgentConfig;
  * 通过 Context Bridge 自动从 Pinia Store 同步
  */
 export interface IMSContext {
+  currentConversationId?: string;
+
   /**
    * 当前选中的候选人
    */
@@ -205,6 +208,26 @@ export class AgentHost {
   private manifests = new Map<string, AgentManifest>();
   private factories = new Map<string, AgentFactory>();
 
+  private buildTools(configTools: Record<string, AgentTool> | undefined, context: IMSContext) {
+    const mergedTools = {
+      ...fileTools,
+      ...(configTools ?? {}),
+    };
+
+    return Object.fromEntries(
+      Object.entries(mergedTools).map(([name, toolDef]) => [
+        name,
+        tool({
+          description: toolDef.description,
+          inputSchema: toolDef.inputSchema,
+          execute: async (params: Record<string, unknown>) => {
+            return toolDef.execute(params, context);
+          },
+        })
+      ])
+    );
+  }
+
   /**
    * 注册 Agent
    * @param manifest - Agent 元数据
@@ -274,18 +297,7 @@ export class AgentHost {
     const model = openai(manifest.model);
 
     // 转换工具定义
-    const tools = config.tools ? Object.fromEntries(
-      Object.entries(config.tools).map(([name, toolDef]) => [
-        name,
-        tool({
-          description: toolDef.description,
-          inputSchema: toolDef.inputSchema,
-          execute: async (params: Record<string, unknown>) => {
-            return toolDef.execute(params, context);
-          },
-        })
-      ])
-    ) : undefined;
+    const tools = this.buildTools(config.tools, context);
 
     // 流式生成
     const result = streamText({
@@ -323,18 +335,7 @@ export class AgentHost {
     const model = openai(manifest.model);
 
     // 转换工具定义
-    const tools = config.tools ? Object.fromEntries(
-      Object.entries(config.tools).map(([name, toolDef]) => [
-        name,
-        tool({
-          description: toolDef.description,
-          inputSchema: toolDef.inputSchema,
-          execute: async (params: Record<string, unknown>) => {
-            return toolDef.execute(params, context);
-          },
-        })
-      ])
-    ) : undefined;
+    const tools = this.buildTools(config.tools, context);
 
     // 非流式生成
     const result = await generateText({

@@ -1,0 +1,11 @@
+{
+  "id": "T-2032ebf1-4dad-4b09-88ce-1a9d200f0d40",
+  "subject": "梳理 file resource 现有模式",
+  "description": "阅读 schema、现有 routes/service/tool 模式及 notepad，上下文建模。",
+  "status": "completed",
+  "activeForm": "正在梳理 file resource 模式",
+  "blocks": [],
+  "blockedBy": [],
+  "parentID": "T-1e2d2d59-e3b6-4e30-85ae-8590113ecddb",
+  "threadID": "ses_2ada8c73dffefh69zevdvUlYTE"
+}

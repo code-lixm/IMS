@@ -1,0 +1,13 @@
+{
+  "id": "T-f0b9a182-45e5-492e-87da-b1c03a0eb888",
+  "subject": "实现前端 file-tools 与集成",
+  "description": "创建 file-tools，接入 AgentHost，并补充共享类型与校验验证。",
+  "status": "pending",
+  "activeForm": "正在实现前端 file-tools 与集成",
+  "blocks": [],
+  "blockedBy": [
+    "T-5cebd5ff-7175-47c8-9592-6af01f73a7c4"
+  ],
+  "parentID": "T-1e2d2d59-e3b6-4e30-85ae-8590113ecddb",
+  "threadID": "ses_2ada8c73dffefh69zevdvUlYTE"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "T-5cebd5ff-7175-47c8-9592-6af01f73a7c4",
+  "subject": "实现后端 file-resources",
+  "description": "创建 file-resource 服务和 file-resources 路由，并注册到服务端入口。",
+  "status": "in_progress",
+  "activeForm": "正在实现后端 file-resources",
+  "blocks": [],
+  "blockedBy": [
+    "T-2032ebf1-4dad-4b09-88ce-1a9d200f0d40"
+  ],
+  "parentID": "T-1e2d2d59-e3b6-4e30-85ae-8590113ecddb",
+  "threadID": "ses_2ada8c73dffefh69zevdvUlYTE"
+}

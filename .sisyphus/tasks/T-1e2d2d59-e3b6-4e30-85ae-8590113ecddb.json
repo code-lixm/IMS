@@ -1,0 +1,10 @@
+{
+  "id": "T-1e2d2d59-e3b6-4e30-85ae-8590113ecddb",
+  "subject": "实现 file-tools Phase 2",
+  "description": "为会话文件资源实现后端路由、服务层、前端工具集成，并完成类型校验与验证。",
+  "status": "pending",
+  "activeForm": "正在实现 file-tools Phase 2",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2ada8c73dffefh69zevdvUlYTE"
+}

@@ -11,6 +11,7 @@
 
 import { computed, type ComputedRef } from 'vue';
 import type { IMSContext } from './host';
+import { useLuiStore } from '@/stores/lui';
 
 /**
  * 在工具函数中获取 IMS 上下文
@@ -50,6 +51,8 @@ export function getIMSContext(options: { state?: unknown }): IMSContext {
  * ```
  */
 export function useAgentContext(): ComputedRef<IMSContext> {
+  const luiStore = useLuiStore();
+
   // TODO: 导入实际的 Pinia stores
   // const candidateStore = useCandidateStore();
   // const viewStore = useViewStore();
@@ -57,6 +60,8 @@ export function useAgentContext(): ComputedRef<IMSContext> {
   // const interviewStore = useInterviewStore();
 
   return computed<IMSContext>(() => ({
+    currentConversationId: luiStore.selectedId ?? undefined,
+
     // TODO: 从实际的 Pinia stores 获取数据
     // currentCandidate: candidateStore.current ? {
     //   id: candidateStore.current.id,
