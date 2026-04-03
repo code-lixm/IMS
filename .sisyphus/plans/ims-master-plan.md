@@ -743,7 +743,7 @@ export interface AgentMemory {
 
 | 任务 | 工期 | 状态 |
 |------|------|------|
-| Agent 工具系统 | 4d | ⚠️ 部分（file-tools.ts 已删除，缺少后端 API） |
+| Agent 工具系统 | 4d | ✅ |
 | 全局记忆系统 | 5d | ✅ |
 | 会话记忆系统 | 2d | ✅ |
 | 集成测试 | 2d | ⬜ |
