@@ -73,6 +73,25 @@ CREATE TABLE IF NOT EXISTS interviews (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS interview_assessments (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL REFERENCES candidates(id),
+  interview_id TEXT NOT NULL REFERENCES interviews(id),
+  interviewer_id TEXT NOT NULL,
+  technical_score INTEGER NOT NULL,
+  communication_score INTEGER NOT NULL,
+  culture_fit_score INTEGER NOT NULL,
+  overall_score INTEGER NOT NULL,
+  technical_evaluation TEXT NOT NULL,
+  communication_evaluation TEXT NOT NULL,
+  culture_fit_evaluation TEXT NOT NULL,
+  overall_evaluation TEXT NOT NULL,
+  recommendation TEXT NOT NULL,
+  report_markdown TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   candidate_id TEXT NOT NULL REFERENCES candidates(id),
@@ -298,6 +317,7 @@ ensureColumn("interviews", "check_in_time", "INTEGER");
 ensureColumn("interviews", "arrival_date", "TEXT");
 ensureColumn("interviews", "eliminate_reason_string", "TEXT");
 ensureColumn("interviews", "remark", "TEXT");
+ensureColumn("interview_assessments", "report_markdown", "TEXT");
 ensureColumn("file_resources", "file_path", "TEXT");
 ensureColumn("agents", "engine", "TEXT NOT NULL DEFAULT 'builtin'");
 

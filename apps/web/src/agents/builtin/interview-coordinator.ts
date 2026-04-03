@@ -14,6 +14,7 @@ import {
   type DelegationResult,
 } from '../host';
 import { getIMSContext } from '../context-bridge';
+import { interviewAssessmentApi } from '@/api/interview-assessment';
 
 // ==================== 1. Manifest ====================
 
@@ -29,7 +30,7 @@ export const interviewCoordinatorManifest: AgentManifest = {
   model: 'gpt-4o',
   category: 'builtin',
   permissions: ['candidate:read', 'interview:read', 'interview:write'],
-  handoffTargets: ['tech-interviewer', 'hr-interviewer', 'salary-advisor'],
+  handoffTargets: ['tech-interviewer', 'hr-interviewer', 'salary-advisor', 'assessment-agent'],
   ui: {
     icon: 'git-branch',
     color: '#ec4899',
@@ -49,7 +50,7 @@ const createInterviewPlanTool = tool({
     interviewType: z.enum(['technical', 'hr', 'comprehensive']).describe('面试类型'),
     stages: z.array(z.object({
       stage: z.string().describe('面试阶段'),
-      interviewer: z.enum(['tech-interviewer', 'hr-interviewer', 'salary-advisor']).describe('负责 Agent'),
+      interviewer: z.enum(['tech-interviewer', 'hr-interviewer', 'salary-advisor', 'assessment-agent']).describe('负责 Agent'),
       duration: z.number().describe('预计时长（分钟）'),
       objectives: z.array(z.string()).describe('面试目标'),
     })).describe('面试阶段'),
@@ -90,7 +91,7 @@ const coordinateAgentsTool = tool({
   inputSchema: z.object({
     candidateId: z.string().describe('候选人 ID'),
     tasks: z.array(z.object({
-      agentId: z.enum(['tech-interviewer', 'hr-interviewer', 'salary-advisor']).describe('Agent ID'),
+      agentId: z.enum(['tech-interviewer', 'hr-interviewer', 'salary-advisor', 'assessment-agent']).describe('Agent ID'),
       task: z.string().describe('任务描述'),
       priority: z.enum(['high', 'medium', 'low']).describe('优先级'),
     })).describe('任务列表'),
@@ -99,7 +100,7 @@ const coordinateAgentsTool = tool({
     { candidateId, tasks }: {
       candidateId: string;
       tasks: Array<{
-        agentId: 'tech-interviewer' | 'hr-interviewer' | 'salary-advisor';
+        agentId: 'tech-interviewer' | 'hr-interviewer' | 'salary-advisor' | 'assessment-agent';
         task: string;
         priority: 'high' | 'medium' | 'low';
       }>;
@@ -176,6 +177,7 @@ const aggregateResultsTool = tool({
   description: '汇总面试结果',
   inputSchema: z.object({
     candidateId: z.string().describe('候选人 ID'),
+    interviewId: z.string().optional().describe('面试 ID，不传则使用当前面试上下文'),
     results: z.array(z.object({
       agentId: z.string().describe('Agent ID'),
       score: z.number().describe('评分'),
@@ -186,9 +188,11 @@ const aggregateResultsTool = tool({
   execute: async (
     {
       candidateId,
+      interviewId,
       results,
     }: {
       candidateId: string;
+      interviewId?: string;
       results: Array<{
         agentId: string;
         score: number;
@@ -200,13 +204,26 @@ const aggregateResultsTool = tool({
   ) => {
     const runtime = getAgentRuntime(options);
     const ctx = getIMSContext(runtime);
+    const resolvedInterviewId = interviewId ?? ctx.interviewContext?.currentInterviewId;
 
     if (results.length === 0) {
       throw new Error('至少需要一个评估结果才能汇总');
     }
 
+    if (!resolvedInterviewId) {
+      throw new Error('缺少 interviewId，无法保存综合评估');
+    }
+
     // 计算综合评分
     const overallScore = results.reduce((sum: number, r: any) => sum + r.score, 0) / results.length;
+    const technicalResult = results.find(result => result.agentId === 'tech-interviewer');
+    const hrResult = results.find(result => result.agentId === 'hr-interviewer');
+    const assessmentResult = results.find(result => result.agentId === 'assessment-agent');
+    const communicationScore = Math.round((hrResult?.score ?? overallScore) * 10) / 10;
+    const cultureFitScore = Math.round((hrResult?.score ?? overallScore) * 10) / 10;
+    const technicalScore = Math.round((technicalResult?.score ?? overallScore) * 10) / 10;
+    const roundedOverallScore = Math.round(overallScore * 10) / 10;
+    const recommendation = roundedOverallScore >= 8 ? 'pass' : roundedOverallScore >= 6 ? 'hold' : 'reject';
 
     // 生成综合建议
     const allRecommendations = Array.from(new Set(results.flatMap(result => result.recommendations)));
@@ -221,25 +238,35 @@ const aggregateResultsTool = tool({
       })),
     );
 
-    // TODO: 调用 API 保存汇总结果
-    // await api.interviews.saveAggregatedResults({
-    //   candidateId,
-    //   results,
-    //   overallScore,
-    //   allRecommendations,
-    //   aggregatedBy: ctx.currentUser.id,
-    // });
+    const savedAssessment = await interviewAssessmentApi.create(candidateId, {
+      interviewId: resolvedInterviewId,
+      interviewerId: ctx.currentUser.id,
+      technicalScore: Math.max(1, Math.min(10, Math.round(technicalScore))),
+      communicationScore: Math.max(1, Math.min(10, Math.round(communicationScore))),
+      cultureFitScore: Math.max(1, Math.min(10, Math.round(cultureFitScore))),
+      overallScore: Math.max(1, Math.min(10, Math.round(roundedOverallScore))),
+      technicalEvaluation: technicalResult?.summary ?? assessmentResult?.summary ?? '待补充技术评价',
+      communicationEvaluation: hrResult?.summary ?? assessmentResult?.summary ?? '待补充沟通评价',
+      cultureFitEvaluation: hrResult?.summary ?? '待补充文化匹配评价',
+      overallEvaluation: aggregation.summary,
+      recommendation,
+    });
+    const report = await interviewAssessmentApi.generateReport(candidateId, savedAssessment.id);
 
     return {
       success: true,
       message: '面试结果已汇总',
       data: {
         candidateId,
+        interviewId: resolvedInterviewId,
         results,
-        overallScore: Math.round(overallScore * 10) / 10,
+        overallScore: roundedOverallScore,
+        recommendation,
         allRecommendations,
         summary: aggregation.summary,
         successCount: aggregation.successCount,
+        assessment: savedAssessment,
+        report,
         aggregatedBy: ctx.currentUser.id,
         aggregatedAt: new Date().toISOString(),
       },
@@ -260,12 +287,13 @@ export function createInterviewCoordinatorAgent(): any {
 2. 分配任务给专业的子 Agent（技术面试官、HR 面试官、薪资顾问）
 3. 监控各 Agent 的执行进度
 4. 汇总各 Agent 的评估结果
-5. 生成综合评估报告
+5. 协调 assessment-agent 或直接生成综合评估报告
 
 你可以将任务移交给以下专业 Agent：
 - tech-interviewer: 技术面试官，评估技术能力
 - hr-interviewer: HR 面试官，评估软技能和文化契合度
 - salary-advisor: 薪资顾问，提供薪资建议
+- assessment-agent: 面试评估员，负责归档评估与生成报告
 
 请使用提供的工具来完成任务。`,
     tools: {

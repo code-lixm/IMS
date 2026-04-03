@@ -1,0 +1,11 @@
+{
+  "id": "T-7b50131e-5648-4d14-9d82-a241c5d662f5",
+  "subject": "实现评估 Agent 并集成协调器",
+  "description": "新增 assessment-agent 并接入 interview-coordinator 协调流程",
+  "status": "completed",
+  "activeForm": "正在实现评估 Agent 并集成协调器",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "gpt-5.4",
+  "threadID": "ses_2ad5927b0ffeWlF7vFjd5xDJOh"
+}

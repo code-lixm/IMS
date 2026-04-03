@@ -8,3 +8,4 @@
 - 2026-04-03：本轮四个 worker agent 已通过改动文件级 LSP 诊断与 `pnpm --filter @ims/web exec vue-tsc --noEmit`；`pnpm typecheck` 仍会被仓库既有 `apps/web/scripts/check-frontend-governance.mjs` 治理违规拦截，属于历史问题而非本次改动引入。
 - 2026-04-03：Phase 4.1 邮件功能采用 `packages/server/src/routes/email.ts` + `packages/server/src/services/email.ts` + `apps/web/src/api/email.ts` + `apps/web/src/agents/builtin/email-agent.ts` 组合模式，服务端同时需要更新 `packages/server/src/db.ts` 的启动自举 SQL，否则新增 Drizzle 表定义不会真正落库。
 - 2026-04-03：当前仓库锁文件里没有 `nodemailer` 记录，邮件服务改为运行时懒加载依赖并在缺失时返回明确错误；类型校验通过，但真实发送邮件前仍需在运行环境补齐该依赖。
+- 2026-04-03：Phase 4.2 面试评估延续 `shared/api-types + server/routes + server/services + web/api + web/agents` 五段式接入；新增 Drizzle 表时必须同步更新 `packages/server/src/db.ts` 自举 SQL 和 `ensureColumn()`，否则本地 SQLite 不会自动补齐新列。

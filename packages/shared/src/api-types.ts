@@ -16,6 +16,7 @@ import type {
   ImportFileTask,
   ShareRecord,
   Notification,
+  InterviewAssessment,
   EmailConfig,
   EmailTemplate,
   Device,
@@ -230,6 +231,44 @@ export interface SendEmailData {
   subject: string;
   body: string;
   sentAt: number;
+}
+
+export interface CreateInterviewAssessmentInput {
+  interviewId: string;
+  interviewerId?: string;
+  technicalScore: number;
+  communicationScore: number;
+  cultureFitScore: number;
+  overallScore: number;
+  technicalEvaluation: string;
+  communicationEvaluation: string;
+  cultureFitEvaluation: string;
+  overallEvaluation: string;
+  recommendation: "pass" | "hold" | "reject";
+}
+
+export interface UpdateInterviewAssessmentInput {
+  interviewId?: string;
+  interviewerId?: string;
+  technicalScore?: number;
+  communicationScore?: number;
+  cultureFitScore?: number;
+  overallScore?: number;
+  technicalEvaluation?: string;
+  communicationEvaluation?: string;
+  cultureFitEvaluation?: string;
+  overallEvaluation?: string;
+  recommendation?: "pass" | "hold" | "reject";
+}
+
+export interface InterviewAssessmentListData {
+  items: InterviewAssessment[];
+}
+
+export interface InterviewAssessmentReportData {
+  assessment: InterviewAssessment;
+  reportMarkdown: string;
+  generatedAt: number;
 }
 
 // ---------------------------------------------------------------------------

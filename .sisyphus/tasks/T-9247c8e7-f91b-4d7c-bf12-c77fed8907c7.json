@@ -1,0 +1,11 @@
+{
+  "id": "T-9247c8e7-f91b-4d7c-bf12-c77fed8907c7",
+  "subject": "实现面试评估后端",
+  "description": "新增数据模型、Drizzle 表、服务与 API 路由，并注册到服务器",
+  "status": "completed",
+  "activeForm": "正在实现面试评估后端",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "gpt-5.4",
+  "threadID": "ses_2ad5927b0ffeWlF7vFjd5xDJOh"
+}

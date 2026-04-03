@@ -78,6 +78,25 @@ export const interviews = sqliteTable("interviews", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const interviewAssessments = sqliteTable("interview_assessments", {
+  id: text("id").primaryKey(),
+  candidateId: text("candidate_id").notNull().references(() => candidates.id),
+  interviewId: text("interview_id").notNull().references(() => interviews.id),
+  interviewerId: text("interviewer_id").notNull(),
+  technicalScore: integer("technical_score").notNull(),
+  communicationScore: integer("communication_score").notNull(),
+  cultureFitScore: integer("culture_fit_score").notNull(),
+  overallScore: integer("overall_score").notNull(),
+  technicalEvaluation: text("technical_evaluation").notNull(),
+  communicationEvaluation: text("communication_evaluation").notNull(),
+  cultureFitEvaluation: text("culture_fit_evaluation").notNull(),
+  overallEvaluation: text("overall_evaluation").notNull(),
+  recommendation: text("recommendation", { enum: ["pass", "hold", "reject"] }).notNull(),
+  reportMarkdown: text("report_markdown"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 // ---------------------------------------------------------------------------
 // Artifact
 // ---------------------------------------------------------------------------

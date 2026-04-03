@@ -16,6 +16,7 @@
 export type TokenStatus = "valid" | "expired" | "unauthenticated";
 export type CandidateSource = "local" | "remote" | "hybrid";
 export type InterviewStatus = "scheduled" | "completed" | "cancelled" | "no_show";
+export type InterviewAssessmentRecommendation = "pass" | "hold" | "reject";
 export type ArtifactType = "screening" | "questions" | "evaluation" | "summary";
 export type WorkspaceStatus = "active" | "degraded" | "closed";
 export type BatchStatus =
@@ -116,6 +117,25 @@ export interface Interview {
   remark: string | null;
   interviewerIdsJson: string; // JSON string array
   manualEvaluationJson: string | null; // { rating, decision, comments }
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface InterviewAssessment {
+  id: string;
+  candidateId: string;
+  interviewId: string;
+  interviewerId: string;
+  technicalScore: number;
+  communicationScore: number;
+  cultureFitScore: number;
+  overallScore: number;
+  technicalEvaluation: string;
+  communicationEvaluation: string;
+  cultureFitEvaluation: string;
+  overallEvaluation: string;
+  recommendation: InterviewAssessmentRecommendation;
+  reportMarkdown: string | null;
   createdAt: number;
   updatedAt: number;
 }

@@ -1,0 +1,11 @@
+{
+  "id": "T-097b1e1a-6ea1-42e5-bd71-d253b782e1a0",
+  "subject": "梳理面试评估现有架构",
+  "description": "分析服务、路由、Agent 与 coordinator 的现有模式，确认评估功能接入点",
+  "status": "completed",
+  "activeForm": "正在梳理面试评估现有架构",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "gpt-5.4",
+  "threadID": "ses_2ad5927b0ffeWlF7vFjd5xDJOh"
+}

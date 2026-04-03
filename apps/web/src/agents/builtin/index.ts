@@ -12,6 +12,7 @@ import './hr-interviewer';
 import './salary-advisor';
 import './search-assistant';
 import './email-agent';
+import './assessment-agent';
 
 // 导出所有 Manifest（用于 UI 展示）
 export { resumeAnalyzerManifest } from './resume-analyzer';
@@ -21,6 +22,7 @@ export { hrInterviewerManifest } from './hr-interviewer';
 export { salaryAdvisorManifest } from './salary-advisor';
 export { searchAssistantManifest } from './search-assistant';
 export { emailAgentManifest } from './email-agent';
+export { assessmentAgentManifest } from './assessment-agent';
 
 // 导出所有 Factory 函数（用于测试）
 export { createResumeAnalyzerAgent } from './resume-analyzer';
@@ -30,3 +32,4 @@ export { createHRInterviewerAgent } from './hr-interviewer';
 export { createSalaryAdvisorAgent } from './salary-advisor';
 export { createSearchAssistantAgent } from './search-assistant';
 export { createEmailAgent } from './email-agent';
+export { createAssessmentAgent } from './assessment-agent';
