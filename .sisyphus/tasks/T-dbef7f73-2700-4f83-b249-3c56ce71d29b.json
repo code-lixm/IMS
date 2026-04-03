@@ -1,0 +1,10 @@
+{
+  "id": "T-dbef7f73-2700-4f83-b249-3c56ce71d29b",
+  "subject": "梳理邮件功能实现上下文",
+  "description": "读取现有 schema、路由、服务、Agent 模式，并补充外部 nodemailer 参考",
+  "status": "completed",
+  "activeForm": "正在梳理邮件功能实现上下文",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2ad6e2d36ffezLjfyQzNhyi86X"
+}

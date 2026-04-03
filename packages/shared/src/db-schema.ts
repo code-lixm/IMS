@@ -322,6 +322,31 @@ export interface ProviderCredential {
   updatedAt: number;
 }
 
+export interface EmailConfig {
+  id: string;
+  userId: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  fromName: string;
+  fromEmail: string;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface EmailTemplate {
+  id: string;
+  userId: string;
+  name: string;
+  subject: string;
+  body: string;
+  variables: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ---------------------------------------------------------------------------
 // Parsed resume shape (used in API responses)
 // ---------------------------------------------------------------------------

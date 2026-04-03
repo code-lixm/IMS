@@ -184,6 +184,31 @@ export const notifications = sqliteTable("notifications", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const emailConfigs = sqliteTable("email_configs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  smtpHost: text("smtp_host").notNull(),
+  smtpPort: integer("smtp_port").notNull(),
+  smtpUser: text("smtp_user").notNull(),
+  smtpPass: text("smtp_pass").notNull(),
+  fromName: text("from_name").notNull(),
+  fromEmail: text("from_email").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const emailTemplates = sqliteTable("email_templates", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  variables: text("variables").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 // ---------------------------------------------------------------------------
 // LUI - Conversation
 // ---------------------------------------------------------------------------

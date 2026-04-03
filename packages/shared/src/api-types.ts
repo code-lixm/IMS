@@ -16,6 +16,8 @@ import type {
   ImportFileTask,
   ShareRecord,
   Notification,
+  EmailConfig,
+  EmailTemplate,
   Device,
   ParsedResume,
 } from "./db-schema";
@@ -163,6 +165,71 @@ export interface SyncRunData {
   syncedCandidates: number;
   syncedInterviews: number;
   syncAt: number;
+}
+
+export interface EmailConfigListData {
+  items: EmailConfig[];
+}
+
+export interface EmailTemplateListData {
+  items: EmailTemplate[];
+}
+
+export interface CreateEmailConfigInput {
+  userId?: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  fromName: string;
+  fromEmail: string;
+  isDefault?: boolean;
+}
+
+export interface UpdateEmailConfigInput {
+  userId?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPass?: string;
+  fromName?: string;
+  fromEmail?: string;
+  isDefault?: boolean;
+}
+
+export interface CreateEmailTemplateInput {
+  userId?: string;
+  name: string;
+  subject: string;
+  body: string;
+}
+
+export interface UpdateEmailTemplateInput {
+  userId?: string;
+  name?: string;
+  subject?: string;
+  body?: string;
+}
+
+export interface SendEmailInput {
+  userId?: string;
+  configId?: string;
+  to: string;
+  subject?: string;
+  body?: string;
+  templateId?: string;
+  variables?: Record<string, string>;
+}
+
+export interface SendEmailData {
+  messageId: string;
+  configId: string;
+  templateId: string | null;
+  accepted: string[];
+  rejected: string[];
+  subject: string;
+  body: string;
+  sentAt: number;
 }
 
 // ---------------------------------------------------------------------------

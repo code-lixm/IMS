@@ -6,3 +6,5 @@
 - 2026-04-03：Phase 3.2 Worker Agents 完善时，四个 builtin worker（`tech-interviewer` / `hr-interviewer` / `salary-advisor` / `resume-analyzer`）都可以在工具内通过 `getAgentRuntime()` + `host.handoff()` + `host.executeAgent('interview-coordinator', ...)` 主动把专业结论同步给协调员，形成统一协作链路。
 - 2026-04-03：前端 worker agent 的工具实现里，`getIMSContext()` 需要显式接收带 `state` 的对象；若 `execute` 的第二参数声明为 `unknown`，调用时需要先收窄或断言为 `{ state?: unknown }`，否则会触发 TS2345。
 - 2026-04-03：本轮四个 worker agent 已通过改动文件级 LSP 诊断与 `pnpm --filter @ims/web exec vue-tsc --noEmit`；`pnpm typecheck` 仍会被仓库既有 `apps/web/scripts/check-frontend-governance.mjs` 治理违规拦截，属于历史问题而非本次改动引入。
+- 2026-04-03：Phase 4.1 邮件功能采用 `packages/server/src/routes/email.ts` + `packages/server/src/services/email.ts` + `apps/web/src/api/email.ts` + `apps/web/src/agents/builtin/email-agent.ts` 组合模式，服务端同时需要更新 `packages/server/src/db.ts` 的启动自举 SQL，否则新增 Drizzle 表定义不会真正落库。
+- 2026-04-03：当前仓库锁文件里没有 `nodemailer` 记录，邮件服务改为运行时懒加载依赖并在缺失时返回明确错误；类型校验通过，但真实发送邮件前仍需在运行环境补齐该依赖。

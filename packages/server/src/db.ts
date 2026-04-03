@@ -158,6 +158,31 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS email_configs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  smtp_host TEXT NOT NULL,
+  smtp_port INTEGER NOT NULL,
+  smtp_user TEXT NOT NULL,
+  smtp_pass TEXT NOT NULL,
+  from_name TEXT NOT NULL,
+  from_email TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_templates (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  variables TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS remote_users (
   id TEXT PRIMARY KEY,
   provider TEXT NOT NULL DEFAULT 'baobao',

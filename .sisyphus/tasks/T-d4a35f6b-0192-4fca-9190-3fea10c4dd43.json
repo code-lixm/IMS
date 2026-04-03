@@ -1,0 +1,12 @@
+{
+  "id": "T-d4a35f6b-0192-4fca-9190-3fea10c4dd43",
+  "subject": "实现前端邮件 Agent",
+  "description": "参考现有 builtin agent 模式新增 email-agent 并接入邮件 API",
+  "status": "completed",
+  "activeForm": "正在实现前端邮件 Agent",
+  "blocks": [],
+  "blockedBy": [
+    "T-dbef7f73-2700-4f83-b249-3c56ce71d29b"
+  ],
+  "threadID": "ses_2ad6e2d36ffezLjfyQzNhyi86X"
+}

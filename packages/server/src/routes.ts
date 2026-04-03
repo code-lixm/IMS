@@ -49,6 +49,7 @@ import { messagesRoute } from "./routes/messages";
 import { memoryRoute } from "./routes/memory";
 import { sessionMemoryRoute } from "./routes/session-memory";
 import { fileResourcesRoute } from "./routes/file-resources";
+import { emailRoute } from "./routes/email";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
 
@@ -2955,6 +2956,9 @@ Always be concise and helpful in your responses.`;
 
   const messagesResponse = await messagesRoute(request);
   if (messagesResponse) return messagesResponse;
+
+  const emailResponse = await emailRoute(request);
+  if (emailResponse) return emailResponse;
 
   // ---------------------------------------------------------------------------
   // Memory Routes (Phase 2.2)

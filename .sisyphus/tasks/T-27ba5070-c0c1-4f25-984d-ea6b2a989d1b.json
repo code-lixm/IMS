@@ -1,0 +1,12 @@
+{
+  "id": "T-27ba5070-c0c1-4f25-984d-ea6b2a989d1b",
+  "subject": "实现服务端邮件模型与接口",
+  "description": "新增 EmailConfig/EmailTemplate 数据模型、Drizzle 表、邮件服务与邮件路由",
+  "status": "completed",
+  "activeForm": "正在实现服务端邮件模型与接口",
+  "blocks": [],
+  "blockedBy": [
+    "T-dbef7f73-2700-4f83-b249-3c56ce71d29b"
+  ],
+  "threadID": "ses_2ad6e2d36ffezLjfyQzNhyi86X"
+}
