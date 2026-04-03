@@ -1,0 +1,11 @@
+{
+  "id": "T-d5a3b450-fa45-4f75-ae0d-54b4fb02866e",
+  "subject": "完善四个 Worker Agent",
+  "description": "为 tech/hr/salary/resume 四个 agent 补充专业工具、systemPrompt、协作逻辑与错误处理",
+  "status": "completed",
+  "activeForm": "正在完善四个 Worker Agent",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "Sisyphus-Junior",
+  "threadID": "ses_2ad7ee7c6ffe4SNwGoPHafuMYh"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "T-640bd728-3ac8-45ea-845f-7c30c5c578db",
+  "subject": "梳理 Worker Agent 现状",
+  "description": "阅读现有 builtin agents、协调器和工具，确认扩展点与协作模式",
+  "status": "completed",
+  "activeForm": "正在梳理 Worker Agent 现状",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "Sisyphus-Junior",
+  "threadID": "ses_2ad7ee7c6ffe4SNwGoPHafuMYh"
+}

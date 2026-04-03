@@ -3,3 +3,6 @@
 - 2026-04-03：`packages/shared/src/db-schema.ts` 的 `FileResource` 需要包含 `filePath` 字段，否则服务层返回值与共享类型不一致。
 - 2026-04-03：仓库当前 `pnpm typecheck` 会在 `@ims/web` 的治理脚本 `node ./scripts/check-frontend-governance.mjs` 失败，属于现有代码库的治理违规，不是本次 file-tools 变更引入；定向校验 `pnpm --filter @ims/server check` 与 `pnpm --filter @ims/web exec vue-tsc --noEmit` 可通过。
 - 2026-04-03：`apps/web/src/agents/host.ts` 现在通过 `AgentExecutionOptions` 向工具注入 `{ state, agentId, host, emit }` 运行时，上层工具可以直接调用 `host.handoff()`、`host.executeAgent()`、`host.aggregateResults()` 完成多 Agent 协调；`interview-coordinator` 已按该模式实现任务排序、handoff 事件发射与结果聚合。
+- 2026-04-03：Phase 3.2 Worker Agents 完善时，四个 builtin worker（`tech-interviewer` / `hr-interviewer` / `salary-advisor` / `resume-analyzer`）都可以在工具内通过 `getAgentRuntime()` + `host.handoff()` + `host.executeAgent('interview-coordinator', ...)` 主动把专业结论同步给协调员，形成统一协作链路。
+- 2026-04-03：前端 worker agent 的工具实现里，`getIMSContext()` 需要显式接收带 `state` 的对象；若 `execute` 的第二参数声明为 `unknown`，调用时需要先收窄或断言为 `{ state?: unknown }`，否则会触发 TS2345。
+- 2026-04-03：本轮四个 worker agent 已通过改动文件级 LSP 诊断与 `pnpm --filter @ims/web exec vue-tsc --noEmit`；`pnpm typecheck` 仍会被仓库既有 `apps/web/scripts/check-frontend-governance.mjs` 治理违规拦截，属于历史问题而非本次改动引入。
