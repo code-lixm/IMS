@@ -248,7 +248,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `fix(agent): clean stale records and add conversation fallback` | Files: `packages/server/src/services/lui-agents.ts`, `packages/server/src/routes.ts`, `apps/web/src/stores/lui/conversations.ts`
 
-- [ ] 5. Publish LUI scene-boundary design
+- [x] 5. Publish LUI scene-boundary design
 
   **What to do**: 盘点并输出 LUI 通用层与 interview scene 专属层边界文档，明确哪些状态/组件留在通用 workspace，哪些下沉到 interview scene。
   **Must NOT do**: 不要直接开始大规模代码迁移；不要把 scene 边界停留在口头说明。
