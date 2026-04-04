@@ -5,3 +5,5 @@
 
 - 2026-04-05（Task 2）：rename 功能打通后发现前端 Edit 对话框里 `:disabled="editingAgentId !== null"` 直接把编辑态的名称框锁死，需要同步在 `saveAgent()` 的 update 分支里补 `name` 字段传递才能完整。
 - 2026-04-05（Task 3）：运行时验证前必须确认命中的不是旧 `bun run src/index.ts` 进程；本次同时发现 `vite` 与 `bun` 都占用 `:9092`，因此改用独立编译产物进程 `packages/server/dist/server` 挂到 `:9193` 获取可靠证据。
+
+- Task 4: 会话接口现在返回 `agentResolution`，前端用 `resolvedAgentId` 打开旧会话，缺失 agent 时通过 warning 明示回退。

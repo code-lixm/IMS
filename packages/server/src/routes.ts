@@ -42,7 +42,7 @@ import {
   WorkflowStage,
 } from "./services/lui-workflow";
 import { executeDeepAgent } from "./services/deepagents-runtime";
-import { deleteAgentWithFallback, ensureManagedAgents, isProtectedAgent, serializeAgent, setDefaultAgent } from "./services/lui-agents";
+import { deleteAgentWithFallback, ensureManagedAgents, isProtectedAgent, resolveConversationAgentResolution, serializeAgent, setDefaultAgent } from "./services/lui-agents";
 import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
 import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcription";
@@ -410,6 +410,21 @@ function buildAgentToolConstraints(agentName: string, allowedToolNames: string[]
   }
 
   return `\n\n## Agent Tool Constraints\nCurrent agent "${agentName}" may only use these tools: ${allowedToolNames.join(", ")}. Never call tools outside this allowlist.`;
+}
+
+async function listAvailableConversationAgents() {
+  await ensureManagedAgents();
+  return db.select().from(agents);
+}
+
+function serializeConversation(
+  row: typeof conversations.$inferSelect,
+  availableAgents: Array<typeof agents.$inferSelect>,
+) {
+  return {
+    ...row,
+    agentResolution: resolveConversationAgentResolution(row.agentId, availableAgents),
+  };
 }
 
 const LUI_MODEL_PROVIDERS_RESPONSE = LUI_MODEL_PROVIDERS.map((provider) => ({
@@ -2024,8 +2039,9 @@ Always be concise and helpful in your responses.`,
 
   // GET /api/lui/conversations - List conversations
   if (path === "/api/lui/conversations" && request.method === "GET") {
+    const availableAgents = await listAvailableConversationAgents();
     const rows = await db.select().from(conversations).orderBy(desc(conversations.updatedAt));
-    return ok({ items: rows });
+    return ok({ items: rows.map((row) => serializeConversation(row, availableAgents)) });
   }
 
   // POST /api/lui/conversations - Create conversation
@@ -2057,14 +2073,19 @@ Always be concise and helpful in your responses.`,
       createdAt: now,
       updatedAt: now,
     });
+    const availableAgents = await listAvailableConversationAgents();
     return ok({
-      id,
-      title,
-      candidateId: body.candidateId || null,
-      agentId,
-      modelProvider,
-      modelId,
-      temperature,
+      ...serializeConversation({
+        id,
+        title,
+        candidateId: body.candidateId || null,
+        agentId,
+        modelProvider,
+        modelId,
+        temperature,
+        createdAt: now,
+        updatedAt: now,
+      }, availableAgents),
       createdAt: now.getTime(),
       updatedAt: now.getTime(),
     }, { status: 201 });
@@ -2073,6 +2094,7 @@ Always be concise and helpful in your responses.`,
   // GET /api/lui/conversations/:id - Get conversation with messages and files
   const convMatch = path.match(/^\/api\/lui\/conversations\/([^/]+)$/);
   if (convMatch && request.method === "GET") {
+    const availableAgents = await listAvailableConversationAgents();
     const id = convMatch[1];
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
     if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
@@ -2098,7 +2120,7 @@ Always be concise and helpful in your responses.`,
     const fileRows = await db.select().from(fileResources).where(eq(fileResources.conversationId, id)).orderBy(desc(fileResources.createdAt));
 
     return ok({
-      conversation: conv,
+      conversation: serializeConversation(conv, availableAgents),
       candidate: candidateInfo,
       messages: messageRows.map(m => ({
         ...m,
@@ -2126,6 +2148,7 @@ Always be concise and helpful in your responses.`,
 
   // PUT /api/lui/conversations/:id - Update conversation metadata
   if (convMatch && request.method === "PUT") {
+    const availableAgents = await listAvailableConversationAgents();
     const id = convMatch[1];
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
     if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
@@ -2172,7 +2195,7 @@ Always be concise and helpful in your responses.`,
     const [updated] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
     if (!updated) return fail("NOT_FOUND", "conversation not found", 404);
 
-    return ok(updated);
+    return ok(serializeConversation(updated, availableAgents));
   }
 
   // ---------------------------------------------------------------------------

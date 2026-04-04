@@ -56,14 +56,30 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
     isBindingCandidate,
     error,
   } = options;
-  const { notifyError } = useAppNotifications();
+  const { notifyError, notifyWarning } = useAppNotifications();
 
   const selectedConversation = computed(() =>
     conversations.value.find((conversation) => conversation.id === selectedId.value)
   );
 
+  function getEffectiveAgentId(conversation: Conversation | undefined): string | null {
+    return conversation?.agentResolution?.resolvedAgentId ?? conversation?.agentId ?? null;
+  }
+
+  function maybeNotifyMissingAgent(conversation: Conversation | undefined) {
+    const message = conversation?.agentResolution?.missing ? conversation.agentResolution.message : null;
+    if (!message) {
+      return;
+    }
+
+    notifyWarning(message, {
+      title: "会话智能体已失效",
+      durationMs: 6000,
+    });
+  }
+
   function applyConversationConfig(conversation: Conversation | undefined) {
-    selectedAgentId.value = conversation?.agentId ?? null;
+    selectedAgentId.value = getEffectiveAgentId(conversation);
     if (conversation?.modelProvider && conversation.modelId) {
       selectedModelProvider.value = conversation.modelProvider;
       selectedModelId.value = conversation.modelId;
@@ -125,6 +141,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
 
       if (selectedId.value === id) {
         applyConversationConfig(normalizedConversation);
+        maybeNotifyMissingAgent(normalizedConversation);
       }
 
       messages.value[id] = data.messages.map(convertMessage);

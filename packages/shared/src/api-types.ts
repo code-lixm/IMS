@@ -530,6 +530,14 @@ export interface ConversationData {
   title: string;
   candidateId: string | null;
   agentId?: string | null;
+  agentResolution?: {
+    requestedAgentId: string | null;
+    resolvedAgentId: string | null;
+    fallbackAgentId: string | null;
+    fallbackAgentName: string | null;
+    missing: boolean;
+    message: string | null;
+  };
   modelProvider?: string | null;
   modelId?: string | null;
   temperature?: number | null;

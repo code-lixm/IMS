@@ -10,6 +10,14 @@ export interface Conversation {
   title: string;
   candidateId: string | null;
   agentId: string | null;
+  agentResolution?: {
+    requestedAgentId: string | null;
+    resolvedAgentId: string | null;
+    fallbackAgentId: string | null;
+    fallbackAgentName: string | null;
+    missing: boolean;
+    message: string | null;
+  };
   modelProvider: string | null;
   modelId: string | null;
   temperature: number;
@@ -44,6 +52,7 @@ export function convertConversation(conversation: ApiConversation): Conversation
     title: conversation.title,
     candidateId: conversation.candidateId,
     agentId: conversation.agentId ?? null,
+    agentResolution: conversation.agentResolution,
     modelProvider: conversation.modelProvider ?? null,
     modelId: conversation.modelId ?? null,
     temperature: conversation.temperature ?? 0.5,

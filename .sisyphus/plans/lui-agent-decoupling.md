@@ -209,7 +209,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `fix(agent): unify default and delete policy` | Files: `packages/server/src/routes.ts`, `packages/server/src/services/lui-agents.ts`, `apps/web/src/views/SettingsView.vue`
 
-- [ ] 4. Clean stale validation agents and compatibility fallbacks
+- [x] 4. Clean stale validation agents and compatibility fallbacks
 
   **What to do**: 定义并执行历史 validation/workflow gate agents 的清理规则；同时补充 stale agent / missing agent conversation 的回退策略与显式提示。
   **Must NOT do**: 不要静默删掉无法确认来源的用户数据；不要让旧 conversation 因 agent 缺失直接不可打开。

@@ -5,3 +5,5 @@
 - 2026-04-05：运行时缺少 `agentId` 的直接原因不是当前源码 serializer 漏字段，而是 `127.0.0.1:9092` 上残留了一个旧的 `bun run src/index.ts` 进程；重启该进程后，`GET/POST /api/lui/agents` 会返回完整生命周期字段。
 
 - 2026-04-05（Task 2）：编辑表单提交时 update payload 里漏 `name` 字段会导致 rename 无声失败；服务端的 `UpdateAgentInput` 已支持 `name`/`displayName`，前端需显式传入。
+
+- 验证时 `pnpm typecheck` 会经过既有前端治理检查失败；本次改动相关的 TS / bun test / build 均通过，治理失败来自仓库既存问题。

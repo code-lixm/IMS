@@ -4,6 +4,15 @@ import { agents } from "../schema";
 
 type AgentRow = typeof agents.$inferSelect;
 
+export interface ConversationAgentResolution {
+  requestedAgentId: string | null;
+  resolvedAgentId: string | null;
+  fallbackAgentId: string | null;
+  fallbackAgentName: string | null;
+  missing: boolean;
+  message: string | null;
+}
+
 export const DEFAULT_INTERVIEW_AGENT_ID = "agent_builtin_interview";
 
 const DEFAULT_INTERVIEW_AGENT = {
@@ -33,26 +42,30 @@ const DEFAULT_INTERVIEW_AGENT = {
   ],
 };
 
-const LEGACY_AGENT_NAME_PATTERNS = [
-  /^Resume Sync Validation Agent$/i,
-  /^Workflow Resume Gate [a-f0-9]+$/i,
-];
-
-const LEGACY_AGENT_DESCRIPTION_PATTERNS = [
-  /validate automatic resume sync into s0/i,
-  /temporary workflow validation agent/i,
-];
+const LEGACY_VALIDATION_AGENT_RULES = [
+  {
+    name: /^Resume Sync Validation Agent$/i,
+    description: /validate automatic resume sync into s0/i,
+  },
+  {
+    name: /^Workflow Resume Gate [a-f0-9]+$/i,
+    description: /temporary workflow validation agent/i,
+  },
+] as const;
 
 function isLegacyValidationAgent(row: AgentRow) {
-  if (row.id === DEFAULT_INTERVIEW_AGENT_ID) {
+  if (row.id === DEFAULT_INTERVIEW_AGENT_ID || isProtectedAgent(row)) {
     return false;
   }
 
   const name = row.name.trim();
   const description = (row.description ?? "").trim();
 
-  return LEGACY_AGENT_NAME_PATTERNS.some((pattern) => pattern.test(name))
-    || LEGACY_AGENT_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(description));
+  if (row.sourceType !== "custom" || row.isMutable !== true) {
+    return false;
+  }
+
+  return LEGACY_VALIDATION_AGENT_RULES.some((rule) => rule.name.test(name) && rule.description.test(description));
 }
 
 export function isProtectedAgent(row: AgentRow): boolean {
@@ -108,6 +121,50 @@ function resolveNormalizedDefaultAgentId(rows: AgentRow[]): string {
   }
 
   return DEFAULT_INTERVIEW_AGENT_ID;
+}
+
+export function resolveConversationAgentResolution(
+  requestedAgentId: string | null | undefined,
+  rows: AgentRow[],
+): ConversationAgentResolution {
+  const normalizedRequestedId = requestedAgentId?.trim() || null;
+  if (!normalizedRequestedId) {
+    return {
+      requestedAgentId: null,
+      resolvedAgentId: null,
+      fallbackAgentId: null,
+      fallbackAgentName: null,
+      missing: false,
+      message: null,
+    };
+  }
+
+  const matched = rows.find((row) => row.id === normalizedRequestedId);
+  if (matched) {
+    return {
+      requestedAgentId: normalizedRequestedId,
+      resolvedAgentId: matched.id,
+      fallbackAgentId: null,
+      fallbackAgentName: null,
+      missing: false,
+      message: null,
+    };
+  }
+
+  const fallbackId = resolveNormalizedDefaultAgentId(rows);
+  const fallback = rows.find((row) => row.id === fallbackId) ?? null;
+  const fallbackName = fallback?.name ?? null;
+
+  return {
+    requestedAgentId: normalizedRequestedId,
+    resolvedAgentId: fallback?.id ?? null,
+    fallbackAgentId: fallback?.id ?? null,
+    fallbackAgentName: fallbackName,
+    missing: true,
+    message: fallbackName
+      ? `会话引用的智能体 ${normalizedRequestedId} 已不存在，已临时回退到 ${fallbackName}。`
+      : `会话引用的智能体 ${normalizedRequestedId} 已不存在，请重新选择可用智能体。`,
+  };
 }
 
 export async function setDefaultAgent(agentId: string, updatedAt = new Date()): Promise<void> {
