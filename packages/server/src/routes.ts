@@ -2429,6 +2429,7 @@ Always be concise and helpful in your responses.`;
       systemPrompt?: string;
       tools?: string[];
       isDefault?: boolean;
+      sceneAffinity?: "general" | "interview";
     }>(request);
 
     const displayName = body.displayName?.trim() || body.name?.trim() || "";
@@ -2444,7 +2445,7 @@ Always be concise and helpful in your responses.`;
       description: body.description || null,
       sourceType: "custom",
       isMutable: true,
-      sceneAffinity: "general",
+      sceneAffinity: body.sceneAffinity ?? "general",
       mode: (body.mode as "all" | "chat" | "ask" | "workflow") || "chat",
       engine: parseAgentEngine(body.engine),
       temperature: body.temperature ?? 0,
@@ -2490,6 +2491,7 @@ Always be concise and helpful in your responses.`;
       systemPrompt?: string;
       tools?: string[];
       isDefault?: boolean;
+      sceneAffinity?: "general" | "interview";
     }>(request);
 
     const now = new Date();
@@ -2505,7 +2507,7 @@ Always be concise and helpful in your responses.`;
       || body.systemPrompt !== undefined
       || body.tools !== undefined
       || body.displayName !== undefined
-      || body.name !== undefined)) {
+      || body.name !== undefined || body.sceneAffinity !== undefined)) {
       return fail("VALIDATION_ERROR", "builtin agent lifecycle is immutable", 422);
     }
 
@@ -2528,6 +2530,7 @@ Always be concise and helpful in your responses.`;
     if (body.systemPrompt !== undefined) updates.systemPrompt = body.systemPrompt;
     if (body.tools !== undefined) updates.toolsJson = JSON.stringify(body.tools);
     if (body.isDefault !== undefined) updates.isDefault = body.isDefault;
+    if (body.sceneAffinity !== undefined) updates.sceneAffinity = body.sceneAffinity;
 
     await db.update(agents).set(updates).where(eq(agents.id, id));
 

@@ -864,14 +864,20 @@ const userPhone = computed(() => {
   return (route.query.phone as string) || authStore.user?.phone || null;
 });
 
-const workspaceCandidateId = computed(() => {
+const explicitRouteCandidateId = computed(() => {
   const queryCandidateId = route.query.candidateId;
   return typeof queryCandidateId === "string" && queryCandidateId.trim()
     ? queryCandidateId.trim()
-    : (store.selectedConversation?.candidateId ?? null);
+    : null;
+});
+const selectedConversationCandidateId = computed(() =>
+  store.selectedConversation?.candidateId ?? null,
+);
+const workspaceCandidateId = computed(() => {
+  return explicitRouteCandidateId.value ?? selectedConversationCandidateId.value;
 });
 const interviewScene = useInterviewScene({
-  candidateId: computed(() => workspaceCandidateId.value),
+  candidateId: computed(() => explicitRouteCandidateId.value),
   store,
   candidatesStore,
   notifyError,
@@ -882,7 +888,7 @@ const routeScene = computed(() =>
     ? route.query.scene.trim()
     : null,
 );
-const hasInterviewContext = computed(() => Boolean(workspaceCandidateId.value));
+const hasInterviewContext = computed(() => Boolean(explicitRouteCandidateId.value));
 const showInterviewSceneUi = computed(
   () =>
     hasInterviewContext.value &&
@@ -891,11 +897,10 @@ const showInterviewSceneUi = computed(
 const showCandidateSelector = computed(
   () =>
     routeScene.value === "interview" ||
-    isInterviewAgent(activeSuggestionAgent.value) ||
-    hasInterviewContext.value,
+    isInterviewAgent(activeSuggestionAgent.value),
 );
 const agentSelectorProfile = computed(() =>
-  showCandidateSelector.value
+  routeScene.value === "interview" || isInterviewAgent(activeSuggestionAgent.value)
     ? INTERVIEW_AGENT_SELECTOR_PROFILE
     : GENERIC_AGENT_SELECTOR_PROFILE,
 );
@@ -915,7 +920,7 @@ const listenerStatusText = computed(() => {
 });
 
 const visibleConversations = computed(() => {
-  const candidateId = workspaceCandidateId.value;
+  const candidateId = explicitRouteCandidateId.value;
   if (!candidateId) {
     return store.conversations.filter(
       (conversation) => conversation.candidateId === null,
@@ -1034,15 +1039,16 @@ const listenerStorageKey = computed(() => {
   return `${LISTENER_TRANSCRIPT_PREFIX}draft`;
 });
 
-watch(workspaceCandidateId, async (candidateId) => {
-  store.setConversationPolicy(candidateId ? interviewConversationPolicy : null);
+watch(workspaceCandidateId, async () => {
+  const explicitCandidateId = explicitRouteCandidateId.value;
+  store.setConversationPolicy(explicitCandidateId ? interviewConversationPolicy : null);
 
   if (!isWorkspaceReady.value || interviewScene.isSyncingCandidateWorkspace.value) {
     return;
   }
 
-  if (candidateId) {
-    await interviewScene.ensureWorkspace(candidateId);
+  if (explicitCandidateId) {
+    await interviewScene.ensureWorkspace(explicitCandidateId);
     return;
   }
   interviewScene.reset();
@@ -1104,7 +1110,6 @@ async function onConversationSelect(id: string) {
     await stopLiveListening();
   }
   await store.selectConversation(id);
-  await syncRouteCandidateId();
 }
 
 async function onConversationCreate() {
@@ -1113,10 +1118,9 @@ async function onConversationCreate() {
   }
   const conversation = await store.createConversation(
     undefined,
-    hasInterviewContext.value ? workspaceCandidateId.value ?? undefined : undefined,
+    hasInterviewContext.value ? explicitRouteCandidateId.value ?? undefined : undefined,
   );
   await store.selectConversation(conversation.id);
-  await syncRouteCandidateId();
 }
 
 async function onConversationDelete(id: string) {
@@ -1128,12 +1132,11 @@ async function onConversationDelete(id: string) {
   if (nextConversation && nextConversation.id !== store.selectedId) {
     await store.selectConversation(nextConversation.id);
   }
-  await syncRouteCandidateId();
 }
 
 async function onCandidateSelect(candidate: { id: string } | null) {
   const nextCandidateId = candidate?.id ?? null;
-  const currentQueryCandidateId = workspaceCandidateId.value;
+  const currentQueryCandidateId = explicitRouteCandidateId.value;
 
   if (currentQueryCandidateId === nextCandidateId) {
     return;
@@ -1199,7 +1202,7 @@ async function submitPrompt(input: { text: string; files: File[] }) {
     if (!conversationId) {
       const conversation = await store.createConversation(
         undefined,
-        hasInterviewContext.value ? workspaceCandidateId.value ?? undefined : undefined,
+        hasInterviewContext.value ? explicitRouteCandidateId.value ?? undefined : undefined,
       );
       conversationId = conversation.id;
     }
@@ -1558,14 +1561,6 @@ async function replaceCandidateRoute(candidateId: string | null) {
   await router.replace({ path: "/lui", query: nextQuery });
 }
 
-async function syncRouteCandidateId() {
-  const candidateId = store.selectedConversation?.candidateId ?? null;
-  if (workspaceCandidateId.value === candidateId) {
-    return;
-  }
-  await replaceCandidateRoute(candidateId);
-}
-
 function initializeLiveListening() {
   listenerAvailable.value = Boolean(
     typeof window !== "undefined" &&
@@ -1791,8 +1786,18 @@ function stringifyTool(tool: unknown): string {
 }
 
 onMounted(async () => {
-  const candidateId = workspaceCandidateId.value ?? undefined;
-  await store.initialize({ skipAutoSelect: !!candidateId });
+  const candidateId = explicitRouteCandidateId.value ?? undefined;
+  await store.initialize({ skipAutoSelect: true });
+
+  if (!candidateId) {
+    const firstGenericConversation = store.conversations.find(
+      (conversation) => conversation.candidateId === null,
+    );
+    if (firstGenericConversation) {
+      await store.selectConversation(firstGenericConversation.id);
+    }
+  }
+
   isWorkspaceReady.value = true;
 
   if (!candidateId) {

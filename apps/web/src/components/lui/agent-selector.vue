@@ -78,6 +78,37 @@
           </div>
         </div>
       </div>
+
+      <div class="border-t">
+        <div class="px-4 py-2">
+          <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">切换 Agent</p>
+        </div>
+        <div class="max-h-[12rem] space-y-1 overflow-y-auto px-2 pb-2">
+          <div
+            v-for="agent in agents"
+            :key="agent.id"
+            class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors"
+            :class="agent.id === selectedAgent?.id ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-muted/60'"
+            @click="selectAgent(agent)"
+          >
+            <Bot class="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-xs font-medium">{{ agent.displayName || agent.name }}</p>
+              <p class="truncate text-[10px] text-muted-foreground">{{ agent.description || '无描述' }}</p>
+            </div>
+            <div class="flex shrink-0 gap-1">
+              <Badge variant="outline" class="text-[9px]">{{ agent.engine === 'deepagents' ? 'Deepagents' : 'builtin' }}</Badge>
+              <Badge v-if="agent.isDefault" variant="default" class="text-[9px]">默认</Badge>
+            </div>
+          </div>
+          <p v-if="agents.length === 0 && !isLoading" class="py-2 text-center text-xs text-muted-foreground">
+            暂无 Agent
+          </p>
+          <p v-if="isLoading" class="py-2 text-center text-xs text-muted-foreground">
+            加载中...
+          </p>
+        </div>
+      </div>
     </PopoverContent>
   </Popover>
 </template>
@@ -142,17 +173,17 @@ const TOOL_LABELS: Record<string, string> = {
   batchScreenResumes: "批量筛选",
   writeMarkdown: "写入 Markdown",
   sanitizeInterviewNotes: "整理纪要",
-}
+};
 
 const TEST_AGENT_PATTERN = /(validation|gate|smoke|test)/i;
 const CJK_TEXT_PATTERN = /[\u4e00-\u9fff]/;
 
 const props = defineProps<AgentSelectorProps>();
-// Emit definitions reserved for future use
-// const _emit = defineEmits<{
-//   (e: "update:modelValue", value: string | null): void
-//   (e: "select", agent: AgentInfo | null): void
-// }>()
+
+const emit = defineEmits<{
+  (e: "update:modelValue", value: string | null): void
+  (e: "select", agent: AgentInfo | null): void
+}>();
 
 const open = ref(false);
 const agents = ref<AgentInfo[]>([]);
@@ -270,6 +301,13 @@ watch(open, (isOpen) => {
     loadAgents();
   }
 });
+
+function selectAgent(agent: AgentInfo) {
+  selectedAgent.value = agent;
+  emit("update:modelValue", agent.id);
+  emit("select", agent);
+  open.value = false;
+}
 
 function formatModeLabel(mode: string) {
   return MODE_LABELS[mode] ?? mode;

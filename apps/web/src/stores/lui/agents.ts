@@ -30,6 +30,7 @@ export interface CreateAgentInput {
   systemPrompt: string;
   tools: string[];
   temperature: number;
+  sceneAffinity?: "general" | "interview";
 }
 
 export interface UpdateAgentInput extends Partial<CreateAgentInput> {
@@ -89,6 +90,7 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
         temperature: input.temperature,
         systemPrompt: input.systemPrompt,
         tools: input.tools,
+        sceneAffinity: input.sceneAffinity,
       });
       const agent = convertAgent(result);
 
@@ -121,6 +123,7 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
         systemPrompt: input.systemPrompt,
         tools: input.tools,
         isDefault: input.isDefault,
+        sceneAffinity: input.sceneAffinity,
       });
       if (input.isDefault !== undefined) {
         await loadAgents();

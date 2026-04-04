@@ -379,6 +379,17 @@
                   </div>
 
                   <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">场景亲和</label>
+                    <select
+                      v-model="agentForm.sceneAffinity"
+                      class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    >
+                      <option value="general">general</option>
+                      <option value="interview">interview</option>
+                    </select>
+                  </div>
+
+                  <div class="space-y-1.5">
                     <label class="text-xs text-muted-foreground">温度</label>
                     <Input v-model="agentForm.temperature" type="number" min="0" max="2" step="0.1" />
                   </div>
@@ -445,7 +456,7 @@
                   <div class="flex items-center gap-2 flex-wrap">
                     <p class="text-sm font-medium">{{ agent.displayName }}</p>
                     <Badge v-if="agent.isDefault" variant="secondary">默认</Badge>
-                    <Badge v-if="agent.isBuiltin" variant="secondary">{{ agent.sourceType === 'builtin' ? '内置' : '系统' }}</Badge>
+                    <Badge variant="secondary">{{ agent.sourceType === 'builtin' ? '内置' : agent.sourceType === 'custom' ? '自定义' : '导入' }}</Badge>
                     <Badge variant="outline">{{ agent.sceneAffinity }}</Badge>
                     <Badge variant="outline">{{ agent.engine }}</Badge>
                     <Badge variant="outline">{{ agent.mode }}</Badge>
@@ -592,6 +603,7 @@ const agentForm = reactive({
   systemPrompt: "",
   tools: [] as string[],
   isDefault: false,
+  sceneAffinity: "general" as "general" | "interview",
 });
 const gatewayEndpointDialogTitle = computed(() => editingGatewayEndpointId.value ? "编辑自定义端点" : "添加自定义端点");
 const agentDialogTitle = computed(() => editingAgentId.value ? "编辑智能体" : "创建智能体");
@@ -749,6 +761,7 @@ function resetAgentForm() {
   agentForm.systemPrompt = "";
   agentForm.tools = [];
   agentForm.isDefault = false;
+  agentForm.sceneAffinity = "general";
 }
 
 function fillAgentForm(agent: LuiAgent) {
@@ -760,6 +773,7 @@ function fillAgentForm(agent: LuiAgent) {
   agentForm.systemPrompt = agent.systemPrompt;
   agentForm.tools = [...agent.tools];
   agentForm.isDefault = agent.isDefault;
+  agentForm.sceneAffinity = agent.sceneAffinity;
 }
 
 function openCreateAgentDialog() {
@@ -820,6 +834,7 @@ async function saveAgent() {
         systemPrompt: agentForm.systemPrompt.trim(),
         tools: agentForm.tools,
         isDefault: agentForm.isDefault,
+        sceneAffinity: agentForm.sceneAffinity,
       });
       notifySuccess("已更新智能体");
     } else {
@@ -831,6 +846,7 @@ async function saveAgent() {
         temperature: agentForm.temperature,
         systemPrompt: agentForm.systemPrompt.trim(),
         tools: agentForm.tools,
+        sceneAffinity: agentForm.sceneAffinity,
       });
 
       if (agentForm.isDefault) {

@@ -709,6 +709,7 @@ export interface CreateAgentInput {
   systemPrompt?: string;
   tools?: string[];
   isDefault?: boolean;
+  sceneAffinity?: AgentSceneAffinity;
 }
 
 export interface UpdateAgentInput {
@@ -721,4 +722,5 @@ export interface UpdateAgentInput {
   systemPrompt?: string;
   tools?: string[];
   isDefault?: boolean;
+  sceneAffinity?: AgentSceneAffinity;
 }

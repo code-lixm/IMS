@@ -446,10 +446,10 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
   **Commit**: YES | Message: `feat(interview): add engine-aware workflow runtime` | Files: `packages/server/src/routes.ts`, runtime services, prompt assets
 
 ## Final Verification Wave (MANDATORY)
-- [ ] F1. Plan Compliance Audit — oracle
-- [ ] F2. Code Quality Review — unspecified-high
-- [ ] F3. Real Manual QA — unspecified-high (+ browser automation for settings/LUI paths)
-- [ ] F4. Scope Fidelity Check — deep
+- [x] F1. Plan Compliance Audit — oracle
+- [x] F2. Code Quality Review — unspecified-high
+- [x] F3. Real Manual QA — unspecified-high (+ browser automation for settings/LUI paths)
+- [x] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - Commit 1: `refactor(agent): formalize lifecycle contract`
