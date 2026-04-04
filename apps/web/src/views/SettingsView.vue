@@ -317,13 +317,13 @@
 
           <div class="space-y-4">
             <p class="text-xs text-muted-foreground">
-              管理 LUI 可选智能体，并为单个智能体指定执行引擎、模式、工具与系统提示词。
+              管理 LUI 可选智能体。系统会内置一个默认面试智能体，并支持为自定义智能体配置执行引擎、模式、工具与系统提示词。
             </p>
 
             <div class="flex items-center justify-between gap-3 rounded-md border border-dashed p-3">
               <div>
                 <p class="text-sm font-medium">管理智能体</p>
-                <p class="text-xs text-muted-foreground">支持新增、编辑、设为默认与删除。</p>
+                <p class="text-xs text-muted-foreground">支持新增、编辑、设为默认；系统内置面试智能体不可删除。</p>
               </div>
               <Button size="sm" class="gap-1.5" @click="openCreateAgentDialog">
                 <Plus class="h-3.5 w-3.5" />
@@ -346,7 +346,7 @@
                   <div class="space-y-1.5">
                     <label class="text-xs text-muted-foreground">名称</label>
                     <Input v-model="agentForm.name" placeholder="例如：面试流程协调员" :disabled="editingAgentId !== null" />
-                    <p v-if="editingAgentId" class="text-xs text-muted-foreground">当前接口暂不支持重命名，编辑时仅可修改其他配置。</p>
+                    <p v-if="editingAgentId" class="text-xs text-muted-foreground">durable identity 会保持不变；当前设置页暂不暴露重命名入口。</p>
                   </div>
 
                   <div class="space-y-1.5">
@@ -443,8 +443,10 @@
               >
                 <div class="min-w-0 space-y-1">
                   <div class="flex items-center gap-2 flex-wrap">
-                    <p class="text-sm font-medium">{{ agent.name }}</p>
+                    <p class="text-sm font-medium">{{ agent.displayName }}</p>
                     <Badge v-if="agent.isDefault" variant="secondary">默认</Badge>
+                    <Badge v-if="agent.isBuiltin" variant="secondary">{{ agent.sourceType === 'builtin' ? '内置' : '系统' }}</Badge>
+                    <Badge variant="outline">{{ agent.sceneAffinity }}</Badge>
                     <Badge variant="outline">{{ agent.engine }}</Badge>
                     <Badge variant="outline">{{ agent.mode }}</Badge>
                   </div>
@@ -466,10 +468,17 @@
                   >
                     {{ agent.isDefault ? '已默认' : '设为默认' }}
                   </Button>
-                  <Button variant="ghost" size="icon" class="h-8 w-8" title="编辑" @click="openEditAgentDialog(agent)">
+                  <Button variant="ghost" size="icon" class="h-8 w-8" :disabled="!agent.isMutable" :title="agent.isMutable ? '编辑' : '系统智能体不可编辑'" @click="openEditAgentDialog(agent)">
                     <Pencil class="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive" title="删除" @click="removeAgent(agent.id)">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8 text-destructive"
+                    :disabled="!agent.isMutable"
+                    :title="agent.isMutable ? '删除' : '系统智能体不可删除'"
+                    @click="removeAgent(agent.id)"
+                  >
                     <Trash2 class="h-4 w-4" />
                   </Button>
                 </div>
@@ -624,7 +633,7 @@ onMounted(async () => {
       ...provider,
       baseURL: PRESET_PROVIDER_BASE_URLS[provider.id] ?? "",
     }));
-  } catch {
+  } catch (_error) {
     // 如果 API 不可用，使用硬编码的预设列表
     presetProviders.value = [
       { id: "openai", name: "OpenAI", icon: "OpenAI", baseURL: "https://api.openai.com/v1" },
@@ -743,7 +752,7 @@ function resetAgentForm() {
 }
 
 function fillAgentForm(agent: LuiAgent) {
-  agentForm.name = agent.name;
+  agentForm.name = agent.displayName;
   agentForm.description = agent.description;
   agentForm.engine = agent.engine;
   agentForm.mode = agent.mode;
@@ -832,7 +841,8 @@ async function saveAgent() {
 
     await luiStore.loadAgents();
     closeAgentDialog();
-  } catch {
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "保存智能体失败");
   } finally {
     isSavingAgent.value = false;
   }
@@ -845,6 +855,11 @@ async function setDefaultAgent(agentId: string) {
 }
 
 async function removeAgent(agentId: string) {
+  const agent = luiStore.agents.find((item) => item.id === agentId);
+  if (agent && !agent.isMutable) {
+    notifyWarning("系统内置面试智能体不可删除");
+    return;
+  }
   await luiStore.deleteAgent(agentId);
   notifySuccess("已删除智能体");
 }
@@ -880,7 +895,8 @@ async function saveGatewayEndpoint() {
       notifySuccess("已保存自定义端点");
     }
     closeGatewayEndpointDialog();
-  } catch {
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "保存自定义端点失败");
   } finally {
     isSavingGatewayEndpoint.value = false;
   }

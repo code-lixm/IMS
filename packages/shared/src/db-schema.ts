@@ -44,6 +44,8 @@ export type FileTaskStatus =
   | "skipped";
 export type ShareType = "send" | "receive";
 export type ShareStatus = "pending" | "success" | "failed" | "conflict";
+export type AgentSourceType = "builtin" | "custom" | "imported";
+export type AgentSceneAffinity = "general" | "interview";
 export type NotificationType =
   | "sync_error"
   | "import_complete"
@@ -287,6 +289,9 @@ export interface Agent {
   id: string;
   name: string;
   description: string | null;
+  sourceType: AgentSourceType;
+  isMutable: boolean;
+  sceneAffinity: AgentSceneAffinity;
   mode: AgentMode;
   temperature: number;
   systemPrompt: string | null;

@@ -14,7 +14,7 @@ import type {
   SendMessageInput,
   FileResourceListData,
   UploadFileData,
-  AgentListData,
+  AgentData,
   CreateAgentInput,
   UpdateAgentInput,
   LuiCredentialStatusData,
@@ -23,6 +23,28 @@ import type {
   UpdateLuiSettingsInput,
   LuiPresetProviderListData,
 } from "@ims/shared";
+
+export interface LuiAgentLifecycleFields {
+  agentId: string;
+  displayName: string;
+  sourceType: "builtin" | "custom" | "imported";
+  isBuiltin: boolean;
+  isMutable: boolean;
+  sceneAffinity: "general" | "interview";
+}
+
+export type LuiAgentData = AgentData & LuiAgentLifecycleFields;
+export type LuiCreateAgentInput = CreateAgentInput & {
+  name?: string;
+  displayName?: string;
+};
+export type LuiUpdateAgentInput = UpdateAgentInput & {
+  name?: string;
+  displayName?: string;
+};
+export interface LuiAgentListData {
+  items: LuiAgentData[];
+}
 
 interface LuiModelData {
   id: string;
@@ -213,22 +235,22 @@ export const luiApi = {
 
   // Agents
   listAgents() {
-    return api<AgentListData>("/api/lui/agents");
+    return api<LuiAgentListData>("/api/lui/agents");
   },
 
   getAgent(id: string) {
-    return api<{ id: string; name: string; description: string | null; engine: "builtin" | "deepagents"; mode: string; temperature: number; systemPrompt: string | null; tools: string[]; isDefault: boolean }>(`/api/lui/agents/${id}`);
+    return api<LuiAgentData>(`/api/lui/agents/${id}`);
   },
 
-  createAgent(input: CreateAgentInput) {
-    return api<{ id: string }>("/api/lui/agents", {
+  createAgent(input: LuiCreateAgentInput) {
+    return api<LuiAgentData>("/api/lui/agents", {
       method: "POST",
       json: input,
     });
   },
 
-  updateAgent(id: string, input: UpdateAgentInput) {
-    return api<{ id: string }>(`/api/lui/agents/${id}`, {
+  updateAgent(id: string, input: LuiUpdateAgentInput) {
+    return api<LuiAgentData>(`/api/lui/agents/${id}`, {
       method: "PUT",
       json: input,
     });

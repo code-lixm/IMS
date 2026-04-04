@@ -252,6 +252,9 @@ CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   description TEXT,
+  source_type TEXT NOT NULL DEFAULT 'custom',
+  is_mutable INTEGER NOT NULL DEFAULT 1,
+  scene_affinity TEXT NOT NULL DEFAULT 'general',
   engine TEXT NOT NULL DEFAULT 'builtin',
   mode TEXT NOT NULL DEFAULT 'chat',
   temperature INTEGER NOT NULL DEFAULT 0,
@@ -345,6 +348,9 @@ ensureColumn("memories", "importance", "INTEGER NOT NULL DEFAULT 5");
 ensureColumn("session_memories", "metadata", "TEXT");
 ensureColumn("session_memories", "importance", "INTEGER NOT NULL DEFAULT 5");
 ensureColumn("session_memories", "expires_at", "INTEGER");
+ensureColumn("agents", "source_type", "TEXT NOT NULL DEFAULT 'custom'");
+ensureColumn("agents", "is_mutable", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("agents", "scene_affinity", "TEXT NOT NULL DEFAULT 'general'");
 ensureColumn("agents", "engine", "TEXT NOT NULL DEFAULT 'builtin'");
 
 export const db = drizzle(sqlite);

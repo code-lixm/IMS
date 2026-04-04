@@ -3,6 +3,7 @@ import type {
   FileResourceData as ApiFileResource,
   MessageData as ApiMessage,
 } from "@ims/shared";
+import type { LuiAgentData } from "@/api/lui";
 
 export interface Conversation {
   id: string;
@@ -78,8 +79,14 @@ export function convertFileResource(file: ApiFileResource): FileResource {
  */
 export interface Agent {
   id: string;
+  agentId: string;
   name: string;
+  displayName: string;
   description: string;
+  sourceType: "builtin" | "custom" | "imported";
+  isBuiltin: boolean;
+  isMutable: boolean;
+  sceneAffinity: "general" | "interview";
   engine: "builtin" | "deepagents";
   mode: "all" | "chat" | "ask" | "workflow";
   systemPrompt: string;
@@ -88,6 +95,28 @@ export interface Agent {
   isDefault: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export function convertAgent(agent: LuiAgentData): Agent {
+  return {
+    id: agent.id,
+    agentId: agent.agentId,
+    name: agent.name,
+    displayName: agent.displayName,
+    description: agent.description ?? "",
+    sourceType: agent.sourceType,
+    isBuiltin: agent.isBuiltin,
+    isMutable: agent.isMutable,
+    sceneAffinity: agent.sceneAffinity,
+    engine: agent.engine,
+    mode: agent.mode,
+    systemPrompt: agent.systemPrompt ?? "",
+    tools: agent.tools ?? [],
+    temperature: agent.temperature,
+    isDefault: agent.isDefault,
+    createdAt: new Date(agent.createdAt),
+    updatedAt: new Date(agent.updatedAt),
+  };
 }
 
 /**

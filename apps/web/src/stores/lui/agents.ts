@@ -2,7 +2,7 @@ import { computed, type ComputedRef, type Ref } from "vue";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
-import type { Agent } from "./types";
+import { convertAgent, type Agent } from "./types";
 
 interface LuiAgentModuleOptions {
   agents: Ref<Agent[]>;
@@ -23,6 +23,7 @@ export interface LuiAgentModule {
 
 export interface CreateAgentInput {
   name: string;
+  displayName?: string;
   description: string;
   engine?: "builtin" | "deepagents";
   mode?: "all" | "chat" | "ask" | "workflow";
@@ -53,19 +54,7 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
 
     try {
       const data = await luiApi.listAgents();
-      agents.value = data.items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        description: item.description ?? "",
-        engine: item.engine ?? "builtin",
-        mode: item.mode,
-        systemPrompt: item.systemPrompt ?? "",
-        tools: item.tools ?? [],
-        temperature: item.temperature,
-        isDefault: item.isDefault,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
+      agents.value = data.items.map(convertAgent);
 
       // 如果没有选中智能体，选择默认智能体
       if (!selectedId.value && defaultAgent.value) {
@@ -93,6 +82,7 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
     try {
       const result = await luiApi.createAgent({
         name: input.name,
+        displayName: input.displayName ?? input.name,
         description: input.description,
         engine: input.engine,
         mode: input.mode,
@@ -100,20 +90,7 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
         systemPrompt: input.systemPrompt,
         tools: input.tools,
       });
-      const now = new Date();
-      const agent: Agent = {
-        id: result.id,
-        name: input.name,
-        description: input.description,
-        engine: input.engine ?? "builtin",
-        mode: input.mode ?? "chat",
-        systemPrompt: input.systemPrompt,
-        tools: input.tools,
-        temperature: input.temperature,
-        isDefault: false,
-        createdAt: now,
-        updatedAt: now,
-      };
+      const agent = convertAgent(result);
 
       agents.value = [...agents.value, agent];
       return agent;
@@ -134,7 +111,9 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
     error.value = null;
 
     try {
-      await luiApi.updateAgent(id, {
+      const result = await luiApi.updateAgent(id, {
+        name: input.name,
+        displayName: input.displayName,
         description: input.description,
         engine: input.engine,
         mode: input.mode,
@@ -145,21 +124,10 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
       });
       const index = agents.value.findIndex((a) => a.id === id);
       if (index >= 0) {
-        const updated: Agent = {
-          ...agents.value[index],
-          ...(input.name !== undefined && { name: input.name }),
-          ...(input.description !== undefined && { description: input.description }),
-          ...(input.engine !== undefined && { engine: input.engine }),
-          ...(input.mode !== undefined && { mode: input.mode }),
-          ...(input.systemPrompt !== undefined && { systemPrompt: input.systemPrompt }),
-          ...(input.tools !== undefined && { tools: input.tools }),
-          ...(input.temperature !== undefined && { temperature: input.temperature }),
-          ...(input.isDefault !== undefined && { isDefault: input.isDefault }),
-          updatedAt: new Date(),
-        };
+        const updated = convertAgent(result);
 
         // 如果设置为默认，取消其他智能体的默认状态
-        if (input.isDefault) {
+        if (updated.isDefault) {
           agents.value = agents.value.map((a) =>
             a.id === id ? updated : { ...a, isDefault: false }
           );

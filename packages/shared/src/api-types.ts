@@ -21,6 +21,8 @@ import type {
   EmailTemplate,
   Device,
   ParsedResume,
+  AgentSourceType,
+  AgentSceneAffinity,
 } from "./db-schema";
 
 // ---------------------------------------------------------------------------
@@ -654,16 +656,33 @@ export interface UpdateLuiSettingsInput {
 // LUI - Agent
 // ---------------------------------------------------------------------------
 
+export interface AgentLifecycleData {
+  agentId: string;
+  displayName: string;
+  name: string;
+  sourceType: AgentSourceType;
+  isBuiltin: boolean;
+  isMutable: boolean;
+  isDefault: boolean;
+  sceneAffinity: AgentSceneAffinity;
+}
+
 export interface AgentData {
   id: string;
+  agentId: string;
   name: string;
+  displayName: string;
   description: string | null;
   engine: "builtin" | "deepagents";
   mode: "all" | "chat" | "ask" | "workflow";
   temperature: number;
   systemPrompt: string | null;
   tools: string[];
+  sourceType: AgentSourceType;
+  isBuiltin: boolean;
+  isMutable: boolean;
   isDefault: boolean;
+  sceneAffinity: AgentSceneAffinity;
   createdAt: number;
   updatedAt: number;
 }
@@ -673,7 +692,8 @@ export interface AgentListData {
 }
 
 export interface CreateAgentInput {
-  name: string;
+  name?: string;
+  displayName?: string;
   description?: string;
   engine?: "builtin" | "deepagents";
   mode?: "all" | "chat" | "ask" | "workflow";
@@ -684,6 +704,8 @@ export interface CreateAgentInput {
 }
 
 export interface UpdateAgentInput {
+  name?: string;
+  displayName?: string;
   description?: string;
   engine?: "builtin" | "deepagents";
   mode?: "all" | "chat" | "ask" | "workflow";

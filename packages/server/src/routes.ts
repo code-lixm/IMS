@@ -42,6 +42,7 @@ import {
   WorkflowStage,
 } from "./services/lui-workflow";
 import { executeDeepAgent } from "./services/deepagents-runtime";
+import { ensureManagedAgents, isProtectedAgent, serializeAgent } from "./services/lui-agents";
 import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
 import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcription";
@@ -397,14 +398,6 @@ function parseAgentTools(toolsJson: string | null | undefined): string[] {
   } catch {
     return [];
   }
-}
-
-function serializeAgent(row: typeof agents.$inferSelect) {
-  return {
-    ...row,
-    engine: row.engine,
-    tools: parseAgentTools(row.toolsJson),
-  };
 }
 
 function parseAgentEngine(value: unknown): "builtin" | "deepagents" {
@@ -2389,14 +2382,16 @@ Always be concise and helpful in your responses.`;
 
   // GET /api/lui/agents - List all agents
   if (path === "/api/lui/agents" && request.method === "GET") {
-    const rows = await db.select().from(agents).orderBy(desc(agents.createdAt));
+    await ensureManagedAgents();
+    const rows = await db.select().from(agents).orderBy(desc(agents.isDefault), desc(agents.createdAt));
     return ok({ items: rows.map(serializeAgent) });
   }
 
   // POST /api/lui/agents - Create agent
   if (path === "/api/lui/agents" && request.method === "POST") {
     const body = await parseJson<{
-      name: string;
+      name?: string;
+      displayName?: string;
       description?: string;
       mode?: string;
       engine?: "builtin" | "deepagents";
@@ -2406,7 +2401,9 @@ Always be concise and helpful in your responses.`;
       isDefault?: boolean;
     }>(request);
 
-    if (!body.name?.trim()) return fail("VALIDATION_ERROR", "name is required", 422);
+    const displayName = body.displayName?.trim() || body.name?.trim() || "";
+
+    if (!displayName) return fail("VALIDATION_ERROR", "displayName is required", 422);
 
     const now = new Date();
     const id = `agent_${crypto.randomUUID()}`;
@@ -2418,8 +2415,11 @@ Always be concise and helpful in your responses.`;
 
     await db.insert(agents).values({
       id,
-      name: body.name.trim(),
+      name: displayName,
       description: body.description || null,
+      sourceType: "custom",
+      isMutable: true,
+      sceneAffinity: "general",
       mode: (body.mode as "all" | "chat" | "ask" | "workflow") || "chat",
       engine: parseAgentEngine(body.engine),
       temperature: body.temperature ?? 0,
@@ -2430,24 +2430,15 @@ Always be concise and helpful in your responses.`;
       updatedAt: now,
     });
 
-    return ok({
-      id,
-      name: body.name.trim(),
-      description: body.description || null,
-      mode: (body.mode as "all" | "chat" | "ask" | "workflow") || "chat",
-      engine: parseAgentEngine(body.engine),
-      temperature: body.temperature ?? 0,
-      systemPrompt: body.systemPrompt || null,
-      tools: body.tools || [],
-      isDefault: body.isDefault ?? false,
-      createdAt: now.getTime(),
-      updatedAt: now.getTime(),
-    }, { status: 201 });
+    const [created] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
+
+    return ok(serializeAgent(created), { status: 201 });
   }
 
   // GET /api/lui/agents/:id - Get agent
   const agentMatch = path.match(/^\/api\/lui\/agents\/([^/]+)$/);
   if (agentMatch && request.method === "GET") {
+    await ensureManagedAgents();
     const id = agentMatch[1];
     const [row] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
     if (!row) return fail("NOT_FOUND", "agent not found", 404);
@@ -2461,6 +2452,8 @@ Always be concise and helpful in your responses.`;
     if (!existing) return fail("NOT_FOUND", "agent not found", 404);
 
     const body = await parseJson<{
+      name?: string;
+      displayName?: string;
       description?: string;
       mode?: string;
       engine?: "builtin" | "deepagents";
@@ -2472,12 +2465,29 @@ Always be concise and helpful in your responses.`;
 
     const now = new Date();
 
+    if ((body.displayName !== undefined || body.name !== undefined) && !(body.displayName?.trim() || body.name?.trim())) {
+      return fail("VALIDATION_ERROR", "displayName cannot be empty", 422);
+    }
+
+    if (isProtectedAgent(existing) && (body.description !== undefined
+      || body.mode !== undefined
+      || body.engine !== undefined
+      || body.temperature !== undefined
+      || body.systemPrompt !== undefined
+      || body.tools !== undefined
+      || body.displayName !== undefined
+      || body.name !== undefined)) {
+      return fail("VALIDATION_ERROR", "builtin agent lifecycle is immutable", 422);
+    }
+
     // If setting as default, unset other defaults first
     if (body.isDefault) {
       await db.update(agents).set({ isDefault: false }).where(eq(agents.isDefault, true));
     }
 
     const updates: Record<string, unknown> = { updatedAt: now };
+    const displayName = body.displayName?.trim() || body.name?.trim();
+    if (displayName !== undefined) updates.name = displayName;
     if (body.description !== undefined) updates.description = body.description;
     if (body.mode !== undefined) updates.mode = body.mode;
     if (body.engine !== undefined) updates.engine = parseAgentEngine(body.engine);
@@ -2497,6 +2507,9 @@ Always be concise and helpful in your responses.`;
     const id = agentMatch[1];
     const [existing] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
     if (!existing) return fail("NOT_FOUND", "agent not found", 404);
+    if (isProtectedAgent(existing)) {
+      return fail("VALIDATION_ERROR", "builtin interview agent cannot be deleted", 422);
+    }
 
     await db.delete(agents).where(eq(agents.id, id));
     return ok({ id });
