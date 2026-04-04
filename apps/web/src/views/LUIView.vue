@@ -356,7 +356,7 @@
               </div>
 
               <span
-                v-else-if="currentCandidate"
+                v-else-if="interviewScene.currentCandidate.value"
                 class="truncate text-sm font-medium"
               >
                 当前候选人工作区
@@ -368,59 +368,23 @@
 
             <div class="flex shrink-0 items-center gap-1.5">
               <CandidateSelector
+                v-if="showCandidateSelector"
                 :model-value="workspaceCandidateId"
                 @select="onCandidateSelect"
               />
               <AgentSelector
                 :model-value="store.selectedAgentId"
+                :profile="agentSelectorProfile"
                 @select="onAgentSelect"
               />
             </div>
           </div>
 
-          <div v-if="workflow" class="border-b bg-muted/15 p-2">
-            <div class="mx-auto flex w-full items-start justify-between gap-4">
-              <div class="min-w-0 flex-1 space-y-1">
-                <div class="flex min-w-0 items-center gap-2">
-                  <span class="truncate text-sm font-semibold">
-                    面试流程：{{ currentWorkflowStageLabel ?? "流程处理中" }}
-                  </span>
-                  <Badge
-                    :variant="workflowStatusVariant"
-                    class="h-6 shrink-0 rounded-sm px-2 text-[11px] font-medium"
-                  >
-                    {{ workflowStatusLabel }}
-                  </Badge>
-                </div>
-                <div class="text-[11px] leading-5 text-muted-foreground">
-                  选择 AI
-                  当前所处阶段：初筛看简历、出题准备问题、评估整理判断、完成输出结论。
-                </div>
-              </div>
-
-              <div class="shrink-0">
-                <div
-                  class="flex items-center gap-1 rounded-lg border border-border/50 bg-background p-1 shadow-sm"
-                >
-                  <Button
-                    v-for="stage in workflowStageOptions"
-                    :key="stage.value"
-                    type="button"
-                    :variant="
-                      workflow?.currentStage === stage.value
-                        ? 'default'
-                        : 'ghost'
-                    "
-                    size="sm"
-                    class="h-7 rounded-md px-2 text-[11px] font-medium shadow-none"
-                    @click="onWorkflowStageSelect(stage.value)"
-                  >
-                    {{ stage.label }}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <WorkflowBanner
+            v-if="showInterviewSceneUi"
+            :workflow="interviewScene.workflow.value"
+            @select-stage="interviewScene.selectWorkflowStage"
+          />
 
           <Conversation
             class="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-background via-background to-muted/20"
@@ -438,27 +402,34 @@
                   <Bot class="h-12 w-12 opacity-30" />
                 </template>
 
-                <div class="mx-auto w-full max-w-xl space-y-5">
+                <StageSuggestions
+                  v-if="showInterviewSceneUi"
+                  :agent="activeSuggestionAgent"
+                  :candidate-name="interviewScene.currentCandidate.value?.name ?? null"
+                  :workflow-stage="interviewScene.workflow.value?.currentStage ?? null"
+                  @apply="applySuggestion"
+                />
+                <div v-else class="mx-auto w-full max-w-xl space-y-5">
                   <div class="space-y-2 text-center">
                     <p class="text-base font-semibold tracking-tight">
-                      {{ suggestionTitle }}
+                      {{ genericSuggestionTitle }}
                     </p>
                     <p class="text-sm font-medium leading-6 /90">
-                      {{ suggestionDescription }}
+                      {{ genericSuggestionDescription }}
                     </p>
                   </div>
-                  <Suggestions class="w-full">
-                    <Suggestion
-                      v-for="(suggestion, index) in starterSuggestions"
+                  <div class="grid gap-3">
+                    <Button
+                      v-for="suggestion in genericStarterSuggestions"
                       :key="suggestion"
-                      :suggestion="suggestion"
-                      size="default"
+                      type="button"
                       variant="outline"
-                      class="lui-suggestion-card h-auto w-full min-w-0 whitespace-normal break-words justify-center rounded-2xl border-border/80 bg-card/92 px-6 py-6 text-center text-lg font-medium leading-8 text-card-foreground shadow-sm transition-all duration-300 hover:scale-[1.01] hover:border-primary/20 hover:bg-card hover:shadow-md"
-                      :style="{ animationDelay: `${index * 80}ms` }"
+                      class="h-auto w-full justify-center whitespace-normal break-words rounded-2xl border-border/80 bg-card/92 px-6 py-5 text-center text-base font-medium leading-7 text-card-foreground shadow-sm hover:border-primary/20 hover:bg-card"
                       @click="applySuggestion(suggestion)"
-                    />
-                  </Suggestions>
+                    >
+                      {{ suggestion }}
+                    </Button>
+                  </div>
                 </div>
               </ConversationEmptyState>
 
@@ -718,7 +689,7 @@ import {
   Plus,
   Square,
 } from "lucide-vue-next";
-import { luiApi, type WorkflowState } from "@/api/lui";
+import { luiApi } from "@/api/lui";
 import {
   Attachment,
   Attachments,
@@ -770,13 +741,14 @@ import {
   SourcesContent,
   SourcesTrigger,
 } from "@/components/ai-elements/sources";
-import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AgentSelector from "@/components/lui/agent-selector.vue";
 import CandidateSelector from "@/components/lui/candidate-selector.vue";
 import ConversationList from "@/components/lui/conversation-list.vue";
 import FileResources from "@/components/lui/file-resources.vue";
+import StageSuggestions from "@/components/lui/scenes/interview/StageSuggestions.vue";
+import WorkflowBanner from "@/components/lui/scenes/interview/WorkflowBanner.vue";
 import TaskQueueIndicator from "@/components/lui/task-queue-indicator.vue";
 import Input from "@/components/ui/input.vue";
 import Button from "@/components/ui/button.vue";
@@ -798,6 +770,14 @@ import { reportAppError } from "@/lib/errors/normalize";
 import { useAuthStore } from "@/stores/auth";
 import { useCandidatesStore } from "@/stores/candidates";
 import { useLuiStore } from "@/stores/lui";
+import {
+  createInterviewConversationPolicy,
+  filterInterviewConversations,
+  INTERVIEW_AGENT_SELECTOR_PROFILE,
+  isInterviewAgent,
+} from "@/stores/lui/scenes/interview/policy";
+import { useInterviewScene } from "@/stores/lui/scenes/interview/scene";
+import type { LuiAgentSelectorProfile } from "@/stores/lui/scenes/types";
 
 interface SourceItem {
   href: string;
@@ -817,6 +797,20 @@ interface UiMessageItem {
 type ListenerAudioContextCtor = typeof AudioContext;
 
 const acceptedFileTypes = ".pdf,.png,.jpg,.jpeg,.webp,.zip,.imr";
+const interviewConversationPolicy = createInterviewConversationPolicy();
+const GENERIC_AGENT_SELECTOR_PROFILE: LuiAgentSelectorProfile = {
+  title: "通用工作区 Agent",
+  subtitle: "通用对话助手",
+  description: "专注普通对话、分析与资料整理，不自动附带候选人 workflow。",
+  skills: ["通用问答", "资料整理", "提纲生成"],
+  tools: ["文件读取", "信息总结", "内容改写"],
+  entrySkill: "general-chat",
+  supportSkills: [],
+  skillSectionLabel: "核心能力",
+  toolSectionLabel: "可用工具",
+  summaryText:
+    "当前会话保持通用工作区语义，只继承所选 Agent 的角色、工具和模型配置。",
+};
 
 const store = useLuiStore();
 const route = useRoute();
@@ -826,7 +820,6 @@ const candidatesStore = useCandidatesStore();
 const { notifyError } = useAppNotifications();
 
 const inputText = ref("");
-const workflow = ref<WorkflowState | null>(null);
 // const leftSidebarOpen = ref(true);
 const leftPanelRef = ref<InstanceType<typeof ResizablePanel> | null>(null);
 const leftWorkbenchTab = ref("listener");
@@ -848,7 +841,6 @@ const listenerPendingAudioChunksRef = ref<Float32Array[]>([]);
 const leftPanelWidth = ref(31);
 const leftTopPaneSize = ref(50);
 const isWorkspaceReady = ref(false);
-const isSyncingCandidateWorkspace = ref(false);
 
 const LISTENER_TRANSCRIPT_PREFIX = "ims:lui:listener-transcript:";
 let listenerFlushTimer: number | null = null;
@@ -856,93 +848,6 @@ let listenerTranscriptionChain: Promise<void> = Promise.resolve();
 
 const activeSuggestionAgent = computed(() => {
   return store.selectedAgent ?? store.defaultAgent ?? null;
-});
-
-const currentWorkflowStageLabel = computed(() => {
-  const labels: Record<NonNullable<WorkflowState["currentStage"]>, string> = {
-    S0: "初筛阶段",
-    S1: "出题阶段",
-    S2: "评估阶段",
-    completed: "复盘阶段",
-  };
-
-  const stage = workflow.value?.currentStage;
-  return stage ? labels[stage] : null;
-});
-
-const workflowStatusLabel = computed(() => {
-  if (!workflow.value) return "";
-  const labels: Record<string, string> = {
-    active: "进行中",
-    paused: "已暂停",
-    completed: "已完成",
-    error: "异常",
-  };
-  return labels[workflow.value.status] ?? workflow.value.status;
-});
-
-const workflowStatusVariant = computed<
-  "default" | "secondary" | "destructive" | "outline"
->(() => {
-  if (!workflow.value) return "secondary";
-  const variants: Record<
-    string,
-    "default" | "secondary" | "destructive" | "outline"
-  > = {
-    active: "secondary",
-    paused: "secondary",
-    completed: "outline",
-    error: "destructive",
-  };
-  return variants[workflow.value.status] ?? "secondary";
-});
-
-const workflowStageOptions = [
-  { value: "S0", label: "初筛" },
-  { value: "S1", label: "出题" },
-  { value: "S2", label: "评估" },
-  { value: "completed", label: "完成" },
-] as const;
-
-const suggestionTitle = computed(() => {
-  const agent = activeSuggestionAgent.value;
-  const stageLabel = currentWorkflowStageLabel.value;
-
-  if (agent && stageLabel) {
-    return `${agent.name} · ${stageLabel}建议`;
-  }
-
-  if (agent) {
-    return `${agent.name} 的建议`;
-  }
-
-  return stageLabel ? `${stageLabel}建议` : "试试智能体建议";
-});
-
-const suggestionDescription = computed(() => {
-  const agent = activeSuggestionAgent.value;
-  const stageLabel = currentWorkflowStageLabel.value;
-
-  if (agent && stageLabel) {
-    return `以下建议会优先按照当前流程的${stageLabel}目标生成，并同时遵循智能体「${agent.name}」的角色和技能约束。`;
-  }
-
-  if (agent) {
-    return `以下建议会根据当前智能体「${agent.name}」的职责与技能生成，点击后会直接填入底部输入区。`;
-  }
-
-  if (stageLabel) {
-    return `以下建议会围绕当前流程的${stageLabel}目标生成，点击后会直接填入底部输入区。`;
-  }
-
-  return "建议会根据当前智能体配置和上下文生成，点击后会直接填入底部输入区。";
-});
-
-const starterSuggestions = computed(() => {
-  return buildAgentSuggestions(activeSuggestionAgent.value, {
-    candidateName: currentCandidate.value?.name ?? null,
-    workflowStage: workflow.value?.currentStage ?? null,
-  });
 });
 
 const promptInput = usePromptInputProvider({
@@ -965,14 +870,35 @@ const workspaceCandidateId = computed(() => {
     ? queryCandidateId.trim()
     : (store.selectedConversation?.candidateId ?? null);
 });
-
-const currentCandidate = computed(() => {
-  const candidateId = workspaceCandidateId.value;
-  if (!candidateId) return null;
-  return candidatesStore.current?.candidate.id === candidateId
-    ? candidatesStore.current.candidate
-    : null;
+const interviewScene = useInterviewScene({
+  candidateId: computed(() => workspaceCandidateId.value),
+  store,
+  candidatesStore,
+  notifyError,
 });
+
+const routeScene = computed(() =>
+  typeof route.query.scene === "string" && route.query.scene.trim()
+    ? route.query.scene.trim()
+    : null,
+);
+const hasInterviewContext = computed(() => Boolean(workspaceCandidateId.value));
+const showInterviewSceneUi = computed(
+  () =>
+    hasInterviewContext.value &&
+    (routeScene.value === "interview" || isInterviewAgent(activeSuggestionAgent.value)),
+);
+const showCandidateSelector = computed(
+  () =>
+    routeScene.value === "interview" ||
+    isInterviewAgent(activeSuggestionAgent.value) ||
+    hasInterviewContext.value,
+);
+const agentSelectorProfile = computed(() =>
+  showCandidateSelector.value
+    ? INTERVIEW_AGENT_SELECTOR_PROFILE
+    : GENERIC_AGENT_SELECTOR_PROFILE,
+);
 
 const chatStatus = computed<ChatStatus>(() => {
   const lastMessage = store.currentMessages.at(-1);
@@ -990,11 +916,32 @@ const listenerStatusText = computed(() => {
 
 const visibleConversations = computed(() => {
   const candidateId = workspaceCandidateId.value;
-  if (!candidateId) return store.conversations;
-  return store.conversations.filter(
-    (conversation) => conversation.candidateId === candidateId,
-  );
+  if (!candidateId) {
+    return store.conversations.filter(
+      (conversation) => conversation.candidateId === null,
+    );
+  }
+
+  return filterInterviewConversations(store.conversations, candidateId);
 });
+
+const genericSuggestionTitle = computed(() => {
+  const agent = activeSuggestionAgent.value;
+  return agent ? `${agent.name} 的建议` : "试试智能体建议";
+});
+
+const genericSuggestionDescription = computed(() => {
+  const agent = activeSuggestionAgent.value;
+  if (agent) {
+    return `以下建议会根据当前智能体「${agent.name}」的职责与技能生成，点击后会直接填入底部输入区。`;
+  }
+
+  return "建议会根据当前智能体配置和上下文生成，点击后会直接填入底部输入区。";
+});
+
+const genericStarterSuggestions = computed(() =>
+  buildGenericSuggestions(activeSuggestionAgent.value),
+);
 
 const uiMessages = computed<UiMessageItem[]>(() => {
   return store.currentMessages.map((message) => ({
@@ -1088,16 +1035,18 @@ const listenerStorageKey = computed(() => {
 });
 
 watch(workspaceCandidateId, async (candidateId) => {
-  if (!isWorkspaceReady.value || isSyncingCandidateWorkspace.value) {
+  store.setConversationPolicy(candidateId ? interviewConversationPolicy : null);
+
+  if (!isWorkspaceReady.value || interviewScene.isSyncingCandidateWorkspace.value) {
     return;
   }
 
   if (candidateId) {
-    await ensureCandidateWorkspace(candidateId);
+    await interviewScene.ensureWorkspace(candidateId);
     return;
   }
-  workflow.value = null;
-});
+  interviewScene.reset();
+}, { immediate: true });
 
 watch(inputText, (value) => {
   if (value !== promptInput.textInput.value) {
@@ -1150,37 +1099,6 @@ onUnmounted(() => {
   void stopLiveListening();
 });
 
-async function loadWorkflow(candidateId: string) {
-  try {
-    const workflows = await luiApi.listWorkflows(candidateId);
-    const activeWorkflow = workflows.items.find(
-      (item) => item.status === "active" || item.status === "paused",
-    );
-    workflow.value = activeWorkflow || null;
-  } catch (_err) {
-    workflow.value = null;
-  }
-}
-
-async function onWorkflowStageSelect(stage: WorkflowState["currentStage"]) {
-  if (!workflow.value || workflow.value.currentStage === stage) {
-    return;
-  }
-
-  try {
-    workflow.value = await luiApi.updateWorkflow(workflow.value.id, {
-      currentStage: stage,
-    });
-  } catch (err) {
-    notifyError(
-      reportAppError("workflow/set-stage", err, {
-        title: "切换流程阶段失败",
-        fallbackMessage: "无法切换到目标流程阶段",
-      }),
-    );
-  }
-}
-
 async function onConversationSelect(id: string) {
   if (isLiveListening.value) {
     await stopLiveListening();
@@ -1195,7 +1113,7 @@ async function onConversationCreate() {
   }
   const conversation = await store.createConversation(
     undefined,
-    workspaceCandidateId.value ?? undefined,
+    hasInterviewContext.value ? workspaceCandidateId.value ?? undefined : undefined,
   );
   await store.selectConversation(conversation.id);
   await syncRouteCandidateId();
@@ -1226,40 +1144,6 @@ async function onCandidateSelect(candidate: { id: string } | null) {
   }
 
   await replaceCandidateRoute(nextCandidateId);
-}
-
-async function ensureCandidateWorkspace(candidateId: string) {
-  isSyncingCandidateWorkspace.value = true;
-
-  try {
-    if (candidatesStore.current?.candidate.id !== candidateId) {
-      await candidatesStore.fetchOne(candidateId).catch(() => {
-        // Candidate summary is optional UI context.
-      });
-    }
-
-    const existingConversation = store.conversations.find(
-      (conversation) => conversation.candidateId === candidateId,
-    );
-
-    if (existingConversation) {
-      if (store.selectedId !== existingConversation.id) {
-        await store.selectConversation(existingConversation.id);
-      }
-    } else {
-      const conversation = await store.createConversation(
-        undefined,
-        candidateId,
-      );
-      if (store.selectedId !== conversation.id) {
-        await store.selectConversation(conversation.id);
-      }
-    }
-
-    await loadWorkflow(candidateId);
-  } finally {
-    isSyncingCandidateWorkspace.value = false;
-  }
 }
 
 function handlePromptSubmit(message: PromptInputMessage) {
@@ -1315,7 +1199,7 @@ async function submitPrompt(input: { text: string; files: File[] }) {
     if (!conversationId) {
       const conversation = await store.createConversation(
         undefined,
-        workspaceCandidateId.value ?? undefined,
+        hasInterviewContext.value ? workspaceCandidateId.value ?? undefined : undefined,
       );
       conversationId = conversation.id;
     }
@@ -1800,131 +1684,23 @@ function handleListenerShortcut(event: KeyboardEvent) {
   void toggleLiveListening();
 }
 
-function uniqueSuggestions(items: string[]) {
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const item of items) {
-    const normalized = item.trim();
-    if (!normalized) continue;
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    result.push(normalized);
-  }
-
-  return result;
-}
-
-function formatSuggestionSubject(candidateName: string | null) {
-  return candidateName ? `围绕候选人「${candidateName}」` : "基于当前上下文";
-}
-
-function buildStageSuggestions(
-  stage: WorkflowState["currentStage"] | null,
-  context: { candidateName: string | null },
-) {
-  const subject = formatSuggestionSubject(context.candidateName);
-
-  if (stage === "S0") {
-    return [
-      `请${subject}先完成一版初筛结论，并明确给出通过、待定或淘汰建议。`,
-      `请${subject}梳理最关键的能力亮点、风险点和需要进一步核验的信息。`,
-      `请${subject}输出一份适合进入面试前讨论的结构化初筛摘要。`,
-    ];
-  }
-
-  if (stage === "S1") {
-    return [
-      `请${subject}按照当前轮次先生成一套结构化面试题，并说明每题想验证什么。`,
-      `请${subject}区分基础题、追问题和风险验证题，形成一份可直接使用的出题清单。`,
-      `请${subject}结合前序结论，指出本轮面试最需要重点追问的三个方向。`,
-    ];
-  }
-
-  if (stage === "S2") {
-    return [
-      `请${subject}先输出一版面试评估结论，分别说明优势、不足和建议结论。`,
-      `请${subject}把当前面试记录整理成一份适合同步给面试官团队的评估摘要。`,
-      `请${subject}明确给出录用建议、风险等级以及下一步动作。`,
-    ];
-  }
-
-  if (stage === "completed") {
-    return [
-      `请${subject}复盘整个流程，整理出最终结论和可存档摘要。`,
-      `请${subject}把已生成材料压缩成一份适合汇报的最终总结。`,
-      `请${subject}指出当前流程已经完成的部分、遗留问题和建议 follow-up。`,
-    ];
-  }
-
-  return [
-    `请${subject}先给出当前最值得优先推进的第一步。`,
-    `请${subject}做一次结构化分析，并告诉我接下来该怎么推进。`,
-    `请${subject}把当前问题拆成三个最值得先处理的小步骤。`,
-  ];
-}
-
-function buildToolAwareSuggestion(
-  agent: { tools: string[]; name: string } | null,
-  stage: WorkflowState["currentStage"] | null,
-  context: { candidateName: string | null },
-) {
-  if (!agent?.tools?.length) {
-    return null;
-  }
-
-  const subject = formatSuggestionSubject(context.candidateName);
-  const toolsLabel = agent.tools.slice(0, 3).join("、");
-
-  if (stage === "S0") {
-    return `请${subject}优先使用 ${toolsLabel} 这些能力完成当前初筛判断，并把结果整理成结论。`;
-  }
-
-  if (stage === "S1") {
-    return `请${subject}在当前出题阶段优先利用 ${toolsLabel} 相关能力，生成一份可直接使用的题纲。`;
-  }
-
-  if (stage === "S2") {
-    return `请${subject}结合 ${toolsLabel} 这些能力完成评估总结，并明确给出最终建议。`;
-  }
-
-  return `请${subject}按照智能体「${agent.name}」可用的 ${toolsLabel} 能力，给我一个最合适的下一步。`;
-}
-
-function buildAgentSuggestions(
+function buildGenericSuggestions(
   agent: {
     name: string;
-    description: string;
-    systemPrompt: string;
     tools: string[];
   } | null,
-  context: { candidateName: string | null; workflowStage: string | null },
 ) {
-  const workflowStage =
-    context.workflowStage === "S0" ||
-    context.workflowStage === "S1" ||
-    context.workflowStage === "S2" ||
-    context.workflowStage === "completed"
-      ? context.workflowStage
-      : null;
+  const toolLabel = agent?.tools?.slice(0, 2).join("、");
 
-  const stageSuggestions = buildStageSuggestions(workflowStage, {
-    candidateName: context.candidateName,
-  });
-
-  const toolAwareSuggestion = buildToolAwareSuggestion(agent, workflowStage, {
-    candidateName: context.candidateName,
-  });
-
-  const agentScopedSuggestion = agent
-    ? `${formatSuggestionSubject(context.candidateName)}，请严格按照智能体「${agent.name}」的职责和技能边界来推进当前任务。`
-    : null;
-
-  return uniqueSuggestions([
-    ...(toolAwareSuggestion ? [toolAwareSuggestion] : []),
-    ...stageSuggestions,
-    ...(agentScopedSuggestion ? [agentScopedSuggestion] : []),
-  ]).slice(0, 3);
+  return [
+    agent
+      ? `请按智能体「${agent.name}」的职责，先帮我拆出当前任务的三个下一步。`
+      : "请先帮我梳理当前问题，并给出三个可执行的下一步。",
+    toolLabel
+      ? `请结合 ${toolLabel} 这些能力，帮我整理当前资料并给出一版行动提纲。`
+      : "请基于当前上下文帮我整理关键信息，并生成一版简洁提纲。",
+    "请先判断我现在最值得优先推进的一件事，并说明原因。",
+  ];
 }
 
 async function onSelectModel(modelId: string) {
@@ -2023,7 +1799,7 @@ onMounted(async () => {
     return;
   }
 
-  await ensureCandidateWorkspace(candidateId);
+  await interviewScene.ensureWorkspace(candidateId);
 });
 </script>
 

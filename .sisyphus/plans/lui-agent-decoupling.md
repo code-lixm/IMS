@@ -286,7 +286,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `docs(lui): define generic workspace and interview scene boundary` | Files: `docs/` or `.spec-workflow/` design document
 
-- [ ] 6. Refactor LUI into generic workspace shell + interview scene module
+- [x] 6. Refactor LUI into generic workspace shell + interview scene module
 
   **What to do**: 按 task 5 的边界文档实施第一轮拆分：通用会话/消息/模型/Agent 选择留在 LUI shell；workflow stage、candidate-bound panels、interview-specific actions 下沉到 interview scene 模块。
   **Must NOT do**: 不要重做整套导航；不要影响已有 Interview Agent 的用户可见行为。

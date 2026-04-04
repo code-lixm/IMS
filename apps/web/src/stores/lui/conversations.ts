@@ -2,6 +2,7 @@ import { computed, type ComputedRef, type Ref } from "vue";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
+import type { LuiConversationPolicy } from "./scenes/types";
 import { convertConversation, convertFileResource, convertMessage, type Conversation, type FileResource, type Message } from "./types";
 
 interface LuiConversationModuleOptions {
@@ -19,6 +20,7 @@ interface LuiConversationModuleOptions {
   isInitialized: Ref<boolean>;
   isBindingCandidate: Ref<boolean>;
   error: Ref<string | null>;
+  conversationPolicy: Ref<LuiConversationPolicy | null>;
 }
 
 export interface LuiConversationModule {
@@ -55,6 +57,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
     isInitialized,
     isBindingCandidate,
     error,
+    conversationPolicy,
   } = options;
   const { notifyError, notifyWarning } = useAppNotifications();
 
@@ -166,10 +169,18 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
   }
 
   async function createConversation(title?: string, candidateId?: string) {
-    // 检查是否已存在相同候选人的会话
-    if (candidateId) {
+    const decision = conversationPolicy.value?.beforeCreateConversation(
+      conversations.value,
+      candidateId ?? null,
+    );
+
+    if (decision?.error) {
+      throw new Error(decision.error);
+    }
+
+    if (decision?.reuseId) {
       const existingConversation = conversations.value.find(
-        (c) => c.candidateId === candidateId
+        (conversation) => conversation.id === decision.reuseId,
       );
 
       if (existingConversation) {

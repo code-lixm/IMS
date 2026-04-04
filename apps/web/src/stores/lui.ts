@@ -6,6 +6,7 @@ import { createLuiCredentialModule } from "./lui/credentials";
 import { createLuiFileModule } from "./lui/files";
 import { createLuiMessageModule } from "./lui/messages";
 import { createLuiModelModule } from "./lui/models";
+import type { LuiConversationPolicy } from "./lui/scenes/types";
 import { createLuiTaskQueueModule } from "./lui/task-queue";
 import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
 import type {
@@ -40,6 +41,7 @@ export const useLuiStore = defineStore("lui", () => {
   const isInitialized = ref(false);
   const isBindingCandidate = ref(false);
   const error = ref<string | null>(null);
+  const conversationPolicy = ref<LuiConversationPolicy | null>(null);
 
   // AI Gateway state
   const agents = ref<import("./lui/types").Agent[]>([]);
@@ -80,6 +82,7 @@ export const useLuiStore = defineStore("lui", () => {
     isInitialized,
     isBindingCandidate,
     error,
+    conversationPolicy,
   });
 
   const modelModule = createLuiModelModule({
@@ -153,6 +156,10 @@ export const useLuiStore = defineStore("lui", () => {
     }
   }
 
+  function setConversationPolicy(policy: LuiConversationPolicy | null) {
+    conversationPolicy.value = policy;
+  }
+
   return {
     // Core state
     conversations,
@@ -165,6 +172,7 @@ export const useLuiStore = defineStore("lui", () => {
     isInitialized,
     isBindingCandidate,
     error,
+    conversationPolicy,
     // AI Gateway state
     agents,
     selectedAgentId,
@@ -186,5 +194,6 @@ export const useLuiStore = defineStore("lui", () => {
     ...credentialModule,
     ...taskQueueModule,
     initialize,
+    setConversationPolicy,
   };
 });

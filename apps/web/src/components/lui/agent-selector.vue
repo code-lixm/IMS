@@ -38,19 +38,21 @@
 
         <div class="mt-3 grid gap-2">
           <div>
-            <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">工作流技能</p>
+            <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{{ selectedAgentProfile.skillSectionLabel }}</p>
             <div class="mt-1 flex flex-wrap gap-1.5">
               <Badge v-for="skill in selectedAgentProfile.skills" :key="skill" variant="secondary" class="text-[11px]">
                 {{ skill }}
               </Badge>
+              <span v-if="selectedAgentProfile.skills.length === 0" class="text-xs text-muted-foreground">暂无预设能力标签</span>
             </div>
           </div>
           <div>
-            <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">可用工具</p>
+            <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{{ selectedAgentProfile.toolSectionLabel }}</p>
             <div class="mt-1 flex flex-wrap gap-1.5">
               <Badge v-for="tool in selectedAgentProfile.tools" :key="tool" variant="outline" class="text-[11px]">
                 {{ tool }}
               </Badge>
+              <span v-if="selectedAgentProfile.tools.length === 0" class="text-xs text-muted-foreground">暂无工具标签</span>
             </div>
           </div>
         </div>
@@ -64,14 +66,14 @@
             <Badge v-if="selectedAgent?.isDefault" variant="default" class="text-[10px]">默认入口</Badge>
           </div>
           <p class="mt-2 text-xs leading-5 text-muted-foreground">
-            当前会话将通过这位面试专家统一调度技能链与工具能力，不再暴露底层运行实例。
+            {{ selectedAgentSummaryText }}
           </p>
         </div>
 
         <div class="rounded-lg border border-dashed border-border/60 bg-muted/10 px-3 py-3">
           <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">当前接入方式</p>
           <div class="mt-2 space-y-1.5 text-xs text-muted-foreground">
-            <p>入口技能：{{ currentEntrySkill }}</p>
+            <p>入口技能：{{ currentEntrySkill || '—' }}</p>
             <p>内部辅助：{{ currentSupportSkills }}</p>
           </div>
         </div>
@@ -81,59 +83,56 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
-import { Bot, ChevronsUpDown, RefreshCw } from "lucide-vue-next"
-import { luiApi } from "@/api/lui"
-import { useAppNotifications } from "@/composables/use-app-notifications"
-import { reportAppError } from "@/lib/errors/normalize"
-import Button from "@/components/ui/button.vue"
-import Badge from "@/components/ui/badge.vue"
-import Popover from "@/components/ui/popover.vue"
-import PopoverContent from "@/components/ui/popover-content.vue"
-import PopoverTrigger from "@/components/ui/popover-trigger.vue"
+import { computed, ref, watch } from "vue";
+import { Bot, ChevronsUpDown, RefreshCw } from "lucide-vue-next";
+import { luiApi } from "@/api/lui";
+import { useAppNotifications } from "@/composables/use-app-notifications";
+import { reportAppError } from "@/lib/errors/normalize";
+import type { LuiAgentSelectorProfile } from "@/stores/lui/scenes/types";
+import Button from "@/components/ui/button.vue";
+import Badge from "@/components/ui/badge.vue";
+import Popover from "@/components/ui/popover.vue";
+import PopoverContent from "@/components/ui/popover-content.vue";
+import PopoverTrigger from "@/components/ui/popover-trigger.vue";
 
 interface AgentSelectorProps {
-  modelValue?: string | null
+  modelValue?: string | null;
+  profile?: LuiAgentSelectorProfile | null;
 }
 
 interface AgentInfo {
   id: string
-  name: string
-  description: string | null
-  engine: "builtin" | "deepagents"
-  mode: string
-  temperature: number
-  systemPrompt: string | null
-  tools: string[]
-  isDefault: boolean
+  name: string;
+  displayName: string;
+  description: string | null;
+  engine: "builtin" | "deepagents";
+  mode: string;
+  temperature: number;
+  systemPrompt: string | null;
+  tools: string[];
+  isDefault: boolean;
 }
 
-interface AgentProfileView {
-  title: string
-  subtitle: string
-  description: string
-  skills: string[]
-  tools: string[]
-  entrySkill: string
-  supportSkills: string[]
-}
-
-const INTERVIEW_AGENT_PROFILE: AgentProfileView = {
-  title: "面试专家",
-  subtitle: "智能面试助手",
-  description: "帮你筛选简历、设计面试题、评估候选人",
-  skills: ["简历分析", "题目设计", "综合评估"],
-  tools: ["读取简历", "生成题目", "输出报告"],
-  entrySkill: "interview-orchestrator",
+const DEFAULT_AGENT_PROFILE: LuiAgentSelectorProfile = {
+  title: "通用工作区 Agent",
+  subtitle: "通用对话助手",
+  description: "查看当前会话使用的 Agent、能力摘要与工具配置。",
+  skills: [],
+  tools: [],
+  entrySkill: "",
   supportSkills: [],
-}
+  skillSectionLabel: "核心能力",
+  toolSectionLabel: "可用工具",
+  summaryText:
+    "当前会话会按所选 Agent 的系统提示词、工具与模型设置继续处理，不附带额外的 interview workflow 兜底。",
+};
 
 const MODE_LABELS: Record<string, string> = {
   all: "全模式",
   chat: "对话",
   ask: "问答",
   workflow: "工作流",
-}
+};
 
 const TOOL_LABELS: Record<string, string> = {
   ensureWorkspace: "建立工作区",
@@ -145,137 +144,159 @@ const TOOL_LABELS: Record<string, string> = {
   sanitizeInterviewNotes: "整理纪要",
 }
 
-const TEST_AGENT_PATTERN = /(validation|gate|smoke|test)/i
-const CJK_TEXT_PATTERN = /[\u4e00-\u9fff]/
+const TEST_AGENT_PATTERN = /(validation|gate|smoke|test)/i;
+const CJK_TEXT_PATTERN = /[\u4e00-\u9fff]/;
 
-const props = defineProps<AgentSelectorProps>()
+const props = defineProps<AgentSelectorProps>();
 // Emit definitions reserved for future use
 // const _emit = defineEmits<{
 //   (e: "update:modelValue", value: string | null): void
 //   (e: "select", agent: AgentInfo | null): void
 // }>()
 
-const open = ref(false)
-const agents = ref<AgentInfo[]>([])
-const isLoading = ref(false)
-const selectedAgent = ref<AgentInfo | null>(null)
-const { notifyError } = useAppNotifications()
+const open = ref(false);
+const agents = ref<AgentInfo[]>([]);
+const isLoading = ref(false);
+const selectedAgent = ref<AgentInfo | null>(null);
+const { notifyError } = useAppNotifications();
+
+const baseProfile = computed(() => props.profile ?? DEFAULT_AGENT_PROFILE);
 
 const selectedAgentTitle = computed(() => {
-  return INTERVIEW_AGENT_PROFILE.title
-})
+  return selectedAgent.value?.displayName || selectedAgent.value?.name || baseProfile.value.title;
+});
 
-const selectedAgentProfile = computed<AgentProfileView>(() => {
+const selectedAgentProfile = computed<LuiAgentSelectorProfile>(() => {
   if (!selectedAgent.value) {
-    return INTERVIEW_AGENT_PROFILE
+    return {
+      ...baseProfile.value,
+      skillSectionLabel: baseProfile.value.skillSectionLabel ?? DEFAULT_AGENT_PROFILE.skillSectionLabel,
+      toolSectionLabel: baseProfile.value.toolSectionLabel ?? DEFAULT_AGENT_PROFILE.toolSectionLabel,
+    };
   }
 
   return {
-    title: INTERVIEW_AGENT_PROFILE.title,
-    subtitle: INTERVIEW_AGENT_PROFILE.subtitle,
-    description: getAgentSummary(selectedAgent.value),
-    skills: INTERVIEW_AGENT_PROFILE.skills,
-    tools: getAgentToolLabels(selectedAgent.value),
-    entrySkill: INTERVIEW_AGENT_PROFILE.entrySkill,
-    supportSkills: INTERVIEW_AGENT_PROFILE.supportSkills,
-  }
-})
+    title: selectedAgent.value.displayName || selectedAgent.value.name || baseProfile.value.title,
+    subtitle: baseProfile.value.subtitle,
+    description: getAgentSummary(selectedAgent.value, baseProfile.value.description),
+    skills: baseProfile.value.skills,
+    tools: getAgentToolLabels(selectedAgent.value, baseProfile.value.tools),
+    entrySkill: baseProfile.value.entrySkill,
+    supportSkills: baseProfile.value.supportSkills,
+    skillSectionLabel:
+      baseProfile.value.skillSectionLabel ?? DEFAULT_AGENT_PROFILE.skillSectionLabel,
+    toolSectionLabel:
+      baseProfile.value.toolSectionLabel ?? DEFAULT_AGENT_PROFILE.toolSectionLabel,
+    summaryText: baseProfile.value.summaryText,
+  };
+});
 
-const currentEngineLabel = computed(() => formatEngineLabel(selectedAgent.value?.engine ?? 'builtin'))
-const currentModeLabel = computed(() => formatModeLabel(selectedAgent.value?.mode ?? 'workflow'))
-const currentEntrySkill = computed(() => selectedAgentProfile.value.entrySkill)
-const currentSupportSkills = computed(() => selectedAgentProfile.value.supportSkills.join(' / '))
+const currentEngineLabel = computed(() => formatEngineLabel(selectedAgent.value?.engine ?? "builtin"));
+const currentModeLabel = computed(() => formatModeLabel(selectedAgent.value?.mode ?? "chat"));
+const currentEntrySkill = computed(() => selectedAgentProfile.value.entrySkill);
+const currentSupportSkills = computed(() =>
+  selectedAgentProfile.value.supportSkills.length
+    ? selectedAgentProfile.value.supportSkills.join(" / ")
+    : "—",
+);
+const selectedAgentSummaryText = computed(() =>
+  selectedAgentProfile.value.summaryText ?? DEFAULT_AGENT_PROFILE.summaryText,
+);
 
 watch(() => props.modelValue, async (newVal) => {
   if (newVal && newVal !== selectedAgent.value?.id) {
-    await loadAgent(newVal)
+    await loadAgent(newVal);
   } else if (!newVal) {
-    selectedAgent.value = null
+    selectedAgent.value = null;
   }
-}, { immediate: true })
+}, { immediate: true });
 
 async function loadAgents() {
-  isLoading.value = true
+  isLoading.value = true;
   try {
-    const data = await luiApi.listAgents()
+    const data = await luiApi.listAgents();
     agents.value = data.items.map(a => ({
       id: a.id,
       name: a.name,
+      displayName: a.displayName,
       description: a.description,
-      engine: a.engine ?? 'builtin',
+      engine: a.engine ?? "builtin",
       mode: a.mode,
       temperature: a.temperature,
       systemPrompt: a.systemPrompt,
       tools: a.tools,
       isDefault: a.isDefault,
-    }))
+    }));
     if (!selectedAgent.value) {
-      const defaultAgent = agents.value.find(a => a.isDefault) ?? agents.value[0] ?? null
+      const defaultAgent = agents.value.find(a => a.isDefault) ?? agents.value[0] ?? null;
       if (defaultAgent) {
-        selectedAgent.value = defaultAgent
+        selectedAgent.value = defaultAgent;
       }
     }
   } catch (err) {
     notifyError(reportAppError("agent-selector/load", err, {
       title: "加载 Agent 失败",
       fallbackMessage: "暂时无法获取 Agent 列表",
-    }))
-    agents.value = []
+    }));
+    agents.value = [];
   } finally {
-    isLoading.value = false
+    isLoading.value = false;
   }
 }
 
 async function loadAgent(id: string) {
   try {
-    const data = await luiApi.getAgent(id)
+    const data = await luiApi.getAgent(id);
     selectedAgent.value = {
       id: data.id,
       name: data.name,
+      displayName: data.displayName,
       description: data.description,
-      engine: data.engine ?? 'builtin',
+      engine: data.engine ?? "builtin",
       mode: data.mode,
       temperature: data.temperature,
       systemPrompt: data.systemPrompt,
       tools: data.tools,
       isDefault: data.isDefault,
-    }
+    };
   } catch (_error) {
-    selectedAgent.value = null
+    selectedAgent.value = null;
   }
 }
 
 // Load agents when dialog opens
 watch(open, (isOpen) => {
   if (isOpen) {
-    loadAgents()
+    loadAgents();
   }
-})
+});
 
 function formatModeLabel(mode: string) {
-  return MODE_LABELS[mode] ?? mode
+  return MODE_LABELS[mode] ?? mode;
 }
 
 function formatEngineLabel(engine: AgentInfo["engine"]) {
-  return engine === 'deepagents' ? 'Deepagents 引擎' : '内置引擎'
+  return engine === "deepagents" ? "Deepagents 引擎" : "内置引擎";
 }
 
-
-
-function getAgentSummary(agent: AgentInfo) {
-  const description = agent.description?.trim()
-  if (description && CJK_TEXT_PATTERN.test(description) && !TEST_AGENT_PATTERN.test(description)) {
-    return description
+function getAgentSummary(agent: AgentInfo, fallbackDescription: string) {
+  const description = agent.description?.trim();
+  if (
+    description &&
+    CJK_TEXT_PATTERN.test(description) &&
+    !TEST_AGENT_PATTERN.test(description)
+  ) {
+    return description;
   }
 
-  return INTERVIEW_AGENT_PROFILE.description
+  return fallbackDescription;
 }
 
-function getAgentToolLabels(agent: AgentInfo) {
+function getAgentToolLabels(agent: AgentInfo, fallbackTools: string[]) {
   if (!agent.tools.length) {
-    return INTERVIEW_AGENT_PROFILE.tools
+    return fallbackTools;
   }
 
-  return agent.tools.map((tool) => TOOL_LABELS[tool] ?? tool)
+  return agent.tools.map((tool) => TOOL_LABELS[tool] ?? tool);
 }
 </script>

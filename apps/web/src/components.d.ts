@@ -127,6 +127,7 @@ declare module 'vue' {
     Skeleton: typeof import('./components/ui/skeleton.vue')['default']
     Slider: typeof import('./components/ui/slider.vue')['default']
     Spinner: typeof import('./components/ui/spinner/Spinner.vue')['default']
+    StageSuggestions: typeof import('./components/lui/scenes/interview/StageSuggestions.vue')['default']
     Switch: typeof import('./components/ui/switch/Switch.vue')['default']
     Table: typeof import('./components/ui/table.vue')['default']
     TableBody: typeof import('./components/ui/table-body.vue')['default']
@@ -145,6 +146,7 @@ declare module 'vue' {
     TooltipContent: typeof import('./components/ui/tooltip/TooltipContent.vue')['default']
     TooltipProvider: typeof import('./components/ui/tooltip/TooltipProvider.vue')['default']
     TooltipTrigger: typeof import('./components/ui/tooltip/TooltipTrigger.vue')['default']
+    WorkflowBanner: typeof import('./components/lui/scenes/interview/WorkflowBanner.vue')['default']
     WorkflowStatus: typeof import('./components/lui/workflow-status.vue')['default']
   }
 }

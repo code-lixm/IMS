@@ -30,3 +30,7 @@ MX|-  Prompt Composition Order 遵循 oracle 指导：global base → scene inst
 QW|-  Workflow stage state 保持在 workflow service 中，adapter 仅接收 stage 信息作为 prompt context，不承担状态管理职责
 JK|-  Error semantics 统一为 AdapterError(code, statusCode, engine, isRetryable)，所有 engine 错误在传播到 workflow 前完成映射
 RM|-  deepagents 特殊注意：tools 通过 session direct config 注入；memory 通过 middleware 加载；无 native stage 概念；streaming/tool-call 语义需代码验证
+
+- 2026-04-05（Task 6）：第一轮拆分采用最小 seam：`stores/lui/scenes/interview/scene.ts` 承载 candidate workspace init + workflow load/update，`stores/lui/scenes/interview/policy.ts` 承载 candidate conversation policy 与 interview profile，`LUIView.vue` 只负责根据 scene 条件注入 interview 组件。
+- 2026-04-05（Task 6）：generic shell 的可见会话规则收敛为“仅显示 `candidateId=null` 的漫游会话”；candidate context 存在时通过 interview policy 扩展为“当前 candidate 绑定会话 + 漫游会话”的 union。
+- 2026-04-05（Task 6）：workflow banner / stage suggestions 仅在 `candidateId` 存在且 interview agent 或 `scene=interview` 激活时展示；但 candidate workspace init 与 conversation policy 仍由 candidate context 驱动，避免已有关联候选人的工作流退化。
