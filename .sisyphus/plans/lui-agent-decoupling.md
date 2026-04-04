@@ -130,7 +130,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `refactor(agent): formalize lifecycle contract` | Files: `packages/shared/src/api-types.ts`, `packages/server/src/routes.ts`, `packages/server/src/services/lui-agents.ts`, `apps/web/src/views/SettingsView.vue`
 
-- [ ] 2. Enable agent rename end-to-end
+- [x] 2. Enable agent rename end-to-end
 
   **What to do**: 打通前端编辑弹窗、API client、服务端 update 接口，使 Agent 名称可修改；保留 `id` 稳定。补充名称冲突与历史会话兼容说明。
   **Must NOT do**: 不要让 rename 影响现有 conversation 的 agent 引用；不要在编辑态继续禁用 name 输入框。

@@ -345,8 +345,8 @@
                 <div class="space-y-4">
                   <div class="space-y-1.5">
                     <label class="text-xs text-muted-foreground">名称</label>
-                    <Input v-model="agentForm.name" placeholder="例如：面试流程协调员" :disabled="editingAgentId !== null" />
-                    <p v-if="editingAgentId" class="text-xs text-muted-foreground">durable identity 会保持不变；当前设置页暂不暴露重命名入口。</p>
+                    <Input v-model="agentForm.name" placeholder="例如：面试流程协调员" />
+                    <p class="text-xs text-muted-foreground">重命名仅影响显示名称，不影响历史会话关联。</p>
                   </div>
 
                   <div class="space-y-1.5">
@@ -812,6 +812,7 @@ async function saveAgent() {
   try {
     if (editingAgentId.value) {
       await luiStore.updateAgent(editingAgentId.value, {
+        name: agentForm.name.trim(),
         description: agentForm.description.trim(),
         engine: agentForm.engine,
         mode: agentForm.mode,

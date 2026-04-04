@@ -2480,6 +2480,15 @@ Always be concise and helpful in your responses.`;
       return fail("VALIDATION_ERROR", "builtin agent lifecycle is immutable", 422);
     }
 
+    // Check for duplicate name among custom agents (non-protected)
+    const newName = (body.displayName?.trim() || body.name?.trim());
+    if (newName && newName !== existing.name) {
+      const [existingWithName] = await db.select().from(agents).where(eq(agents.name, newName)).limit(1);
+      if (existingWithName && existingWithName.id !== id) {
+        return fail("DUPLICATE_NAME", `Agent with name "${newName}" already exists`, 409);
+      }
+    }
+
     // If setting as default, unset other defaults first
     if (body.isDefault) {
       await db.update(agents).set({ isDefault: false }).where(eq(agents.isDefault, true));
