@@ -8,6 +8,7 @@ import { conversations, luiWorkflows, messages } from "../schema";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./baobao-resume";
 import { buildCandidateContext, formatCandidateContextForPrompt } from "./lui-context";
 import { getWorkflowTools, type ToolContext } from "./lui-tools";
+import type { PreparedWorkflowExecutionRequest, WorkflowHistoryMessage } from "./lui-workflow-runtime";
 
 type DeepAgentContext = {
   candidateId: string;
@@ -124,6 +125,51 @@ function toUiMessages(historyMessages: Array<{ role: "user" | "assistant" | "sys
   }));
 }
 
+function createDeepAgentResponse(
+  request: PreparedWorkflowExecutionRequest,
+  options: { agentName: string },
+): Promise<Response> {
+  const tools = getWorkflowTools(request.toolContext, request.allowedToolNames);
+  const transcript = formatConversationTranscript(request.historyMessages);
+
+  const provider = createOpenAI({
+    name: request.modelProvider || "default-openai-compatible",
+    baseURL: normalizeOpenAIBaseURL(request.endpointBaseURL),
+    apiKey: request.endpointApiKey,
+  });
+
+  const deepAgent = agent<unknown, DeepAgentContext>({
+    name: options.agentName,
+    model: provider.chat(request.runtimeModelName),
+    tools,
+    prompt: (contextVariables?: DeepAgentContext) => [
+      request.systemPrompt,
+      `## Runtime Context\nCandidate: ${typeof contextVariables?.candidateName === "string" && contextVariables.candidateName ? contextVariables.candidateName : request.candidateName}\nWorkflow Stage: ${typeof contextVariables?.currentStage === "string" ? contextVariables.currentStage : request.workflowStage}\nStage Index: ${request.workflowStageIndex}\nTemperature: ${request.temperature}`,
+      typeof contextVariables?.conversationTranscript === "string" && contextVariables.conversationTranscript
+        ? `## Conversation Transcript\n${contextVariables.conversationTranscript}`
+        : "",
+    ].filter(Boolean).join("\n\n"),
+  });
+
+  return execute(
+    deepAgent,
+    toUiMessages(request.historyMessages),
+    {
+      candidateId: request.candidateId,
+      candidateName: request.candidateName,
+      currentStage: request.workflowStage,
+      conversationTranscript: transcript,
+    },
+  ).then((result) => result.toUIMessageStreamResponse());
+}
+
+export async function executeDeepAgentWorkflow(
+  request: PreparedWorkflowExecutionRequest,
+  options: { agentName: string },
+): Promise<Response> {
+  return createDeepAgentResponse(request, options);
+}
+
 export async function executeDeepAgent(
   conversationId: string,
   userMessage: string,
@@ -212,43 +258,35 @@ export async function executeDeepAgent(
   const resolvedApiKey = options.endpointApiKey?.trim() || DEFAULT_OPENAI_COMPATIBLE_API_KEY;
   const temperature = options.temperature ?? conversation.temperature ?? 0.5;
 
-  const provider = createOpenAI({
-    name: modelProvider || "default-openai-compatible",
-    baseURL: normalizeOpenAIBaseURL(resolvedBaseURL),
-    apiKey: resolvedApiKey,
-  });
-
   const toolContext: ToolContext = {
     directory: config.dataDir || process.cwd(),
     candidateId,
     workflowId: workflow?.id,
   };
 
-  const tools = getWorkflowTools(toolContext, options.allowedToolNames);
-  const transcript = formatConversationTranscript(historyMessages);
-  const deepAgent = agent<unknown, DeepAgentContext>({
-    name: options.agentName,
-    model: provider.chat(runtimeModelName),
-    tools,
-    prompt: (contextVariables?: DeepAgentContext) => [
-      systemPrompt,
-      `## Runtime Context\nCandidate: ${typeof contextVariables?.candidateName === "string" && contextVariables.candidateName ? contextVariables.candidateName : candidateId}\nWorkflow Stage: ${typeof contextVariables?.currentStage === "string" ? contextVariables.currentStage : workflowStage}\nTemperature: ${temperature}`,
-      typeof contextVariables?.conversationTranscript === "string" && contextVariables.conversationTranscript
-        ? `## Conversation Transcript\n${contextVariables.conversationTranscript}`
-        : "",
-    ].filter(Boolean).join("\n\n"),
-  });
-
-  const result = await execute(
-    deepAgent,
-    toUiMessages(historyMessages),
-    {
-      candidateId,
-      candidateName: candidateContext?.candidateName ?? candidateId,
-      currentStage: workflowStage,
-      conversationTranscript: transcript,
+  const preparedRequest: PreparedWorkflowExecutionRequest = {
+    conversationId,
+    candidateId,
+    candidateName: candidateContext?.candidateName ?? candidateId,
+    workflowId: workflow?.id ?? `wf-missing-${conversationId}`,
+    workflowStage,
+    workflowStageIndex: ["S0", "S1", "S2", "completed"].indexOf(workflowStage),
+    systemPrompt,
+    promptAssets: {
+      candidateSummary: candidateContext ? formatCandidateContextForPrompt(candidateContext) : null,
+      jobDescription: null,
+      evaluationCriteria: null,
+      customContext: {},
     },
-  );
+    historyMessages: historyMessages as WorkflowHistoryMessage[],
+    modelProvider,
+    runtimeModelName,
+    endpointBaseURL: resolvedBaseURL,
+    endpointApiKey: resolvedApiKey,
+    temperature,
+    allowedToolNames: options.allowedToolNames,
+    toolContext,
+  };
 
-  return result.toUIMessageStreamResponse();
+  return createDeepAgentResponse(preparedRequest, { agentName: options.agentName });
 }

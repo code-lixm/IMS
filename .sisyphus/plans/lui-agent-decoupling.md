@@ -405,7 +405,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `docs(runtime): define interview engine adapter contract` | Files: design document
 
-- [ ] 9. Implement engine-aware workflow path and stage prompt convergence
+- [x] 9. Implement engine-aware workflow path and stage prompt convergence
 
   **What to do**: 基于 tasks 6-8，将 Interview workflow 主链路改造成尊重 `agent.engine` 的统一入口，并合并 stage prompts 资产，避免 builtin/deepagents 维护两套 interview prompt 语义。
   **Must NOT do**: 不要直接删除 builtin path；不要在未完成 capability 对齐前强切默认 Interview Agent。

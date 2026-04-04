@@ -19,6 +19,17 @@ import { streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { config } from "../config";
 import { db } from "../db";
+import { executeDeepAgentWorkflow } from "./deepagents-runtime";
+import {
+  composeWorkflowSystemPrompt,
+  getWorkflowStageIndex,
+  type PreparedWorkflowExecutionRequest,
+  type WorkflowPromptAssets,
+  type WorkflowRuntimeEngine,
+  type WorkflowStage,
+} from "./lui-workflow-runtime";
+
+export type { WorkflowStage } from "./lui-workflow-runtime";
 
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https://ai-gateway.vercel.com/v1";
 const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.env.VERCEL_AI_GATEWAY_TOKEN || "";
@@ -48,7 +59,6 @@ function normalizeOpenAIBaseURL(baseURL: string | null | undefined): string {
 // Types
 // ============================================================================
 
-export type WorkflowStage = "S0" | "S1" | "S2" | "completed";
 export type WorkflowStatus = "active" | "paused" | "completed" | "error";
 
 export interface StageDocument {
@@ -89,78 +99,6 @@ export interface AgentExecutionResult {
   nextAction?: "continue" | "stage_complete" | "ask_user";
   prompt?: string; // for ask_user
 }
-
-// ============================================================================
-// System Prompts by Stage
-// ============================================================================
-
-const STAGE_SYSTEM_PROMPTS: Record<WorkflowStage, string> = {
-  S0: `You are an Interview Screening Agent (S0 Stage).
-Your task is to screen candidates by analyzing their resumes and initial information.
-
-Available tools:
-- scanPdf: Extract and analyze resume PDF content
-- batchScreenResumes: Process multiple resumes concurrently
-- writeMarkdown: Save screening results
-
-Workflow:
-1. Analyze candidate resume and basic information
-2. Generate a screening assessment document
-3. Save the assessment using writeMarkdown
-4. Provide a clear recommendation (通过/待定/淘汰)
-
-Output format: Create a structured screening report with:
-- Candidate summary
-- Skills assessment
-- Experience evaluation  
-- Recommendation with reasoning`,
-
-  S1: `You are an Interview Questioning Agent (S1 Stage).
-Your task is to generate interview questions based on previous stage results.
-
-Available tools:
-- resolveRound: Determine the interview round (1-4)
-- writeMarkdown: Save generated questions
-
-Workflow:
-1. Review screening results from S0
-2. Determine the appropriate interview round
-3. Generate targeted interview questions
-4. Save questions document
-
-Output format: Create an interview question document with:
-- Round number and focus areas
-- Technical questions (if applicable)
-- Behavioral questions
-- Evaluation criteria`,
-
-  S2: `You are an Interview Assessment Agent (S2 Stage).
-Your task is to evaluate interview performance and generate assessment reports.
-
-Available tools:
-- buildWechatCopyText: Generate WeChat-friendly evaluation summary
-- sanitizeInterviewNotes: Clean interview notes before analysis
-- writeMarkdown: Save detailed assessment
-
-Workflow:
-1. Review interview notes (use sanitizeInterviewNotes if needed)
-2. Analyze candidate performance
-3. Generate evaluation summary
-4. Create WeChat copy text for sharing
-5. Save assessment document
-
-Output format: Create an assessment report with:
-- Interview summary
-- Strengths and weaknesses
-- Recommended level (P5-P8 or 不推荐)
-- Next steps recommendation`,
-
-  completed: `You are an Interview Manager Agent.
-The interview workflow is complete. You can:
-- Review all generated documents
-- Answer questions about the candidate
-- Help with follow-up actions`,
-};
 
 // ============================================================================
 // Workflow CRUD Operations
@@ -346,8 +284,31 @@ export async function executeAgent(
     autoAdvance?: boolean;
     allowedToolNames?: string[];
     agentSystemPrompt?: string | null;
+    engine?: WorkflowRuntimeEngine;
+    agentName?: string;
   }
 ): Promise<Response> {
+  return executeWorkflowAgent(conversationId, userMessage, {
+    ...options,
+    engine: options.engine ?? "builtin",
+  });
+}
+
+async function prepareWorkflowExecutionRequest(
+  conversationId: string,
+  userMessage: string,
+  options: {
+    candidateId?: string;
+    modelProvider?: string;
+    modelId?: string;
+    runtimeModelName?: string;
+    endpointBaseURL?: string;
+    endpointApiKey?: string;
+    temperature?: number;
+    allowedToolNames?: string[];
+    agentSystemPrompt?: string | null;
+  },
+): Promise<PreparedWorkflowExecutionRequest> {
   // Get conversation and candidate context
   const [conv] = await db
     .select()
@@ -376,38 +337,52 @@ export async function executeAgent(
     workflow.currentStage = "S0";
   }
 
-  // Build system prompt with stage context
-  let systemPrompt = STAGE_SYSTEM_PROMPTS[workflow.currentStage];
+  const workflowDocumentNotes: string[] = [];
 
-  if (options.agentSystemPrompt?.trim()) {
-    systemPrompt = `${options.agentSystemPrompt.trim()}\n\n${systemPrompt}`;
-  }
-
-  if (options.allowedToolNames) {
-    systemPrompt += options.allowedToolNames.length > 0
-      ? `\n\n## Tool Constraints\nYou may only use these tools for this agent: ${options.allowedToolNames.join(", ")}. Do not invoke any other tools.`
-      : `\n\n## Tool Constraints\nThis agent has no tools enabled. Answer without calling tools.`;
-  }
-
+  let resumeSyncNote: string | null = null;
   if (resumeSync.status === "imported") {
-    systemPrompt += "\n\n## Resume Sync\nA missing remote resume was just downloaded into the local candidate record. Start from S0 screening before moving to later stages.";
+    resumeSyncNote = "Automatic remote resume hydration imported a missing resume just before this turn. If later-stage work lacks validated S0 output, return to S0 first.";
   } else if (resumeSync.status !== "already-present") {
-    systemPrompt += `\n\n## Resume Sync\nAutomatic remote resume hydration status: ${resumeSync.status}. ${resumeSync.note ?? ""}`.trimEnd();
+    resumeSyncNote = `Automatic remote resume hydration status: ${resumeSync.status}. ${resumeSync.note ?? ""}`.trimEnd();
   }
 
-  // Add candidate context
   const candidateContext = await buildCandidateContext(candidateId);
-  if (candidateContext) {
-    systemPrompt += `\n\n## Candidate Context\n${formatCandidateContextForPrompt(candidateContext)}`;
-  }
+  const promptAssets: WorkflowPromptAssets = {
+    candidateSummary: candidateContext ? formatCandidateContextForPrompt(candidateContext) : null,
+    jobDescription: null,
+    evaluationCriteria: null,
+    customContext: {},
+  };
 
-  // Add workflow documents context
   if (workflow.documents.S0 && workflow.currentStage !== "S0") {
-    systemPrompt += `\n\n## S0 Screening Result\nPrevious screening has been completed. Review the S0 document for context.`;
+    workflowDocumentNotes.push("S0 screening document already exists and should be treated as authoritative prior-stage output.");
   }
   if (workflow.documents.S1 && workflow.currentStage === "S2") {
-    systemPrompt += `\n\n## S1 Questioning Result\nInterview questions have been generated. Use these as reference for assessment.`;
+    workflowDocumentNotes.push("S1 questioning document already exists and should be used as the assessment reference set.");
   }
+
+  if (workflow.status !== "active") {
+    promptAssets.customContext.WorkflowStatus = `Current workflow status: ${workflow.status}`;
+  }
+  if (workflow.documents.S0?.summary) {
+    promptAssets.customContext.S0Summary = workflow.documents.S0.summary;
+  }
+  if (workflow.documents.S1?.summary) {
+    promptAssets.customContext.S1Summary = workflow.documents.S1.summary;
+  }
+  if (workflow.documents.S2?.summary) {
+    promptAssets.customContext.S2Summary = workflow.documents.S2.summary;
+  }
+
+  const systemPrompt = composeWorkflowSystemPrompt({
+    basePrompt: options.agentSystemPrompt,
+    workflowStage: workflow.currentStage,
+    workflowStageIndex: getWorkflowStageIndex(workflow.currentStage),
+    promptAssets,
+    allowedToolNames: options.allowedToolNames,
+    resumeSyncNote,
+    workflowDocumentNote: workflowDocumentNotes.join("\n"),
+  });
 
   // Get message history
   const historyRows = await db
@@ -424,7 +399,6 @@ export async function executeAgent(
   // Add current user message
   historyMessages.push({ role: "user", content: userMessage });
 
-  // Resolve model/provider for execution
   const modelProvider = options.modelProvider?.trim() || conv.modelProvider || null;
   const modelId = options.modelId?.trim() || conv.modelId || null;
   const runtimeModelName = options.runtimeModelName?.trim() || (modelId ? parseRuntimeModelName(modelId) : null);
@@ -435,34 +409,80 @@ export async function executeAgent(
   const resolvedApiKey = options.endpointApiKey?.trim() || DEFAULT_OPENAI_COMPATIBLE_API_KEY;
   const temperature = options.temperature ?? conv.temperature ?? 0.5;
 
-  // Create provider using OpenAI SDK with custom base URL
-  const provider = createOpenAI({
-    name: modelProvider || "default-openai-compatible",
-    baseURL: normalizeOpenAIBaseURL(resolvedBaseURL),
-    apiKey: resolvedApiKey,
-  });
-
-  // Build tool context for execution
   const toolContext: ToolContext = {
     directory: config.dataDir || process.cwd(),
     candidateId,
     workflowId: workflow.id,
   };
 
-  // Get tools with execute functions
-  const tools = getWorkflowTools(toolContext, options.allowedToolNames);
-
-  // Execute streaming with tools
-  const result = streamText({
-    model: provider.chat(runtimeModelName),
-    messages: historyMessages,
-    system: systemPrompt,
+  return {
+    conversationId,
+    candidateId,
+    candidateName: candidateContext?.candidateName ?? candidateId,
+    workflowId: workflow.id,
+    workflowStage: workflow.currentStage,
+    workflowStageIndex: getWorkflowStageIndex(workflow.currentStage),
+    systemPrompt,
+    promptAssets,
+    historyMessages,
+    modelProvider,
+    runtimeModelName,
+    endpointBaseURL: resolvedBaseURL,
+    endpointApiKey: resolvedApiKey,
     temperature,
+    allowedToolNames: options.allowedToolNames,
+    toolContext,
+  };
+}
+
+async function executeBuiltinWorkflowRequest(request: PreparedWorkflowExecutionRequest): Promise<Response> {
+  const provider = createOpenAI({
+    name: request.modelProvider || "default-openai-compatible",
+    baseURL: normalizeOpenAIBaseURL(request.endpointBaseURL),
+    apiKey: request.endpointApiKey,
+  });
+
+  const tools = getWorkflowTools(request.toolContext, request.allowedToolNames);
+
+  const result = streamText({
+    model: provider.chat(request.runtimeModelName),
+    messages: request.historyMessages,
+    system: request.systemPrompt,
+    temperature: request.temperature,
     tools,
   });
 
-  // Return streaming response - tool execution is handled internally by streamText
   return result.toUIMessageStreamResponse();
+}
+
+export async function executeWorkflowAgent(
+  conversationId: string,
+  userMessage: string,
+  options: {
+    candidateId?: string;
+    agentId?: string;
+    agentName?: string;
+    engine?: WorkflowRuntimeEngine;
+    modelProvider?: string;
+    modelId?: string;
+    runtimeModelName?: string;
+    endpointBaseURL?: string;
+    endpointApiKey?: string;
+    temperature?: number;
+    autoAdvance?: boolean;
+    allowedToolNames?: string[];
+    agentSystemPrompt?: string | null;
+  },
+): Promise<Response> {
+  const request = await prepareWorkflowExecutionRequest(conversationId, userMessage, options);
+
+  if (options.engine === "deepagents") {
+    return executeDeepAgentWorkflow(request, {
+      agentName: options.agentName?.trim() || "Interview Workflow Agent",
+    });
+  }
+
+  return executeBuiltinWorkflowRequest(request);
 }
 
 // ============================================================================

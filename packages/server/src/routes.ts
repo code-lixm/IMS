@@ -39,6 +39,7 @@ import {
   completeWorkflow,
   listCandidateWorkflows,
   executeAgent,
+  executeWorkflowAgent,
   WorkflowStage,
 } from "./services/lui-workflow";
 import { executeDeepAgent } from "./services/deepagents-runtime";
@@ -2273,6 +2274,8 @@ Always be concise and helpful in your responses.`;
 
     // Check if agent is in workflow mode
     let isWorkflowMode = false;
+    let workflowEngine: "builtin" | "deepagents" = "builtin";
+    let workflowAgentName: string | undefined;
     let allowedToolNames: string[] | undefined;
     let agentSystemPrompt: string | null = null;
     if (body.agentId) {
@@ -2288,6 +2291,8 @@ Always be concise and helpful in your responses.`;
         }
         // Check if this is a workflow agent
         isWorkflowMode = agent.mode === "workflow";
+        workflowEngine = agent.engine === "deepagents" ? "deepagents" : "builtin";
+        workflowAgentName = agent.name;
 
         systemPrompt = `${systemPrompt}${buildAgentToolConstraints(agent.name, allowedToolNames)}`;
       }
@@ -2342,8 +2347,10 @@ Always be concise and helpful in your responses.`;
     // Route to workflow orchestrator if in workflow mode
     if (isWorkflowMode && conv.candidateId) {
       const workflowModelProvider = typeof modelProvider === "string" ? modelProvider : undefined;
-      const workflowResponse = await executeAgent(convId, body.content.trim(), {
+      const workflowResponse = await executeWorkflowAgent(convId, body.content.trim(), {
         agentId: body.agentId,
+        agentName: workflowAgentName,
+        engine: workflowEngine,
         candidateId: conv.candidateId,
         modelProvider: workflowModelProvider,
         modelId,
@@ -2848,6 +2855,17 @@ Always be concise and helpful in your responses.`;
         allowedToolNames: parseAgentTools(agent.toolsJson),
         agentSystemPrompt: agent.systemPrompt,
       };
+
+      if (agent.mode === "workflow") {
+        const response = await executeWorkflowAgent(body.conversationId, body.message.trim(), {
+          agentId,
+          agentName: agent.name,
+          engine: agent.engine === "deepagents" ? "deepagents" : "builtin",
+          ...executionOptions,
+        });
+
+        return response;
+      }
 
       const response = agent.engine === "deepagents"
         ? await executeDeepAgent(body.conversationId, body.message.trim(), {

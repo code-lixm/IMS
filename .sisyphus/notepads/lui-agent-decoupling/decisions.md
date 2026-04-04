@@ -34,3 +34,5 @@ RM|-  deepagents 特殊注意：tools 通过 session direct config 注入；memo
 - 2026-04-05（Task 6）：第一轮拆分采用最小 seam：`stores/lui/scenes/interview/scene.ts` 承载 candidate workspace init + workflow load/update，`stores/lui/scenes/interview/policy.ts` 承载 candidate conversation policy 与 interview profile，`LUIView.vue` 只负责根据 scene 条件注入 interview 组件。
 - 2026-04-05（Task 6）：generic shell 的可见会话规则收敛为“仅显示 `candidateId=null` 的漫游会话”；candidate context 存在时通过 interview policy 扩展为“当前 candidate 绑定会话 + 漫游会话”的 union。
 - 2026-04-05（Task 6）：workflow banner / stage suggestions 仅在 `candidateId` 存在且 interview agent 或 `scene=interview` 激活时展示；但 candidate workspace init 与 conversation policy 仍由 candidate context 驱动，避免已有关联候选人的工作流退化。
+- 2026-04-05（Task 9）：workflow 主消息入口统一改走 `executeWorkflowAgent()`，由 workflow service 在 authoritative stage state 之上按 `agent.engine` 分配 builtin / deepagents executor，不再让主入口绕过 engine 选择。
+- 2026-04-05（Task 9）：stage prompt 收敛到 `lui-workflow-runtime.ts` 的 composer，按 `global base → scene instruction → workflow state → imported assets → conversation context(messages)` 顺序装配；engine 只消费注入后的 stage context，不自持 workflow state。
