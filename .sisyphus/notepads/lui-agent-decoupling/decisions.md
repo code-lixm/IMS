@@ -16,3 +16,17 @@
   - visibleConversations 合并规则：interview scene 同时可见 candidate-bound + 未绑定 candidate 的 conversations（漫游对话）
   - conversations.ts 的 one-conversation-per-candidate 逻辑提取为 ScenePolicy.beforeCreateConversation() 接口
   - agent-selector.vue 的 INTERVIEW_AGENT_PROFILE 硬编码移除，profile 通过 scene context 注入
+#QP|- 2026-04-05（Task 7）：`.opencode` 资产导入契约决策：
+##QW|- direct-reuse: memory templates、scoring templates（内容模板仅替换插值语法）
+#JM|- rewrite: agent manager prompt、skills（orchestrator/screening/questioning/assessment/records/memory），语义参考但按 IMS 模型重写
+#HP|- unsupported/deprecated: policy skill（语法不兼容）、parse scripts（运行时工具链）、OpenCode 运行时假设（skill()/context.ask()/session/plugin）
+#KM|- 导入资产以 `ImportedInterviewPack` 模型管理，携带 provenance、assetVersion 字段
+#XK|- 明确禁止将 `.opencode` runtime/plugin/session 行为嵌入 IMS
+BN|QW|- 2026-04-05（Task 8）：Runtime Adapter Contract 设计决策：
+RZ|-  adapter 作为 engine-neutral 委托层，接收 RuntimeExecuteRequest，返回 RuntimeExecuteResponse 和 RuntimeEvent 流
+JK|-  路由策略：preferredEngine 优先，无则默认 builtin，builtin 不可用时 fallback 到 deepagents（fallback 永远朝向 builtin）
+HZ|-  CapabilityProfile 由各 engine executor 声明，adapter 在委托前验证 request 与 engine capabilities 的兼容性
+MX|-  Prompt Composition Order 遵循 oracle 指导：global base → scene instruction → workflow state → imported assets → conversation context
+QW|-  Workflow stage state 保持在 workflow service 中，adapter 仅接收 stage 信息作为 prompt context，不承担状态管理职责
+JK|-  Error semantics 统一为 AdapterError(code, statusCode, engine, isRetryable)，所有 engine 错误在传播到 workflow 前完成映射
+RM|-  deepagents 特殊注意：tools 通过 session direct config 注入；memory 通过 middleware 加载；无 native stage 概念；streaming/tool-call 语义需代码验证

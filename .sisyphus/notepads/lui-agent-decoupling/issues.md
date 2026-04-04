@@ -7,3 +7,10 @@
 - 2026-04-05（Task 2）：编辑表单提交时 update payload 里漏 `name` 字段会导致 rename 无声失败；服务端的 `UpdateAgentInput` 已支持 `name`/`displayName`，前端需显式传入。
 
 - 验证时 `pnpm typecheck` 会经过既有前端治理检查失败；本次改动相关的 TS / bun test / build 均通过，治理失败来自仓库既存问题。
+SY|HJ|- 2026-04-05（Task 8）：Runtime Adapter Contract 代码验证待办：
+XW|-  deepagents streaming semantics 未文档化，需在 `apps/desktop/src/lib.rs` 或 server session 管理中验证 SSE 事件形状
+SW|-  deepagents tool call 分辨流程未文档化，需确认 tool parameters 是否正确通过 session bridge 传递
+HJ|-  deepagents memory binding 机制未确认，是 middleware composition 还是 prompt injection，需代码验证
+SY|-  deepagents workflow stage 注入可靠性：stage state 通过 prompt context 传递，需验证无状态漂移
+QW|-  AdapterErrorCode 与 OpenCode session error 的映射关系未定义，需建立映射表
+RK|
