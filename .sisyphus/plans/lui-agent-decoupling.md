@@ -326,7 +326,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `refactor(lui): separate generic workspace from interview scene` | Files: `apps/web/src/views/LUIView.vue`, `apps/web/src/stores/lui.ts`, interview-specific modules
 
-- [ ] 7. Produce `.opencode` asset mapping and import contract
+- [x] 7. Produce `.opencode` asset mapping and import contract
 
   **What to do**: 建立 `.opencode` 资产映射文档与导入契约，明确 prompts/rules/tools/memory/templates 分别如何进入 IMS；定义 provenance、version、unsupported capability 的处理方式。
   **Must NOT do**: 不要直接复制 `.opencode` 文件到运行目录；不要把 OpenCode plugin/tool 协议直接当成 IMS runtime。
@@ -366,7 +366,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `docs(interview): define opencode asset import contract` | Files: mapping/design document
 
-- [ ] 8. Define interview runtime adapter contract
+- [x] 8. Define interview runtime adapter contract
 
   **What to do**: 设计统一的 interview runtime adapter，要求 workflow 模式下统一注入 candidate context、workflow stage、allowed tools、prompt assets、memory bindings，再按 engine 分配执行器；输出 capability contract 而不是实现细节说明。
   **Must NOT do**: 不要直接在本任务里把默认引擎切成 deepagents；不要让 adapter 只包一层名字，不解决 capability 边界。
