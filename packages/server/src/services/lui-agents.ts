@@ -2,6 +2,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { agents } from "../schema";
 
+type AgentRow = typeof agents.$inferSelect;
+
 export const DEFAULT_INTERVIEW_AGENT_ID = "agent_builtin_interview";
 
 const DEFAULT_INTERVIEW_AGENT = {
@@ -41,7 +43,7 @@ const LEGACY_AGENT_DESCRIPTION_PATTERNS = [
   /temporary workflow validation agent/i,
 ];
 
-function isLegacyValidationAgent(row: typeof agents.$inferSelect) {
+function isLegacyValidationAgent(row: AgentRow) {
   if (row.id === DEFAULT_INTERVIEW_AGENT_ID) {
     return false;
   }
@@ -53,7 +55,7 @@ function isLegacyValidationAgent(row: typeof agents.$inferSelect) {
     || LEGACY_AGENT_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(description));
 }
 
-export function isProtectedAgent(row: typeof agents.$inferSelect): boolean {
+export function isProtectedAgent(row: AgentRow): boolean {
   return row.sourceType === "builtin" || row.isMutable === false || row.id === DEFAULT_INTERVIEW_AGENT_ID;
 }
 
@@ -92,6 +94,53 @@ function parseAgentTools(toolsJson: string | null | undefined): string[] {
   } catch {
     return [];
   }
+}
+
+function resolveNormalizedDefaultAgentId(rows: AgentRow[]): string {
+  const preferredCustomDefault = rows.find((row) => row.isDefault && !isProtectedAgent(row));
+  if (preferredCustomDefault) {
+    return preferredCustomDefault.id;
+  }
+
+  const existingDefault = rows.find((row) => row.isDefault);
+  if (existingDefault) {
+    return existingDefault.id;
+  }
+
+  return DEFAULT_INTERVIEW_AGENT_ID;
+}
+
+export async function setDefaultAgent(agentId: string, updatedAt = new Date()): Promise<void> {
+  await db
+    .update(agents)
+    .set({
+      isDefault: sql<boolean>`${agents.id} = ${agentId}`,
+      updatedAt,
+    })
+    .where(sql`1 = 1`);
+}
+
+export async function deleteAgentWithFallback(row: AgentRow, updatedAt = new Date()): Promise<string> {
+  if (isProtectedAgent(row)) {
+    throw new Error("PROTECTED_AGENT");
+  }
+
+  await db.delete(agents).where(eq(agents.id, row.id));
+
+  const fallbackDefaultId = row.isDefault ? DEFAULT_INTERVIEW_AGENT_ID : (await getCurrentDefaultAgentId()) ?? DEFAULT_INTERVIEW_AGENT_ID;
+  await setDefaultAgent(fallbackDefaultId, updatedAt);
+
+  return fallbackDefaultId;
+}
+
+async function getCurrentDefaultAgentId(): Promise<string | null> {
+  const [currentDefault] = await db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(eq(agents.isDefault, true))
+    .limit(1);
+
+  return currentDefault?.id ?? null;
 }
 
 export async function ensureManagedAgents(): Promise<void> {
@@ -157,15 +206,8 @@ export async function ensureManagedAgents(): Promise<void> {
       sql`(${agents.sourceType} is null or ${agents.sourceType} = '' or ${agents.isMutable} is null or ${agents.sceneAffinity} is null or ${agents.sceneAffinity} = '')`,
     ));
 
-  await db
-    .update(agents)
-    .set({ isDefault: false, updatedAt: now })
-    .where(and(sql`${agents.id} != ${DEFAULT_INTERVIEW_AGENT_ID}`, eq(agents.isDefault, true)));
-
-  await db
-    .update(agents)
-    .set({ isDefault: true, updatedAt: now })
-    .where(eq(agents.id, DEFAULT_INTERVIEW_AGENT_ID));
+  const normalizedRows = await db.select().from(agents);
+  await setDefaultAgent(resolveNormalizedDefaultAgentId(normalizedRows), now);
 }
 
 export function isProtectedAgentId(agentId: string): boolean {

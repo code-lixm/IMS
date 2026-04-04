@@ -122,6 +122,14 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
         tools: input.tools,
         isDefault: input.isDefault,
       });
+      if (input.isDefault !== undefined) {
+        await loadAgents();
+        const refreshed = agents.value.find((agent) => agent.id === id);
+        if (refreshed) {
+          return refreshed;
+        }
+      }
+
       const index = agents.value.findIndex((a) => a.id === id);
       if (index >= 0) {
         const updated = convertAgent(result);
@@ -156,7 +164,8 @@ export function createLuiAgentModule(options: LuiAgentModuleOptions): LuiAgentMo
 
     try {
       await luiApi.deleteAgent(id);
-      agents.value = agents.value.filter((a) => a.id !== id);
+      const data = await luiApi.listAgents();
+      agents.value = data.items.map(convertAgent);
       if (selectedId.value === id) {
         selectedId.value = defaultAgent.value?.id ?? agents.value[0]?.id ?? null;
       }

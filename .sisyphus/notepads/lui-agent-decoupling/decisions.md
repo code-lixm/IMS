@@ -5,3 +5,4 @@
 
 - 2026-04-05（Task 2）：服务端对自定义 agent 的重命名增加 duplicate name 检查（409 CONFLICT），内置/受保护 agent 因 `isProtectedAgent()` 已有变更拦截不会走到该检查。
 - 2026-04-05（Task 2）：前端编辑时 hint 改为"重命名仅影响显示名称，不影响历史会话关联"，明确 rename 的语义边界。
+- 2026-04-05（Task 3）：默认 Agent 规则统一收口到 `packages/server/src/services/lui-agents.ts`：任意时刻只允许一个 `isDefault=true`；builtin agent 不可删除；删除默认 custom agent 时强制回退到 builtin interview agent。

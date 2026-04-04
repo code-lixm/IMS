@@ -42,7 +42,7 @@ import {
   WorkflowStage,
 } from "./services/lui-workflow";
 import { executeDeepAgent } from "./services/deepagents-runtime";
-import { ensureManagedAgents, isProtectedAgent, serializeAgent } from "./services/lui-agents";
+import { deleteAgentWithFallback, ensureManagedAgents, isProtectedAgent, serializeAgent, setDefaultAgent } from "./services/lui-agents";
 import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
 import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcription";
@@ -2408,11 +2408,6 @@ Always be concise and helpful in your responses.`;
     const now = new Date();
     const id = `agent_${crypto.randomUUID()}`;
 
-    // If setting as default, unset other defaults first
-    if (body.isDefault) {
-      await db.update(agents).set({ isDefault: false }).where(eq(agents.isDefault, true));
-    }
-
     await db.insert(agents).values({
       id,
       name: displayName,
@@ -2425,10 +2420,14 @@ Always be concise and helpful in your responses.`;
       temperature: body.temperature ?? 0,
       systemPrompt: body.systemPrompt || null,
       toolsJson: body.tools ? JSON.stringify(body.tools) : null,
-      isDefault: body.isDefault ?? false,
+      isDefault: false,
       createdAt: now,
       updatedAt: now,
     });
+
+    if (body.isDefault) {
+      await setDefaultAgent(id, now);
+    }
 
     const [created] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
 
@@ -2489,11 +2488,6 @@ Always be concise and helpful in your responses.`;
       }
     }
 
-    // If setting as default, unset other defaults first
-    if (body.isDefault) {
-      await db.update(agents).set({ isDefault: false }).where(eq(agents.isDefault, true));
-    }
-
     const updates: Record<string, unknown> = { updatedAt: now };
     const displayName = body.displayName?.trim() || body.name?.trim();
     if (displayName !== undefined) updates.name = displayName;
@@ -2507,6 +2501,12 @@ Always be concise and helpful in your responses.`;
 
     await db.update(agents).set(updates).where(eq(agents.id, id));
 
+    if (body.isDefault === true) {
+      await setDefaultAgent(id, now);
+    } else if (body.isDefault === false && existing.isDefault) {
+      await setDefaultAgent("agent_builtin_interview", now);
+    }
+
     const [updated] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
     return ok(serializeAgent(updated));
   }
@@ -2517,10 +2517,10 @@ Always be concise and helpful in your responses.`;
     const [existing] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
     if (!existing) return fail("NOT_FOUND", "agent not found", 404);
     if (isProtectedAgent(existing)) {
-      return fail("VALIDATION_ERROR", "builtin interview agent cannot be deleted", 422);
+      return fail("VALIDATION_ERROR", "builtin agents cannot be deleted", 422);
     }
 
-    await db.delete(agents).where(eq(agents.id, id));
+    await deleteAgentWithFallback(existing);
     return ok({ id });
   }
 

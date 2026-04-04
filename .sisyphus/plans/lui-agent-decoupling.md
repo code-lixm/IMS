@@ -170,7 +170,7 @@ Wave 4: `.opencode` asset mapping + runtime adapter design
 
   **Commit**: YES | Message: `feat(agent): allow renaming managed agents` | Files: `apps/web/src/views/SettingsView.vue`, `apps/web/src/stores/lui/agents.ts`, `apps/web/src/api/lui.ts`, `packages/server/src/routes.ts`
 
-- [ ] 3. Unify default and delete policy
+- [x] 3. Unify default and delete policy
 
   **What to do**: 明确默认 Agent、删除策略与 fallback 规则：builtin 不可删除；custom 可删除；删除默认 custom 时必须有确定的默认回退策略；任意时刻最多一个默认 Agent。
   **Must NOT do**: 不要只做前端禁用；不要允许多个默认 Agent 并存。
