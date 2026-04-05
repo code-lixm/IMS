@@ -1,0 +1,10 @@
+{
+  "id": "T-ed4a34ee-1b1d-452f-8045-b2cb2b569479",
+  "subject": "修复 LUI interview 激活污染",
+  "description": "仅修改 LUIView.vue 与 agent-selector.vue，拆分显式路由 candidate 上下文和被动会话 candidate 上下文，修复 generic /lui 被误拉入 interview 模式的问题，并移除空 catch",
+  "status": "completed",
+  "activeForm": "正在修复 LUI interview 激活污染",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a62c71e3ffeDaogBc3hFi0C6F"
+}

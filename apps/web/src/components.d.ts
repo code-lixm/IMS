@@ -15,8 +15,6 @@ declare module 'vue' {
     AccordionContent: typeof import('./components/ui/accordion/AccordionContent.vue')['default']
     AccordionItem: typeof import('./components/ui/accordion/AccordionItem.vue')['default']
     AccordionTrigger: typeof import('./components/ui/accordion/AccordionTrigger.vue')['default']
-    ActiveAgentIndicator: typeof import('./components/lui/ActiveAgentIndicator.vue')['default']
-    AgentChat: typeof import('./components/lui/AgentChat.vue')['default']
     AgentSelector: typeof import('./components/lui/agent-selector.vue')['default']
     Alert: typeof import('./components/ui/alert/Alert.vue')['default']
     AlertDescription: typeof import('./components/ui/alert/AlertDescription.vue')['default']
@@ -82,7 +80,6 @@ declare module 'vue' {
     DropdownMenuTrigger: typeof import('./components/ui/dropdown-menu/DropdownMenuTrigger.vue')['default']
     EmptyState: typeof import('./components/ui/empty-state.vue')['default']
     FileResources: typeof import('./components/lui/file-resources.vue')['default']
-    HandoffBanner: typeof import('./components/lui/HandoffBanner.vue')['default']
     HoverCard: typeof import('./components/ui/hover-card/HoverCard.vue')['default']
     HoverCardContent: typeof import('./components/ui/hover-card/HoverCardContent.vue')['default']
     HoverCardTrigger: typeof import('./components/ui/hover-card/HoverCardTrigger.vue')['default']
@@ -127,7 +124,6 @@ declare module 'vue' {
     Skeleton: typeof import('./components/ui/skeleton.vue')['default']
     Slider: typeof import('./components/ui/slider.vue')['default']
     Spinner: typeof import('./components/ui/spinner/Spinner.vue')['default']
-    StageSuggestions: typeof import('./components/lui/scenes/interview/StageSuggestions.vue')['default']
     Switch: typeof import('./components/ui/switch/Switch.vue')['default']
     Table: typeof import('./components/ui/table.vue')['default']
     TableBody: typeof import('./components/ui/table-body.vue')['default']
@@ -146,7 +142,5 @@ declare module 'vue' {
     TooltipContent: typeof import('./components/ui/tooltip/TooltipContent.vue')['default']
     TooltipProvider: typeof import('./components/ui/tooltip/TooltipProvider.vue')['default']
     TooltipTrigger: typeof import('./components/ui/tooltip/TooltipTrigger.vue')['default']
-    WorkflowBanner: typeof import('./components/lui/scenes/interview/WorkflowBanner.vue')['default']
-    WorkflowStatus: typeof import('./components/lui/workflow-status.vue')['default']
   }
 }

@@ -1,0 +1,14 @@
+{
+  "id": "T-ff0da1fa-5c3d-4d59-8181-86dd734178bb",
+  "subject": "实现默认面试智能体",
+  "description": "在后端持久化层提供默认内置面试智能体，并让管理页读取到它",
+  "status": "completed",
+  "activeForm": "正在实现默认面试智能体",
+  "blocks": [],
+  "blockedBy": [
+    "T-6da1212c-6b4b-48ad-8b02-fac0aded0804"
+  ],
+  "owner": "Sisyphus",
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "threadID": "ses_2a6ecce08ffeMPeSxxbp0byu5r"
+}

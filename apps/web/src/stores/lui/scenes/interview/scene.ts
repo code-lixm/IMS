@@ -1,6 +1,4 @@
 import { computed, ref, type ComputedRef } from "vue";
-import { luiApi, type WorkflowState } from "@/api/lui";
-import { reportAppError } from "@/lib/errors/normalize";
 import { useCandidatesStore } from "@/stores/candidates";
 import { useLuiStore } from "@/stores/lui";
 
@@ -12,9 +10,7 @@ interface InterviewSceneOptions {
 }
 
 export function useInterviewScene(options: InterviewSceneOptions) {
-  const { candidateId, store, candidatesStore, notifyError } = options;
-
-  const workflow = ref<WorkflowState | null>(null);
+  const { candidateId, store, candidatesStore } = options;
   const isSyncingCandidateWorkspace = ref(false);
 
   const currentCandidate = computed(() => {
@@ -27,37 +23,6 @@ export function useInterviewScene(options: InterviewSceneOptions) {
       ? candidatesStore.current.candidate
       : null;
   });
-
-  async function loadWorkflow(nextCandidateId: string) {
-    try {
-      const workflows = await luiApi.listWorkflows(nextCandidateId);
-      const activeWorkflow = workflows.items.find(
-        (item) => item.status === "active" || item.status === "paused",
-      );
-      workflow.value = activeWorkflow ?? null;
-    } catch {
-      workflow.value = null;
-    }
-  }
-
-  async function selectWorkflowStage(stage: WorkflowState["currentStage"]) {
-    if (!workflow.value || workflow.value.currentStage === stage) {
-      return;
-    }
-
-    try {
-      workflow.value = await luiApi.updateWorkflow(workflow.value.id, {
-        currentStage: stage,
-      });
-    } catch (error) {
-      notifyError(
-        reportAppError("workflow/set-stage", error, {
-          title: "切换流程阶段失败",
-          fallbackMessage: "无法切换到目标流程阶段",
-        }),
-      );
-    }
-  }
 
   async function ensureWorkspace(nextCandidateId: string) {
     isSyncingCandidateWorkspace.value = true;
@@ -83,24 +48,19 @@ export function useInterviewScene(options: InterviewSceneOptions) {
           await store.selectConversation(conversation.id);
         }
       }
-
-      await loadWorkflow(nextCandidateId);
     } finally {
       isSyncingCandidateWorkspace.value = false;
     }
   }
 
   function reset() {
-    workflow.value = null;
+    return;
   }
 
   return {
-    workflow,
     currentCandidate,
     isSyncingCandidateWorkspace,
     ensureWorkspace,
-    loadWorkflow,
-    selectWorkflowStage,
     reset,
   };
 }

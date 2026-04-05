@@ -45,11 +45,9 @@
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem @click="router.push('/settings')">
-          <Settings2 class="h-4 w-4" />
           系统设置
         </DropdownMenuItem>
         <DropdownMenuItem @click="router.push('/import')">
-          <Files class="h-4 w-4" />
           导入任务
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -57,7 +55,6 @@
           class="mt-1 bg-destructive text-destructive-foreground focus:bg-destructive/90 focus:text-destructive-foreground data-[highlighted]:bg-destructive/90 data-[highlighted]:text-destructive-foreground"
           @click="handleLogout"
         >
-          <LogOut class="h-4 w-4" />
           退出登录
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -67,7 +64,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Files, LogOut, MoonStar, Settings2, SunMedium } from "lucide-vue-next";
+import { MoonStar, SunMedium } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { useTheme } from "@/composables/use-theme";
 import { useAppNotifications } from "@/composables/use-app-notifications";
@@ -105,19 +102,24 @@ async function handleLogout() {
   try {
     await authStore.logout();
   } catch (error) {
-    notifyError(reportAppError("app-user-actions/logout", error, {
-      title: "退出登录失败",
-      fallbackMessage: "未能完成退出登录",
-    }));
+    notifyError(
+      reportAppError("app-user-actions/logout", error, {
+        title: "退出登录失败",
+        fallbackMessage: "未能完成退出登录",
+      }),
+    );
   }
 
   try {
     await router.replace("/login");
   } catch (error) {
-    notifyError(reportAppError("app-user-actions/navigate-login", error, {
-      title: "页面跳转失败",
-      fallbackMessage: "未能跳转到登录页，将尝试强制刷新",
-    }), { durationMs: 5000 });
+    notifyError(
+      reportAppError("app-user-actions/navigate-login", error, {
+        title: "页面跳转失败",
+        fallbackMessage: "未能跳转到登录页，将尝试强制刷新",
+      }),
+      { durationMs: 5000 },
+    );
   }
 
   if (window.location.pathname !== "/login") {

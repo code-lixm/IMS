@@ -93,6 +93,36 @@ async function saveImportUploadToLocal(batchId: string, file: File): Promise<str
   return filePath;
 }
 
+function resolveResumeContentType(fileType: string | null | undefined, fileName: string | null | undefined): string | null {
+  const normalizedType = fileType?.trim().toLowerCase() ?? "";
+  const normalizedName = fileName?.trim().toLowerCase() ?? "";
+
+  if (normalizedType === "pdf" || normalizedName.endsWith(".pdf")) return "application/pdf";
+  if (normalizedType === "png" || normalizedName.endsWith(".png")) return "image/png";
+  if (["jpg", "jpeg"].includes(normalizedType) || normalizedName.endsWith(".jpg") || normalizedName.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (normalizedType === "webp" || normalizedName.endsWith(".webp")) return "image/webp";
+
+  return null;
+}
+
+function decodeStoredFileName(fileName: string | null | undefined): string {
+  const normalized = fileName?.trim() || "resume";
+  try {
+    return decodeURIComponent(normalized);
+  } catch {
+    return normalized;
+  }
+}
+
+function buildContentDisposition(dispositionType: "inline" | "attachment", fileName: string | null | undefined): string {
+  const decodedName = decodeStoredFileName(fileName);
+  const asciiFallback = decodedName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
+  const encodedName = encodeURIComponent(decodedName);
+  return `${dispositionType}; filename="${asciiFallback || "resume"}"; filename*=UTF-8''${encodedName}`;
+}
+
 // Global queue for import batches - ensures all batches run serially
 let importBatchQueue: Promise<void> = Promise.resolve();
 
@@ -1595,6 +1625,32 @@ export async function route(request: Request): Promise<Response> {
     return ok({ ...row, parsedData: row.parsedDataJson ? JSON.parse(row.parsedDataJson) : null });
   }
 
+  const resumePreviewMatch = path.match(/^\/api\/resumes\/([^/]+)\/preview$/);
+  if (resumePreviewMatch && request.method === "GET") {
+    const id = resumePreviewMatch[1];
+    const [row] = await db.select().from(resumes).where(eq(resumes.id, id)).limit(1);
+    if (!row) return fail("NOT_FOUND", "resume not found", 404);
+
+    const { statSync, existsSync } = await import("node:fs");
+    if (!existsSync(row.filePath)) return fail("NOT_FOUND", "file not found on disk", 404);
+
+    const contentType = resolveResumeContentType(row.fileType, row.fileName);
+    if (!contentType) {
+      return fail("UNSUPPORTED_MEDIA_TYPE", "resume preview is not supported for this file type", 415);
+    }
+
+    const stat = statSync(row.filePath);
+    const file = Bun.file(row.filePath);
+    return new Response(file, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": buildContentDisposition("inline", row.fileName),
+        "Content-Length": String(stat.size),
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   const resumeDownloadMatch = path.match(/^\/api\/resumes\/([^/]+)\/download$/);
   if (resumeDownloadMatch && request.method === "GET") {
     const id = resumeDownloadMatch[1];
@@ -1604,10 +1660,11 @@ export async function route(request: Request): Promise<Response> {
     if (!existsSync(row.filePath)) return fail("NOT_FOUND", "file not found on disk", 404);
     const stat = statSync(row.filePath);
     const file = Bun.file(row.filePath);
+    const contentType = resolveResumeContentType(row.fileType, row.fileName) ?? "application/octet-stream";
     return new Response(file, {
       headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(row.fileName ?? "resume")}"`,
+        "Content-Type": contentType,
+        "Content-Disposition": buildContentDisposition("attachment", row.fileName),
         "Content-Length": String(stat.size),
       },
     });
@@ -2477,6 +2534,7 @@ Always be concise and helpful in your responses.`;
 
   // PUT /api/lui/agents/:id - Update agent
   if (agentMatch && request.method === "PUT") {
+    await ensureManagedAgents();
     const id = agentMatch[1];
     const [existing] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
     if (!existing) return fail("NOT_FOUND", "agent not found", 404);
@@ -2500,7 +2558,7 @@ Always be concise and helpful in your responses.`;
       return fail("VALIDATION_ERROR", "displayName cannot be empty", 422);
     }
 
-    if (isProtectedAgent(existing) && (body.description !== undefined
+    if (existing.isMutable === false && (body.description !== undefined
       || body.mode !== undefined
       || body.engine !== undefined
       || body.temperature !== undefined

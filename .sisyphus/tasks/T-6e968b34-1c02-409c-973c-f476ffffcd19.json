@@ -1,0 +1,14 @@
+{
+  "id": "T-6e968b34-1c02-409c-973c-f476ffffcd19",
+  "subject": "核验四条关键用户路径",
+  "description": "结合截图、日志与必要的本地只读运行验证，检查设置/agent 管理、通用 LUI 与 interview 场景，以及主工作流路由证明是否一致。",
+  "status": "completed",
+  "activeForm": "正在核验四条关键用户路径",
+  "blocks": [],
+  "blockedBy": [
+    "T-c0a73fc7-4895-45f4-8bbb-35fc2c113c3f"
+  ],
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "parentID": "T-71e15fc7-b2b7-4f2e-b206-cdb366cdd8b4",
+  "threadID": "ses_2a62c7127ffeOc6kGPPFMbwhe2"
+}

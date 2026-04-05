@@ -1,0 +1,12 @@
+{
+  "id": "T-1ae04475-cdbc-4d37-994a-348c3699573b",
+  "subject": "硬化 LUI agent 生命周期契约",
+  "description": "在 shared/server/web 中定义稳定的 agent 生命周期字段，确保 durable identity 不可变，并更新相关 API/调用点与最小兼容逻辑。",
+  "status": "in_progress",
+  "activeForm": "正在硬化 LUI agent 生命周期契约",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "Sisyphus-Junior",
+  "repoURL": ".",
+  "threadID": "ses_2a6a127cdffevqxIWs0GN0Iqda"
+}

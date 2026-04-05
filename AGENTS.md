@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-03-25
-**Commit:** 2cd03c1
+**Generated:** 2026-04-04
+**Commit:** aa73d8a
 **Branch:** master
 
 ## OVERVIEW
@@ -127,7 +127,7 @@ pnpm clean            # Turbo clean + rm node_modules
 
 ## KNOWN ISSUES
 
-- **端口不一致** — Vite proxy 指向 `:9092`，但 server 监听 `:3000`
+- **端口** — Server 监听 `:9092`，Web dev server `:9091`（旧文档可能写 3000/5173，需以配置为准）
 - **无 CI/CD** — 无 GitHub Actions/Docker
 - **无测试** — 当前阶段未配置测试基础设施
 - **runtime/ 未忽略** — SQLite 和日志在仓库内，应配置 `.gitignore`
@@ -137,4 +137,4 @@ pnpm clean            # Turbo clean + rm node_modules
 ## NOTES
 
 - **.imr 文件关联** — Tauri 配置了 `imr://` deep link 和文件关联
-- **Vite 代理** — `/api` 代理到 `http://127.0.0.1:3000`（注意：与 vite.config.ts 中的 :9092 不一致）
+- **Vite 代理** — `/api` 代理到 `http://127.0.0.1:9092`（server）

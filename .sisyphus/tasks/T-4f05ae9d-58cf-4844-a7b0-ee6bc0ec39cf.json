@@ -1,0 +1,13 @@
+{
+  "id": "T-4f05ae9d-58cf-4844-a7b0-ee6bc0ec39cf",
+  "subject": "简化 Agent 管理 UI",
+  "description": "移除复杂设置展示，仅保留智能体列表视图和必要操作入口",
+  "status": "completed",
+  "activeForm": "正在简化 Agent 管理 UI",
+  "blocks": [],
+  "blockedBy": [
+    "T-9a7b89dd-ea10-45d3-a1e7-e0fefd56df59"
+  ],
+  "parentID": "T-d3424164-f755-44de-b264-16d9ba85c5fe",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

@@ -1,9 +1,13 @@
 <template>
-  <AppPageHeader content-class="grid min-h-16 grid-cols-[auto_1fr_auto] items-center gap-4 px-4 lg:px-6">
-      <div class="flex items-center gap-3 shrink-0">
-        <AppBrandLink />
-        <div class="relative w-full max-w-md">
-        <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  <AppPageHeader
+    content-class="grid min-h-16 grid-cols-[auto_1fr_auto] items-center gap-0 px-4 lg:px-6"
+  >
+    <div class="flex items-center gap-3 shrink-0">
+      <AppBrandLink />
+      <div class="relative w-full max-w-md">
+        <Search
+          class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        />
         <Input
           :model-value="search"
           list="candidate-search-suggestions"
@@ -21,85 +25,120 @@
             :value="suggestion"
           />
         </datalist>
-        </div>
       </div>
+    </div>
 
-      <div class="flex items-center justify-end gap-2 shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger as-child class="md:hidden">
-            <Button variant="ghost" size="icon" class="h-9 w-9">
-              <MoreHorizontal class="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-48">
-            <DropdownMenuItem @click="emit('create')">
-              <Plus class="mr-2 h-4 w-4" />
-              新建候选人
-            </DropdownMenuItem>
-            <DropdownMenuItem :disabled="isImporting" @click="emit('import')">
-              <Upload class="mr-2 h-4 w-4" />
-              导入文件
-              <Badge v-if="(importActivityCount ?? 0) > 0" variant="secondary" class="ml-auto min-w-5 justify-center px-1.5 py-0">
-                {{ importActivityCount }}
-              </Badge>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem @click="emit('goto-import')">
-              <FileClock class="mr-2 h-4 w-4" />
-              导入任务
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <div class="flex items-center justify-end gap-2 shrink-0">
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child class="md:hidden">
+          <Button variant="ghost" size="icon" class="h-9 w-9">
+            <MoreHorizontal class="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" class="w-48">
+          <DropdownMenuItem @click="emit('create')">
+            <Plus class="mr-2 h-4 w-4" />
+            新建候选人
+          </DropdownMenuItem>
+          <DropdownMenuItem :disabled="isImporting" @click="emit('import')">
+            <Upload class="mr-2 h-4 w-4" />
+            导入文件
+            <Badge
+              v-if="(importActivityCount ?? 0) > 0"
+              variant="secondary"
+              class="ml-auto min-w-5 justify-center px-1.5 py-0"
+            >
+              {{ importActivityCount }}
+            </Badge>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem @click="emit('goto-import')">
+            <FileClock class="mr-2 h-4 w-4" />
+            导入任务
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        <Button variant="default" class="hidden md:flex gap-2" @click="emit('create')">
-          <Plus class="h-4 w-4" />
-          <span class="hidden lg:inline">新建</span>
+      <Button
+        variant="default"
+        class="hidden md:flex gap-2"
+        @click="emit('create')"
+      >
+        <Plus class="h-4 w-4" />
+        <span class="hidden lg:inline">新建</span>
+      </Button>
+      <div class="relative hidden md:block">
+        <Button
+          variant="outline"
+          class="gap-2"
+          :disabled="isImporting"
+          @click="emit('import')"
+        >
+          <Upload class="h-4 w-4" />
+          <span class="hidden lg:inline">导入</span>
         </Button>
-        <div class="relative hidden md:block">
-          <Button variant="outline" class="gap-2" :disabled="isImporting" @click="emit('import')">
-            <Upload class="h-4 w-4" />
-            <span class="hidden lg:inline">导入</span>
-          </Button>
-          <Badge
-            v-if="(importActivityCount ?? 0) > 0"
-            variant="default"
-            class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full px-1.5 py-0 lg:hidden"
-          >
-            {{ importActivityCount }}
-          </Badge>
-        </div>
-
-        <div class="hidden h-9 items-center gap-1 border-l border-border pl-3 ml-1 md:flex">
-          <Button variant="secondary" size="sm" class="gap-1.5" @click="emit('goto-import')">
-            <FileClock class="h-4 w-4" />
-            <span class="hidden lg:inline">任务</span>
-          </Button>
-        </div>
-
-        <div class="hidden h-9 items-center gap-2 border-l border-border pl-3 ml-1 lg:flex">
-          <span v-if="props.syncEnabled" class="flex items-center gap-1.5 text-xs text-green-600">
-            <span class="h-1.5 w-1.5 rounded-full bg-green-500" />
-            自动同步中
-          </span>
-          <Button
-            :variant="props.syncError ? 'destructive' : 'secondary'"
-            size="sm"
-            class="gap-1.5"
-            :disabled="props.syncLoading"
-            @click="emit('sync')"
-          >
-            <RefreshCw class="h-4 w-4" :class="props.syncLoading ? 'animate-spin' : ''" />
-            <span class="hidden lg:inline">同步</span>
-          </Button>
-        </div>
-
-        <AppUserActions />
+        <Badge
+          v-if="(importActivityCount ?? 0) > 0"
+          variant="default"
+          class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full px-1.5 py-0 lg:hidden"
+        >
+          {{ importActivityCount }}
+        </Badge>
       </div>
+
+      <div
+        class="hidden h-9 items-center gap-1 border-l border-border pl-3 ml-1 md:flex"
+      >
+        <Button
+          variant="secondary"
+          size="sm"
+          class="gap-1.5"
+          @click="emit('goto-import')"
+        >
+          <FileClock class="h-4 w-4" />
+          <span class="hidden lg:inline">任务</span>
+        </Button>
+      </div>
+
+      <div
+        class="hidden h-9 items-center gap-2 border-l border-border pl-3 ml-1 lg:flex"
+      >
+        <span
+          v-if="props.syncEnabled"
+          class="flex items-center gap-1.5 text-xs text-green-600"
+        >
+          <span class="h-1.5 w-1.5 rounded-full bg-green-500" />
+          自动同步中
+        </span>
+        <Button
+          :variant="props.syncError ? 'destructive' : 'secondary'"
+          size="sm"
+          class="gap-1.5"
+          :disabled="props.syncLoading"
+          @click="emit('sync')"
+        >
+          <RefreshCw
+            class="h-4 w-4"
+            :class="props.syncLoading ? 'animate-spin' : ''"
+          />
+          <span class="hidden lg:inline">同步</span>
+        </Button>
+      </div>
+
+      <AppUserActions />
+    </div>
   </AppPageHeader>
 </template>
 
 <script setup lang="ts">
-import { FileClock, MoreHorizontal, Plus, RefreshCw, Search, Upload } from "lucide-vue-next";
+import {
+  FileClock,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  Upload,
+} from "lucide-vue-next";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";

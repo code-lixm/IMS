@@ -198,7 +198,7 @@
 import { ref, watch, onBeforeUnmount, computed } from "vue";
 import type { ImportTaskResultData } from "@ims/shared/src/api-types";
 import type { ImportFileTask } from "@ims/shared";
-import { candidatesApi } from "@/api/candidates";
+import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates";
 import { AlertCircle, Check, X, Loader2, FileText, ClipboardList, Sparkles } from "lucide-vue-next";
 import Button from "@/components/ui/button.vue";
 import Badge from "@/components/ui/badge.vue";
@@ -269,17 +269,20 @@ async function loadPreview(candidateId: string | undefined) {
   revokePreviewObjectUrl();
 
   try {
-    const { blob, contentType, fileName } = await candidatesApi.downloadResume(candidateId);
-    const objectUrl = URL.createObjectURL(blob);
+    const { items } = await candidatesApi.listResumes(candidateId);
+    const latestResume = [...items].sort((left, right) => right.createdAt - left.createdAt)[0];
+
+    if (!latestResume) {
+      throw new Error("该候选人暂无可预览的简历原件");
+    }
 
     if (requestToken !== previewRequestToken.value || !props.open) {
-      URL.revokeObjectURL(objectUrl);
       return;
     }
 
-    previewObjectUrl.value = objectUrl;
-    previewContentType.value = contentType;
-    previewFileName.value = fileName;
+    previewObjectUrl.value = candidatesApi.getResumePreviewUrl(latestResume.id);
+    previewContentType.value = resolveResumePreviewContentType(latestResume.fileType, latestResume.fileName);
+    previewFileName.value = latestResume.fileName;
   } catch (error) {
     if (requestToken !== previewRequestToken.value) return;
     previewError.value = error instanceof Error ? error.message : "原件预览加载失败";
@@ -292,7 +295,11 @@ async function loadPreview(candidateId: string | undefined) {
 
 function revokePreviewObjectUrl() {
   if (!previewObjectUrl.value) return;
-  URL.revokeObjectURL(previewObjectUrl.value);
+
+  if (previewObjectUrl.value.startsWith("blob:")) {
+    URL.revokeObjectURL(previewObjectUrl.value);
+  }
+
   previewObjectUrl.value = null;
 }
 

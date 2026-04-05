@@ -1,0 +1,13 @@
+{
+  "id": "T-9a5be07a-2e0b-48f0-9a21-6d174b22305b",
+  "subject": "删除监听与语音转写",
+  "description": "移除监听面板、语音转文字调用和相关前端依赖引用",
+  "status": "completed",
+  "activeForm": "正在删除监听与语音转写",
+  "blocks": [],
+  "blockedBy": [
+    "T-fd7cfe7d-574d-4a53-8b4e-12f47c2c2f96"
+  ],
+  "parentID": "T-9c95c31a-80ce-4d5c-a1da-99787da42e37",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

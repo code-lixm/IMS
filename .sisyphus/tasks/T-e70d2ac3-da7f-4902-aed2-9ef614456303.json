@@ -1,0 +1,13 @@
+{
+  "id": "T-e70d2ac3-da7f-4902-aed2-9ef614456303",
+  "subject": "移除前端 Agent 原型文件",
+  "description": "删除 apps/web/src/agents 目录及直接依赖的 store/composable 文件",
+  "status": "completed",
+  "activeForm": "正在移除前端 Agent 原型文件",
+  "blocks": [],
+  "blockedBy": [
+    "T-adf8f155-8b05-4c1f-b2a0-66d07fa00e0f"
+  ],
+  "parentID": "T-b989f828-2aaf-4580-abeb-656905f42450",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

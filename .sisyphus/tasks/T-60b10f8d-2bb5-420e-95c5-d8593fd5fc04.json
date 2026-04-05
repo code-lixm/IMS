@@ -1,0 +1,14 @@
+{
+  "id": "T-60b10f8d-2bb5-420e-95c5-d8593fd5fc04",
+  "subject": "Add PDF source doc button",
+  "description": "Add a PDF source document button near candidate switching controls and wire it to existing resume preview behavior",
+  "status": "completed",
+  "activeForm": "Adding PDF source document button",
+  "blocks": [],
+  "blockedBy": [
+    "T-42540532-5ebc-4dc8-9bee-02d60797c865"
+  ],
+  "repoURL": "",
+  "parentID": "",
+  "threadID": "ses_2a56d6003ffe1j8yiqfXtbspsr"
+}

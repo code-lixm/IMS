@@ -1,0 +1,12 @@
+{
+  "id": "T-42540532-5ebc-4dc8-9bee-02d60797c865",
+  "subject": "Clarify file resources role",
+  "description": "Inspect current file_resources storage semantics and where interview expert tool outputs are persisted",
+  "status": "completed",
+  "activeForm": "Clarifying file resources role",
+  "blocks": [],
+  "blockedBy": [],
+  "repoURL": "",
+  "parentID": "",
+  "threadID": "ses_2a56d6003ffe1j8yiqfXtbspsr"
+}

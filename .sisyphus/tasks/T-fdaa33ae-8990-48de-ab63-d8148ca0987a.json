@@ -1,0 +1,14 @@
+{
+  "id": "T-fdaa33ae-8990-48de-ab63-d8148ca0987a",
+  "subject": "输出QA结论",
+  "description": "汇总证据是否自洽，若存在运行矛盾则判定阻塞，并输出最终 VERDICT。",
+  "status": "completed",
+  "activeForm": "正在输出QA结论",
+  "blocks": [],
+  "blockedBy": [
+    "T-6e968b34-1c02-409c-973c-f476ffffcd19"
+  ],
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "parentID": "T-71e15fc7-b2b7-4f2e-b206-cdb366cdd8b4",
+  "threadID": "ses_2a62c7127ffeOc6kGPPFMbwhe2"
+}

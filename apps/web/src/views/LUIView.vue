@@ -19,294 +19,82 @@
         :max-size="42"
         class="border-r bg-background"
       >
-          <div class="flex h-full min-h-0 flex-col">
-            <div class="flex items-center justify-between border-b px-2 py-2">
-              <AppBrandLink to="/candidates" />
-              <div class="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-8 w-8 shrink-0 rounded-md shadow-none"
-                  title="新建会话"
-                  @click="onConversationCreate"
-                >
-                  <Plus class="h-4 w-4" />
-                </Button>
-                <AppUserActions />
-              </div>
+        <div class="flex h-full min-h-0 flex-col">
+          <div class="flex items-center justify-between border-b px-2 py-2">
+            <AppBrandLink to="/candidates" />
+            <div class="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-8 w-8 shrink-0 rounded-md shadow-none"
+                title="新建会话"
+                @click="onConversationCreate"
+              >
+                <Plus class="h-4 w-4" />
+              </Button>
+              <AppUserActions />
             </div>
-
-            <ResizablePanelGroup
-              id="lui-left-vertical-split"
-              direction="vertical"
-              class="min-h-0 flex-1"
-              @layout="onLeftVerticalLayout"
-            >
-              <ResizablePanel
-                id="lui-conversation-panel"
-                :default-size="leftTopPaneSize"
-                :min-size="30"
-                class="min-h-0"
-              >
-                <div class="h-full min-h-0 overflow-hidden">
-                  <ConversationList
-                    :conversations="visibleConversations"
-                    :selected-id="store.selectedId"
-                    @select="onConversationSelect"
-                    @delete="onConversationDelete"
-                  />
-                </div>
-              </ResizablePanel>
-
-              <ResizableHandle
-                id="lui-left-handle"
-                class="h-4 w-full cursor-row-resize bg-transparent after:inset-x-0 after:left-0 after:top-1/2 after:h-px after:w-full after:-translate-y-1/2 after:translate-x-0 hover:bg-muted/15"
-              >
-                <slot>
-                  <div
-                    class="h-1.5 w-15 rounded-full bg-border/90 group-hover/handle:bg-primary/75"
-                  />
-                </slot>
-              </ResizableHandle>
-
-              <ResizablePanel
-                id="lui-workbench-panel"
-                :default-size="100 - leftTopPaneSize"
-                :min-size="25"
-                class="min-h-0 border-t bg-muted/20"
-              >
-                <div class="flex h-full min-h-0 flex-col p-3">
-                  <Tabs
-                    v-model="leftWorkbenchTab"
-                    class="flex h-full min-h-0 flex-col gap-2 overflow-hidden"
-                  >
-                    <TabsList
-                      class="grid h-9 w-full grid-cols-2 rounded-lg bg-muted p-1"
-                    >
-                      <TabsTrigger
-                        value="listener"
-                        class="rounded-md px-2 text-xs"
-                        >监听</TabsTrigger
-                      >
-                      <TabsTrigger value="files" class="rounded-md px-2 text-xs"
-                        >文件</TabsTrigger
-                      >
-                    </TabsList>
-
-                    <TabsContent value="listener" class="mt-0 overflow-hidden">
-                      <div
-                        class="rounded-xl border border-border/70 bg-card/80 px-4 pb-3 pt-3 shadow-sm"
-                      >
-                        <section class="flex flex-col gap-2">
-                          <div class="flex items-center justify-between gap-2">
-                            <span
-                              class="text-[11px] font-medium text-muted-foreground"
-                              >监听</span
-                            >
-                            <div class="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                class="h-7 w-7 rounded-sm p-0"
-                                title="放大监听输入框"
-                                @click="listenerExpanded = true"
-                              >
-                                <Maximize2 class="h-3.5 w-3.5" />
-                              </Button>
-                              <Badge
-                                :variant="
-                                  listenerAvailable ? 'outline' : 'secondary'
-                                "
-                                class="h-7 rounded-sm px-2 text-[11px]"
-                              >
-                                {{ listenerStatusText }}
-                              </Badge>
-                            </div>
-                          </div>
-
-                          <div
-                            class="h-28 shrink-0 rounded-lg border border-border/70 bg-background/90 p-2 shadow-inner shadow-black/5"
-                          >
-                            <textarea
-                              v-model="listenerTranscript"
-                              class="block h-full min-h-full w-full resize-none border-0 bg-transparent p-2 text-sm leading-6 outline-none"
-                              placeholder="监听内容会保存在当前会话里。"
-                            />
-                          </div>
-
-                          <div class="grid grid-cols-2 gap-1.5">
-                            <Button
-                              type="button"
-                              variant="default"
-                              class="h-8 justify-center gap-2 shadow-sm"
-                              :disabled="!listenerAvailable"
-                              @click="toggleLiveListening"
-                            >
-                              <Mic v-if="!isLiveListening" class="h-4 w-4" />
-                              <Square v-else class="h-4 w-4" />
-                              {{ isLiveListening ? "停止监听" : "开始监听" }}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              class="h-8 justify-center text-muted-foreground/70 shadow-none hover:bg-transparent"
-                              :disabled="!listenerTranscript.trim()"
-                              @click="clearListenerTranscript"
-                            >
-                              清空记录
-                            </Button>
-                          </div>
-
-                          <div class="grid grid-cols-2 gap-1.5">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              class="h-8 justify-center border-border/60 bg-background font-medium text-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
-                              :disabled="!listenerTranscript.trim()"
-                              @click="appendTranscriptToPrompt"
-                            >
-                              追加到主输入框
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              class="h-8 justify-center border-border/60 bg-background font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
-                              :disabled="!listenerTranscript.trim()"
-                              @click="replacePromptWithTranscript"
-                            >
-                              覆盖主输入框
-                            </Button>
-                          </div>
-                        </section>
-                      </div>
-                    </TabsContent>
-
-                    <Dialog
-                      :open="listenerExpanded"
-                      content-class="h-[88vh] max-w-[min(92vw,1100px)] overflow-hidden p-0"
-                      @update:open="listenerExpanded = $event"
-                    >
-                      <template #content>
-                        <div class="flex h-full min-h-0 flex-col">
-                          <div
-                            class="flex items-start justify-between border-b px-5 py-4"
-                          >
-                            <div class="space-y-1">
-                              <DialogTitle class="text-base font-semibold">
-                                监听输入框
-                              </DialogTitle>
-                              <DialogDescription>
-                                放大编辑当前监听
-                                transcript，内容会继续跟随当前会话实时保存。
-                              </DialogDescription>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              class="h-8 w-8 rounded-md p-0"
-                              title="收起监听输入框"
-                              @click="listenerExpanded = false"
-                            >
-                              <Minimize2 class="h-4 w-4" />
-                            </Button>
-                          </div>
-
-                          <div
-                            class="flex min-h-0 flex-1 flex-col gap-4 px-5 py-4"
-                          >
-                            <div
-                              class="flex items-center justify-between gap-3"
-                            >
-                              <Badge
-                                :variant="
-                                  listenerAvailable ? 'outline' : 'secondary'
-                                "
-                                class="h-8 rounded-sm px-3 text-xs"
-                              >
-                                {{ listenerStatusText }}
-                              </Badge>
-                              <p class="text-xs">
-                                这里编辑的是同一份监听内容。
-                              </p>
-                            </div>
-
-                            <div
-                              class="min-h-0 flex-1 rounded-xl border border-border/70 bg-background/90 p-3 shadow-inner shadow-black/5"
-                            >
-                              <textarea
-                                v-model="listenerTranscript"
-                                class="block h-full min-h-full w-full resize-none border-0 bg-transparent p-2 text-sm leading-7 outline-none"
-                                placeholder="监听内容会保存在当前会话里。"
-                              />
-                            </div>
-
-                            <div class="grid shrink-0 grid-cols-2 gap-2">
-                              <Button
-                                type="button"
-                                variant="default"
-                                class="h-9 justify-center gap-2 shadow-sm"
-                                :disabled="!listenerAvailable"
-                                @click="toggleLiveListening"
-                              >
-                                <Mic v-if="!isLiveListening" class="h-4 w-4" />
-                                <Square v-else class="h-4 w-4" />
-                                {{ isLiveListening ? "停止监听" : "开始监听" }}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                class="h-9 justify-center text-muted-foreground/70 shadow-none hover:bg-transparent"
-                                :disabled="!listenerTranscript.trim()"
-                                @click="clearListenerTranscript"
-                              >
-                                清空记录
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                class="h-9 justify-center border-border/60 bg-background font-medium text-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
-                                :disabled="!listenerTranscript.trim()"
-                                @click="appendTranscriptToPrompt"
-                              >
-                                追加到主输入框
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                class="h-9 justify-center border-border/60 bg-background font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
-                                :disabled="!listenerTranscript.trim()"
-                                @click="replacePromptWithTranscript"
-                              >
-                                覆盖主输入框
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </template>
-                    </Dialog>
-
-                    <TabsContent
-                      value="files"
-                      class="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
-                    >
-                      <div
-                        class="flex h-full min-h-0 flex-col rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm"
-                      >
-                        <div
-                          class="flex h-full min-h-0 flex-col items-stretch justify-start"
-                        >
-                          <FileResources />
-                        </div>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
           </div>
-        </ResizablePanel>
+
+          <ResizablePanelGroup
+            id="lui-left-vertical-split"
+            direction="vertical"
+            class="min-h-0 flex-1"
+            @layout="onLeftVerticalLayout"
+          >
+            <ResizablePanel
+              id="lui-conversation-panel"
+              :default-size="leftTopPaneSize"
+              :min-size="30"
+              class="min-h-0"
+            >
+              <div class="h-full min-h-0 overflow-hidden">
+                <ConversationList
+                  :conversations="visibleConversations"
+                  :selected-id="store.selectedId"
+                  @select="onConversationSelect"
+                  @delete="onConversationDelete"
+                />
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle
+              id="lui-left-handle"
+              class="h-4 w-full cursor-row-resize bg-transparent after:inset-x-0 after:left-0 after:top-1/2 after:h-px after:w-full after:-translate-y-1/2 after:translate-x-0 hover:bg-muted/15"
+            >
+              <slot>
+                <div
+                  class="h-1.5 w-15 rounded-full bg-border/90 group-hover/handle:bg-primary/75"
+                />
+              </slot>
+            </ResizableHandle>
+
+            <ResizablePanel
+              id="lui-workbench-panel"
+              :default-size="100 - leftTopPaneSize"
+              :min-size="25"
+              class="min-h-0 border-t bg-muted/20"
+            >
+              <div class="flex h-full min-h-0 flex-col p-3">
+                <div
+                  class="flex h-full min-h-0 flex-col rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm"
+                >
+                  <div class="mb-3 flex items-center justify-between gap-2">
+                    <span class="text-xs font-medium text-muted-foreground"
+                      >文件</span
+                    >
+                  </div>
+                  <div
+                    class="flex h-full min-h-0 flex-col items-stretch justify-start overflow-hidden"
+                  >
+                    <FileResources />
+                  </div>
+                </div>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      </ResizablePanel>
 
       <ResizableHandle
         id="lui-main-handle"
@@ -326,13 +114,19 @@
         <main class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           <div class="flex items-center gap-2 border-b pr-2 py-2">
             <div class="flex shrink-0 items-center gap-1.5">
-<Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-8 w-8 shrink-0 rounded-md shadow-none"
-                  :title="leftPanelRef?.isCollapsed ? '展开会话列表' : '收起会话列表'"
-                  @click="leftPanelRef?.isCollapsed ? leftPanelRef?.expand() : leftPanelRef?.collapse()"
-                >
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-8 w-8 shrink-0 rounded-md shadow-none"
+                :title="
+                  leftPanelRef?.isCollapsed ? '展开会话列表' : '收起会话列表'
+                "
+                @click="
+                  leftPanelRef?.isCollapsed
+                    ? leftPanelRef?.expand()
+                    : leftPanelRef?.collapse()
+                "
+              >
                 <PanelLeft class="h-4 w-4" />
               </Button>
 
@@ -372,6 +166,18 @@
                 :model-value="workspaceCandidateId"
                 @select="onCandidateSelect"
               />
+              <Button
+                v-if="showCandidateSelector"
+                type="button"
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                :disabled="!currentSourceResume"
+                @click="openSourceDocumentPreview"
+              >
+                <FileSearch class="h-4 w-4" />
+                <span class="hidden md:inline">PDF</span>
+              </Button>
               <AgentSelector
                 :model-value="store.selectedAgentId"
                 :profile="agentSelectorProfile"
@@ -379,12 +185,6 @@
               />
             </div>
           </div>
-
-          <WorkflowBanner
-            v-if="showInterviewSceneUi"
-            :workflow="interviewScene.workflow.value"
-            @select-stage="interviewScene.selectWorkflowStage"
-          />
 
           <Conversation
             class="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-background via-background to-muted/20"
@@ -402,14 +202,7 @@
                   <Bot class="h-12 w-12 opacity-30" />
                 </template>
 
-                <StageSuggestions
-                  v-if="showInterviewSceneUi"
-                  :agent="activeSuggestionAgent"
-                  :candidate-name="interviewScene.currentCandidate.value?.name ?? null"
-                  :workflow-stage="interviewScene.workflow.value?.currentStage ?? null"
-                  @apply="applySuggestion"
-                />
-                <div v-else class="mx-auto w-full max-w-xl space-y-5">
+                <div class="mx-auto w-full max-w-xl space-y-5">
                   <div class="space-y-2 text-center">
                     <p class="text-base font-semibold tracking-tight">
                       {{ genericSuggestionTitle }}
@@ -418,18 +211,17 @@
                       {{ genericSuggestionDescription }}
                     </p>
                   </div>
-                  <div class="grid gap-3">
-                    <Button
+                  <Suggestions class="w-full">
+                    <Suggestion
                       v-for="suggestion in genericStarterSuggestions"
                       :key="suggestion"
-                      type="button"
+                      :suggestion="suggestion"
+                      size="default"
                       variant="outline"
-                      class="h-auto w-full justify-center whitespace-normal break-words rounded-2xl border-border/80 bg-card/92 px-6 py-5 text-center text-base font-medium leading-7 text-card-foreground shadow-sm hover:border-primary/20 hover:bg-card"
+                      class="lui-suggestion-card h-auto w-full min-w-0 justify-center whitespace-normal break-words rounded-2xl border-border/80 bg-card/92 px-6 py-6 text-center text-lg font-medium leading-8 text-card-foreground shadow-sm transition-all duration-300 hover:scale-[1.01] hover:border-primary/20 hover:bg-card hover:shadow-md"
                       @click="applySuggestion(suggestion)"
-                    >
-                      {{ suggestion }}
-                    </Button>
-                  </div>
+                    />
+                  </Suggestions>
                 </div>
               </ConversationEmptyState>
 
@@ -555,9 +347,7 @@
                 <PromptInputBody>
                   <PromptInputTextarea
                     :disabled="
-                      chatStatus === 'submitted' ||
-                      chatStatus === 'streaming' ||
-                      isLiveListening
+                      chatStatus === 'submitted' || chatStatus === 'streaming'
                     "
                     placeholder="输入消息，输入 / 使用命令"
                     class="min-h-[96px] border-0 bg-transparent px-3 py-3 text-sm caret-foreground shadow-none focus-visible:ring-0"
@@ -579,13 +369,9 @@
                       </PromptInputActionMenuContent>
                     </PromptInputActionMenu>
 
-                    <PromptInputSpeechButton :disabled="isLiveListening" />
-
                     <ModelSelector v-model:open="modelSelectorOpen">
                       <ModelSelectorTrigger as-child>
-                        <PromptInputButton
-                          :disabled="store.isLoadingMessages || isLiveListening"
-                        >
+                        <PromptInputButton :disabled="store.isLoadingMessages">
                           <ModelSelectorLogo
                             v-if="selectedModelLogo"
                             :provider="selectedModelLogo"
@@ -646,9 +432,7 @@
                       placeholder="输入模型名称（如 MiniMax-M2.7）"
                       class="h-8 max-w-[240px] rounded-full text-xs"
                       :disabled="
-                        chatStatus === 'submitted' ||
-                        chatStatus === 'streaming' ||
-                        isLiveListening
+                        chatStatus === 'submitted' || chatStatus === 'streaming'
                       "
                     />
                   </PromptInputTools>
@@ -669,27 +453,82 @@
         </main>
       </ResizablePanel>
     </ResizablePanelGroup>
+
+    <Dialog
+      :open="sourceDocumentPreviewOpen"
+      content-class="flex h-[80vh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden p-0"
+      @update:open="handleSourceDocumentPreviewOpenChange"
+    >
+      <template #content>
+        <div v-if="currentSourceResume" class="flex min-h-0 flex-1 flex-col">
+          <DialogHeader class="shrink-0 border-b px-4 py-3 sm:px-5">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <DialogTitle class="truncate pr-2 text-sm font-semibold">
+                  {{ currentSourceResumeDisplayName }}
+                </DialogTitle>
+                <DialogDescription class="pt-1 text-xs">
+                  {{ formatResumeSize(currentSourceResume.fileSize) }}
+                </DialogDescription>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <Button type="button" variant="outline" size="sm" class="gap-1.5" @click="downloadSourceDocument">
+                  <Download class="h-4 w-4" />
+                  <span class="hidden sm:inline">下载</span>
+                </Button>
+                <Button type="button" variant="outline" size="icon" class="shrink-0" @click="handleSourceDocumentPreviewOpenChange(false)">
+                  <X class="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div class="min-h-0 flex-1 overflow-hidden bg-background">
+            <iframe
+              v-if="sourcePreviewUrl && isSourceDocumentPdf"
+              :src="sourcePreviewUrl"
+              class="h-full w-full bg-background"
+              title="PDF 源文档预览"
+            />
+            <div
+              v-else-if="sourcePreviewUrl && isSourceDocumentImage"
+              class="flex h-full items-center justify-center bg-background p-4"
+            >
+              <img
+                :src="sourcePreviewUrl"
+                :alt="currentSourceResumeDisplayName"
+                class="max-h-full max-w-full rounded-md object-contain"
+              />
+            </div>
+            <div
+              v-else
+              class="flex h-full items-center justify-center px-6 text-sm text-muted-foreground"
+            >
+              当前原件暂不支持内嵌阅读，请使用右上角下载按钮查看。
+            </div>
+          </div>
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   ArrowLeft,
   Bot,
   Check,
+  Download,
+  FileSearch,
   Loader2,
-  Maximize2,
-  Mic,
-  Minimize2,
   PanelLeft,
   Plus,
-  Square,
+  X,
 } from "lucide-vue-next";
-import { luiApi } from "@/api/lui";
 import {
   Attachment,
   Attachments,
@@ -725,12 +564,12 @@ import {
   PromptInputButton,
   PromptInputFooter,
   PromptInputHeader,
-  PromptInputSpeechButton,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
   usePromptInputProvider,
 } from "@/components/ai-elements/prompt-input";
+import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import {
   Reasoning,
   ReasoningTrigger,
@@ -747,24 +586,22 @@ import AgentSelector from "@/components/lui/agent-selector.vue";
 import CandidateSelector from "@/components/lui/candidate-selector.vue";
 import ConversationList from "@/components/lui/conversation-list.vue";
 import FileResources from "@/components/lui/file-resources.vue";
-import StageSuggestions from "@/components/lui/scenes/interview/StageSuggestions.vue";
-import WorkflowBanner from "@/components/lui/scenes/interview/WorkflowBanner.vue";
 import TaskQueueIndicator from "@/components/lui/task-queue-indicator.vue";
 import Input from "@/components/ui/input.vue";
 import Button from "@/components/ui/button.vue";
-import Badge from "@/components/ui/badge.vue";
-import Tabs from "@/components/ui/tabs.vue";
-import TabsContent from "@/components/ui/tabs-content.vue";
-import TabsList from "@/components/ui/tabs-list.vue";
-import TabsTrigger from "@/components/ui/tabs-trigger.vue";
 import Dialog from "@/components/ui/dialog.vue";
 import DialogDescription from "@/components/ui/dialog-description.vue";
+import DialogHeader from "@/components/ui/dialog-header.vue";
 import DialogTitle from "@/components/ui/dialog-title.vue";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import {
+  candidatesApi,
+  resolveResumePreviewContentType,
+} from "@/api/candidates";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import { useAuthStore } from "@/stores/auth";
@@ -778,6 +615,7 @@ import {
 } from "@/stores/lui/scenes/interview/policy";
 import { useInterviewScene } from "@/stores/lui/scenes/interview/scene";
 import type { LuiAgentSelectorProfile } from "@/stores/lui/scenes/types";
+import type { CandidateDetailData } from "@ims/shared";
 
 interface SourceItem {
   href: string;
@@ -793,8 +631,6 @@ interface UiMessageItem {
   tools?: unknown[] | null;
   sources: SourceItem[];
 }
-
-type ListenerAudioContextCtor = typeof AudioContext;
 
 const acceptedFileTypes = ".pdf,.png,.jpg,.jpeg,.webp,.zip,.imr";
 const interviewConversationPolicy = createInterviewConversationPolicy();
@@ -822,29 +658,12 @@ const { notifyError } = useAppNotifications();
 const inputText = ref("");
 // const leftSidebarOpen = ref(true);
 const leftPanelRef = ref<InstanceType<typeof ResizablePanel> | null>(null);
-const leftWorkbenchTab = ref("listener");
-const listenerExpanded = ref(false);
 const modelSelectorOpen = ref(false);
 const isSubmittingPrompt = ref(false);
-const listenerTranscript = ref("");
-const isLiveListening = ref(false);
-const listenerAvailable = ref(false);
-const listenerError = ref<string | null>(null);
-const audioContextRef = ref<AudioContext | null>(null);
-const audioStreamRef = ref<MediaStream | null>(null);
-const audioSourceNodeRef = ref<MediaStreamAudioSourceNode | null>(null);
-const audioProcessorNodeRef = ref<ScriptProcessorNode | null>(null);
-const audioSilenceGainNodeRef = ref<GainNode | null>(null);
-const listenerSessionIdRef = ref<string | null>(null);
-const listenerBaseTranscriptRef = ref("");
-const listenerPendingAudioChunksRef = ref<Float32Array[]>([]);
 const leftPanelWidth = ref(31);
 const leftTopPaneSize = ref(50);
 const isWorkspaceReady = ref(false);
-
-const LISTENER_TRANSCRIPT_PREFIX = "ims:lui:listener-transcript:";
-let listenerFlushTimer: number | null = null;
-let listenerTranscriptionChain: Promise<void> = Promise.resolve();
+const sourceDocumentPreviewOpen = ref(false);
 
 const activeSuggestionAgent = computed(() => {
   return store.selectedAgent ?? store.defaultAgent ?? null;
@@ -870,12 +689,15 @@ const explicitRouteCandidateId = computed(() => {
     ? queryCandidateId.trim()
     : null;
 });
-const selectedConversationCandidateId = computed(() =>
-  store.selectedConversation?.candidateId ?? null,
+const selectedConversationCandidateId = computed(
+  () => store.selectedConversation?.candidateId ?? null,
 );
 const workspaceCandidateId = computed(() => {
-  return explicitRouteCandidateId.value ?? selectedConversationCandidateId.value;
+  return (
+    explicitRouteCandidateId.value ?? selectedConversationCandidateId.value
+  );
 });
+type CandidateResume = CandidateDetailData["resumes"][number];
 const interviewScene = useInterviewScene({
   candidateId: computed(() => explicitRouteCandidateId.value),
   store,
@@ -888,19 +710,51 @@ const routeScene = computed(() =>
     ? route.query.scene.trim()
     : null,
 );
-const hasInterviewContext = computed(() => Boolean(explicitRouteCandidateId.value));
-const showInterviewSceneUi = computed(
-  () =>
-    hasInterviewContext.value &&
-    (routeScene.value === "interview" || isInterviewAgent(activeSuggestionAgent.value)),
+const hasInterviewContext = computed(() =>
+  Boolean(explicitRouteCandidateId.value),
 );
 const showCandidateSelector = computed(
   () =>
     routeScene.value === "interview" ||
     isInterviewAgent(activeSuggestionAgent.value),
 );
+const currentSourceCandidateDetail = computed(() => {
+  if (!workspaceCandidateId.value) return null;
+  return candidatesStore.current?.candidate.id === workspaceCandidateId.value
+    ? candidatesStore.current
+    : null;
+});
+const currentSourceResume = computed<CandidateResume | null>(() => {
+  const resumes = currentSourceCandidateDetail.value?.resumes ?? [];
+  if (resumes.length === 0) return null;
+  return (
+    [...resumes].sort((left, right) => right.createdAt - left.createdAt)[0] ??
+    null
+  );
+});
+const currentSourceResumeDisplayName = computed(() => {
+  return decodeDisplayFileName(currentSourceResume.value?.fileName ?? "源文档");
+});
+const sourcePreviewUrl = computed(() => {
+  return currentSourceResume.value
+    ? candidatesApi.getResumePreviewUrl(currentSourceResume.value.id)
+    : null;
+});
+const sourcePreviewContentType = computed(() => {
+  return resolveResumePreviewContentType(
+    currentSourceResume.value?.fileType,
+    currentSourceResume.value?.fileName,
+  );
+});
+const isSourceDocumentPdf = computed(
+  () => sourcePreviewContentType.value === "application/pdf",
+);
+const isSourceDocumentImage = computed(() =>
+  Boolean(sourcePreviewContentType.value?.startsWith("image/")),
+);
 const agentSelectorProfile = computed(() =>
-  routeScene.value === "interview" || isInterviewAgent(activeSuggestionAgent.value)
+  routeScene.value === "interview" ||
+  isInterviewAgent(activeSuggestionAgent.value)
     ? INTERVIEW_AGENT_SELECTOR_PROFILE
     : GENERIC_AGENT_SELECTOR_PROFILE,
 );
@@ -911,12 +765,6 @@ const chatStatus = computed<ChatStatus>(() => {
   if (lastMessage?.status === "error") return "error";
   if (isSubmittingPrompt.value) return "submitted";
   return "ready";
-});
-
-const listenerStatusText = computed(() => {
-  if (!listenerAvailable.value) return "本地语音不可用";
-  if (listenerError.value) return "监听异常";
-  return isLiveListening.value ? "监听中" : "待命中";
 });
 
 const visibleConversations = computed(() => {
@@ -1009,10 +857,6 @@ const hasReadyManualModelName = computed(() => {
 });
 
 const canSubmitPrompt = computed(() => {
-  if (isLiveListening.value) {
-    return false;
-  }
-
   const hasText = promptInput.textInput.value.trim().length > 0;
   const hasFiles = pickedFiles.value.length > 0;
 
@@ -1027,32 +871,29 @@ const canSubmitPrompt = computed(() => {
   return hasSelectedModel.value && hasReadyManualModelName.value;
 });
 
-const listenerStorageKey = computed(() => {
-  if (store.selectedId) {
-    return `${LISTENER_TRANSCRIPT_PREFIX}conversation:${store.selectedId}`;
-  }
+watch(
+  workspaceCandidateId,
+  async () => {
+    const explicitCandidateId = explicitRouteCandidateId.value;
+    store.setConversationPolicy(
+      explicitCandidateId ? interviewConversationPolicy : null,
+    );
 
-  if (workspaceCandidateId.value) {
-    return `${LISTENER_TRANSCRIPT_PREFIX}candidate:${workspaceCandidateId.value}`;
-  }
+    if (
+      !isWorkspaceReady.value ||
+      interviewScene.isSyncingCandidateWorkspace.value
+    ) {
+      return;
+    }
 
-  return `${LISTENER_TRANSCRIPT_PREFIX}draft`;
-});
-
-watch(workspaceCandidateId, async () => {
-  const explicitCandidateId = explicitRouteCandidateId.value;
-  store.setConversationPolicy(explicitCandidateId ? interviewConversationPolicy : null);
-
-  if (!isWorkspaceReady.value || interviewScene.isSyncingCandidateWorkspace.value) {
-    return;
-  }
-
-  if (explicitCandidateId) {
-    await interviewScene.ensureWorkspace(explicitCandidateId);
-    return;
-  }
-  interviewScene.reset();
-}, { immediate: true });
+    if (explicitCandidateId) {
+      await interviewScene.ensureWorkspace(explicitCandidateId);
+      return;
+    }
+    interviewScene.reset();
+  },
+  { immediate: true },
+);
 
 watch(inputText, (value) => {
   if (value !== promptInput.textInput.value) {
@@ -1069,64 +910,21 @@ watch(
   },
 );
 
-watch(
-  listenerStorageKey,
-  (key) => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    listenerTranscript.value = window.localStorage.getItem(key) ?? "";
-  },
-  { immediate: true },
-);
-
-watch(listenerTranscript, (value) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const key = listenerStorageKey.value;
-  if (!value.trim()) {
-    window.localStorage.removeItem(key);
-    return;
-  }
-
-  window.localStorage.setItem(key, value);
-});
-
-onMounted(() => {
-  initializeLiveListening();
-  window.addEventListener("keydown", handleListenerShortcut);
-});
-
-onUnmounted(() => {
-  window.removeEventListener("keydown", handleListenerShortcut);
-  void stopLiveListening();
-});
-
 async function onConversationSelect(id: string) {
-  if (isLiveListening.value) {
-    await stopLiveListening();
-  }
   await store.selectConversation(id);
 }
 
 async function onConversationCreate() {
-  if (isLiveListening.value) {
-    await stopLiveListening();
-  }
   const conversation = await store.createConversation(
     undefined,
-    hasInterviewContext.value ? explicitRouteCandidateId.value ?? undefined : undefined,
+    hasInterviewContext.value
+      ? (explicitRouteCandidateId.value ?? undefined)
+      : undefined,
   );
   await store.selectConversation(conversation.id);
 }
 
 async function onConversationDelete(id: string) {
-  if (isLiveListening.value) {
-    await stopLiveListening();
-  }
   await store.deleteConversation(id);
   const nextConversation = visibleConversations.value[0];
   if (nextConversation && nextConversation.id !== store.selectedId) {
@@ -1142,11 +940,37 @@ async function onCandidateSelect(candidate: { id: string } | null) {
     return;
   }
 
-  if (isLiveListening.value) {
-    await stopLiveListening();
+  await replaceCandidateRoute(nextCandidateId);
+}
+
+function openSourceDocumentPreview() {
+  if (!currentSourceResume.value) {
+    return;
   }
 
-  await replaceCandidateRoute(nextCandidateId);
+  sourceDocumentPreviewOpen.value = true;
+}
+
+function handleSourceDocumentPreviewOpenChange(open: boolean) {
+  sourceDocumentPreviewOpen.value = open;
+}
+
+async function downloadSourceDocument() {
+  if (!currentSourceResume.value) {
+    return;
+  }
+
+  const { blob, fileName } = await candidatesApi.downloadResume(
+    currentSourceResume.value.id,
+  );
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName ?? currentSourceResume.value.fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 function handlePromptSubmit(message: PromptInputMessage) {
@@ -1202,7 +1026,9 @@ async function submitPrompt(input: { text: string; files: File[] }) {
     if (!conversationId) {
       const conversation = await store.createConversation(
         undefined,
-        hasInterviewContext.value ? explicitRouteCandidateId.value ?? undefined : undefined,
+        hasInterviewContext.value
+          ? (explicitRouteCandidateId.value ?? undefined)
+          : undefined,
       );
       conversationId = conversation.id;
     }
@@ -1307,235 +1133,6 @@ function applySuggestion(suggestion: string) {
   promptInput.setTextInput(suggestion);
 }
 
-function appendTranscriptToPrompt() {
-  const transcript = listenerTranscript.value.trim();
-  if (!transcript) return;
-  const current = promptInput.textInput.value.trim();
-  promptInput.setTextInput(current ? `${current}\n${transcript}` : transcript);
-}
-
-function replacePromptWithTranscript() {
-  const transcript = listenerTranscript.value.trim();
-  if (!transcript) return;
-  promptInput.setTextInput(transcript);
-}
-
-function clearListenerTranscript() {
-  listenerTranscript.value = "";
-  listenerBaseTranscriptRef.value = "";
-
-  if (isLiveListening.value) {
-    listenerSessionIdRef.value = crypto.randomUUID();
-    listenerPendingAudioChunksRef.value = [];
-  }
-}
-
-function getListenerAudioContextCtor() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const audioWindow = window as Window & {
-    webkitAudioContext?: ListenerAudioContextCtor;
-  };
-  return window.AudioContext || audioWindow.webkitAudioContext || null;
-}
-
-function mergeListenerTranscript(base: string, transcript: string) {
-  const normalizedBase = base.trim();
-  const normalizedTranscript = transcript.trim();
-  if (!normalizedBase) {
-    return normalizedTranscript;
-  }
-  if (!normalizedTranscript) {
-    return normalizedBase;
-  }
-  return `${normalizedBase}\n${normalizedTranscript}`;
-}
-
-function mergeFloat32Chunks(chunks: Float32Array[]) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Float32Array(totalLength);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return merged;
-}
-
-function downsampleFloat32Buffer(
-  input: Float32Array,
-  inputSampleRate: number,
-  outputSampleRate: number,
-) {
-  if (!input.length || inputSampleRate === outputSampleRate) {
-    return input;
-  }
-
-  if (inputSampleRate < outputSampleRate) {
-    return input;
-  }
-
-  const sampleRateRatio = inputSampleRate / outputSampleRate;
-  const outputLength = Math.max(1, Math.round(input.length / sampleRateRatio));
-  const output = new Float32Array(outputLength);
-  let inputOffset = 0;
-
-  for (let index = 0; index < outputLength; index += 1) {
-    const nextOffset = Math.min(
-      input.length,
-      Math.round((index + 1) * sampleRateRatio),
-    );
-    let sum = 0;
-    let count = 0;
-    for (let cursor = inputOffset; cursor < nextOffset; cursor += 1) {
-      sum += input[cursor] ?? 0;
-      count += 1;
-    }
-    output[index] = count > 0 ? sum / count : 0;
-    inputOffset = nextOffset;
-  }
-
-  return output;
-}
-
-function writeWavString(view: DataView, offset: number, value: string) {
-  for (let index = 0; index < value.length; index += 1) {
-    view.setUint8(offset + index, value.charCodeAt(index));
-  }
-}
-
-function encodeWavBlob(samples: Float32Array, sampleRate: number) {
-  const buffer = new ArrayBuffer(44 + samples.length * 2);
-  const view = new DataView(buffer);
-
-  writeWavString(view, 0, "RIFF");
-  view.setUint32(4, 36 + samples.length * 2, true);
-  writeWavString(view, 8, "WAVE");
-  writeWavString(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeWavString(view, 36, "data");
-  view.setUint32(40, samples.length * 2, true);
-
-  let dataOffset = 44;
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, samples[index] ?? 0));
-    const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-    view.setInt16(dataOffset, int16, true);
-    dataOffset += 2;
-  }
-
-  return new Blob([buffer], { type: "audio/wav" });
-}
-
-function normalizeListenerError(error: unknown) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
-  return "listener-transcription-failed";
-}
-
-async function cleanupLiveListeningResources() {
-  if (listenerFlushTimer !== null && typeof window !== "undefined") {
-    window.clearInterval(listenerFlushTimer);
-    listenerFlushTimer = null;
-  }
-
-  const processorNode = audioProcessorNodeRef.value;
-  if (processorNode) {
-    processorNode.onaudioprocess = null;
-    processorNode.disconnect();
-    audioProcessorNodeRef.value = null;
-  }
-
-  audioSourceNodeRef.value?.disconnect();
-  audioSourceNodeRef.value = null;
-  audioSilenceGainNodeRef.value?.disconnect();
-  audioSilenceGainNodeRef.value = null;
-
-  const stream = audioStreamRef.value;
-  if (stream) {
-    for (const track of stream.getTracks()) {
-      track.stop();
-    }
-    audioStreamRef.value = null;
-  }
-
-  const audioContext = audioContextRef.value;
-  audioContextRef.value = null;
-  if (audioContext) {
-    try {
-      await audioContext.close();
-    } catch {
-      // ignore close failures
-    }
-  }
-
-  listenerPendingAudioChunksRef.value = [];
-}
-
-async function queueListenerTranscription(
-  audioBlob: Blob | undefined,
-  finalize: boolean,
-) {
-  const sessionId = listenerSessionIdRef.value;
-  if (!sessionId) {
-    return;
-  }
-
-  listenerTranscriptionChain = listenerTranscriptionChain
-    .then(async () => {
-      const result = await luiApi.transcribeListenerAudio({
-        sessionId,
-        audioFile: audioBlob,
-        isFinal: finalize,
-        sampleRate: 16000,
-      });
-      listenerTranscript.value = mergeListenerTranscript(
-        listenerBaseTranscriptRef.value,
-        result.transcript,
-      );
-    })
-    .catch(async (error) => {
-      listenerError.value = normalizeListenerError(error);
-      isLiveListening.value = false;
-      await cleanupLiveListeningResources();
-    });
-
-  await listenerTranscriptionChain;
-}
-
-async function flushListenerAudio(finalize: boolean) {
-  const pendingChunks = listenerPendingAudioChunksRef.value;
-  listenerPendingAudioChunksRef.value = [];
-
-  if (!pendingChunks.length && !finalize) {
-    return;
-  }
-
-  const inputSampleRate = audioContextRef.value?.sampleRate ?? 16000;
-  const mergedAudio = pendingChunks.length
-    ? mergeFloat32Chunks(pendingChunks)
-    : new Float32Array();
-  const resampledAudio = mergedAudio.length
-    ? downsampleFloat32Buffer(mergedAudio, inputSampleRate, 16000)
-    : new Float32Array();
-  const audioBlob = resampledAudio.length
-    ? encodeWavBlob(resampledAudio, 16000)
-    : undefined;
-
-  await queueListenerTranscription(audioBlob, finalize);
-}
-
 function onMainSplitLayout(sizes: number[]) {
   const leftSize = sizes[0];
   if (typeof leftSize === "number") {
@@ -1561,122 +1158,18 @@ async function replaceCandidateRoute(candidateId: string | null) {
   await router.replace({ path: "/lui", query: nextQuery });
 }
 
-function initializeLiveListening() {
-  listenerAvailable.value = Boolean(
-    typeof window !== "undefined" &&
-    getListenerAudioContextCtor() &&
-    navigator.mediaDevices?.getUserMedia,
-  );
+function formatResumeSize(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-async function startLiveListening() {
-  const AudioContextCtor = getListenerAudioContextCtor();
-  if (!AudioContextCtor || !navigator.mediaDevices?.getUserMedia) {
-    listenerAvailable.value = false;
-    return;
-  }
-
+function decodeDisplayFileName(fileName: string) {
   try {
-    listenerError.value = null;
-    listenerBaseTranscriptRef.value = listenerTranscript.value.trim();
-    listenerSessionIdRef.value = crypto.randomUUID();
-    listenerPendingAudioChunksRef.value = [];
-    listenerTranscriptionChain = Promise.resolve();
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-
-    const audioContext = new AudioContextCtor();
-    await audioContext.resume();
-    const audioSource = audioContext.createMediaStreamSource(stream);
-    const audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-    const silenceGain = audioContext.createGain();
-    silenceGain.gain.value = 0;
-
-    audioProcessor.onaudioprocess = (event) => {
-      const channelData = event.inputBuffer.getChannelData(0);
-      listenerPendingAudioChunksRef.value.push(new Float32Array(channelData));
-    };
-
-    audioSource.connect(audioProcessor);
-    audioProcessor.connect(silenceGain);
-    silenceGain.connect(audioContext.destination);
-
-    audioContextRef.value = audioContext;
-    audioStreamRef.value = stream;
-    audioSourceNodeRef.value = audioSource;
-    audioProcessorNodeRef.value = audioProcessor;
-    audioSilenceGainNodeRef.value = silenceGain;
-    listenerAvailable.value = true;
-    isLiveListening.value = true;
-
-    if (typeof window !== "undefined") {
-      listenerFlushTimer = window.setInterval(() => {
-        void flushListenerAudio(false);
-      }, 1800);
-    }
-  } catch (error) {
-    listenerError.value = normalizeListenerError(error);
-    isLiveListening.value = false;
-    await cleanupLiveListeningResources();
+    return decodeURIComponent(fileName);
+  } catch {
+    return fileName;
   }
-}
-
-async function stopLiveListening() {
-  if (!isLiveListening.value && !listenerSessionIdRef.value) {
-    return;
-  }
-
-  if (isLiveListening.value) {
-    isLiveListening.value = false;
-  }
-
-  if (listenerFlushTimer !== null && typeof window !== "undefined") {
-    window.clearInterval(listenerFlushTimer);
-    listenerFlushTimer = null;
-  }
-
-  try {
-    await flushListenerAudio(true);
-  } finally {
-    listenerSessionIdRef.value = null;
-    await cleanupLiveListeningResources();
-  }
-}
-
-async function toggleLiveListening() {
-  if (isLiveListening.value) {
-    await stopLiveListening();
-    return;
-  }
-
-  listenerError.value = null;
-  await startLiveListening();
-}
-
-function handleListenerShortcut(event: KeyboardEvent) {
-  if (!(event.altKey && event.shiftKey && event.code === "KeyL")) {
-    return;
-  }
-
-  const target = event.target;
-  if (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  ) {
-    event.preventDefault();
-  } else {
-    event.preventDefault();
-  }
-
-  void toggleLiveListening();
 }
 
 function buildGenericSuggestions(

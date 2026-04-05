@@ -1,0 +1,11 @@
+{
+  "id": "T-9c95c31a-80ce-4d5c-a1da-99787da42e37",
+  "subject": "精简 LUI 为纯智能体对话",
+  "description": "移除阶段按钮、面试流程中的出题阶段、监听与语音转文字相关前端功能",
+  "status": "completed",
+  "activeForm": "正在精简 LUI 为纯智能体对话",
+  "blocks": [],
+  "blockedBy": [],
+  "parentID": "T-b989f828-2aaf-4580-abeb-656905f42450",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

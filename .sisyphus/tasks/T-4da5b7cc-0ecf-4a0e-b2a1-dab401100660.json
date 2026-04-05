@@ -1,0 +1,12 @@
+{
+  "id": "T-4da5b7cc-0ecf-4a0e-b2a1-dab401100660",
+  "subject": "评估实现是否忠实原意",
+  "description": "根据原始意图关键点对照最终状态，判断是否存在越界或漏项并给出结论",
+  "status": "completed",
+  "activeForm": "正在评估实现是否忠实原意",
+  "blocks": [],
+  "blockedBy": [
+    "T-566a7877-7fd1-40fc-ab6d-7f390b4aa734"
+  ],
+  "threadID": "ses_2a62c7077ffePrHE1x5BEufmwt"
+}

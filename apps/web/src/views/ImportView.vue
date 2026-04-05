@@ -6,14 +6,6 @@
       <div class="flex items-center gap-2 shrink-0">
         <Button
           variant="outline"
-          class="gap-2 hidden sm:flex"
-          @click="$router.push('/candidates')"
-        >
-          <User class="h-4 w-4" />
-          候选人
-        </Button>
-        <Button
-          variant="outline"
           class="gap-2"
           @click="exportDialogOpen = true"
         >
@@ -184,7 +176,7 @@
                 <Button
                   variant="ghost"
                   size="sm"
-                  class="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  class="h-8 gap-1.5 text-xs"
                   @click="toggleFiles(b.id)"
                 >
                   <ChevronDown
@@ -199,7 +191,7 @@
                   v-if="b.failedFiles > 0"
                   variant="ghost"
                   size="sm"
-                  class="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  class="h-8 gap-1.5 text-xs"
                   @click="retryFailed(b.id)"
                 >
                   <RefreshCw class="h-3.5 w-3.5" />
@@ -209,7 +201,7 @@
                   v-if="canRerunBatchScreening(b)"
                   variant="ghost"
                   size="sm"
-                  class="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  class="h-8 gap-1.5 text-xs"
                   @click="rerunBatchScreening(b.id)"
                 >
                   <RefreshCw class="h-3.5 w-3.5" />
@@ -219,7 +211,7 @@
                   v-if="b.status === 'processing'"
                   variant="ghost"
                   size="sm"
-                  class="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  class="h-8 gap-1.5 text-xs"
                   @click="cancelBatch(b.id)"
                 >
                   <X class="h-3.5 w-3.5" />

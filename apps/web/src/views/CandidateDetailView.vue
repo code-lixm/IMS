@@ -312,7 +312,7 @@ import {
   Upload,
   User,
 } from "lucide-vue-next";
-import { candidatesApi } from "@/api/candidates";
+import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates";
 import { useCandidatesStore } from "@/stores/candidates";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
@@ -397,23 +397,17 @@ async function openResumePreview(resume: CandidateResume) {
   revokePreviewObjectUrl();
 
   try {
-    const { blob, contentType, fileName } = await candidatesApi.downloadResume(resume.id);
-    const objectUrl = URL.createObjectURL(blob);
-
     if (requestToken !== previewRequestToken.value || previewResume.value?.id !== resume.id || !resumePreviewOpen.value) {
-      URL.revokeObjectURL(objectUrl);
       return;
     }
 
-    previewObjectUrl.value = objectUrl;
-    previewContentType.value = contentType;
-    previewFileName.value = fileName;
-  }
-  catch (error) {
+    previewObjectUrl.value = candidatesApi.getResumePreviewUrl(resume.id);
+    previewContentType.value = resolveResumePreviewContentType(resume.fileType, resume.fileName);
+    previewFileName.value = resume.fileName;
+  } catch (error) {
     if (requestToken !== previewRequestToken.value) return;
     previewError.value = error instanceof Error ? error.message : "原件预览加载失败";
-  }
-  finally {
+  } finally {
     if (requestToken === previewRequestToken.value) {
       previewLoading.value = false;
     }
@@ -466,7 +460,11 @@ function formatResumeSize(size: number) {
 
 function revokePreviewObjectUrl() {
   if (!previewObjectUrl.value) return;
-  URL.revokeObjectURL(previewObjectUrl.value);
+
+  if (previewObjectUrl.value.startsWith("blob:")) {
+    URL.revokeObjectURL(previewObjectUrl.value);
+  }
+
   previewObjectUrl.value = null;
 }
 

@@ -1,0 +1,10 @@
+{
+  "id": "T-bf8c20d1-81bf-48c8-a682-eba6c21ef398",
+  "subject": "init-deep: Score directories, determine locations",
+  "description": "Analyze discovery results and score directories to determine AGENTS.md locations",
+  "status": "completed",
+  "activeForm": "Scoring directories",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a75bf5a5ffe52lh4qq5Ea3kYL"
+}

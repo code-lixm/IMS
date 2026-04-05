@@ -1,0 +1,14 @@
+{
+  "id": "T-c4a4af68-f02b-4bad-a8b5-5e894757424e",
+  "subject": "清理遗留 workflow agent",
+  "description": "移除无效的 workflow/validation agent 展示来源与遗留数据",
+  "status": "completed",
+  "activeForm": "正在清理遗留 workflow agent",
+  "blocks": [],
+  "blockedBy": [
+    "T-ff0da1fa-5c3d-4d59-8181-86dd734178bb"
+  ],
+  "owner": "Sisyphus",
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "threadID": "ses_2a6ecce08ffeMPeSxxbp0byu5r"
+}

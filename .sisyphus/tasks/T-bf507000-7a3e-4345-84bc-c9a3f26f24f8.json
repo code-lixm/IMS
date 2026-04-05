@@ -1,0 +1,10 @@
+{
+  "id": "T-bf507000-7a3e-4345-84bc-c9a3f26f24f8",
+  "subject": "init-deep: Fire explore agents + LSP codemap + read existing",
+  "description": "Launch background explore agents and run bash structural analysis for project discovery",
+  "status": "completed",
+  "activeForm": "Running discovery phase",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a75bf5a5ffe52lh4qq5Ea3kYL"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "T-6da1212c-6b4b-48ad-8b02-fac0aded0804",
+  "subject": "收敛 Agent 数据源",
+  "description": "让 Agent 管理页展示并管理真正的内置面试智能体，清理无效 workflow agent 来源",
+  "status": "completed",
+  "activeForm": "正在梳理 Agent 数据源",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "Sisyphus",
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "threadID": "ses_2a6ecce08ffeMPeSxxbp0byu5r"
+}

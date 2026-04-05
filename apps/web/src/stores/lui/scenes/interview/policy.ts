@@ -7,15 +7,15 @@ import type {
 export const INTERVIEW_AGENT_SELECTOR_PROFILE: LuiAgentSelectorProfile = {
   title: "面试专家",
   subtitle: "智能面试助手",
-  description: "帮你筛选简历、设计面试题、评估候选人。",
-  skills: ["简历分析", "题目设计", "综合评估"],
-  tools: ["读取简历", "生成题目", "输出报告"],
+  description: "帮你筛选简历、梳理信息并评估候选人。",
+  skills: ["简历分析", "信息梳理", "综合评估"],
+  tools: ["读取简历", "整理纪要", "输出报告"],
   entrySkill: "interview-orchestrator",
   supportSkills: [],
-  skillSectionLabel: "工作流技能",
+  skillSectionLabel: "核心能力",
   toolSectionLabel: "可用工具",
   summaryText:
-    "当前会话将通过这位面试专家统一调度技能链与工具能力，不再暴露底层运行实例。",
+    "当前会话将围绕候选人材料与面试信息进行分析和评估，不再暴露流程阶段切换。",
 };
 
 export function createInterviewConversationPolicy(): LuiConversationPolicy {

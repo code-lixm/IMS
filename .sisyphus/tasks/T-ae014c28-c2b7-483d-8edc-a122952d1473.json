@@ -1,0 +1,12 @@
+{
+  "id": "T-ae014c28-c2b7-483d-8edc-a122952d1473",
+  "subject": "分析 IMS interview-agent 架构并给出 engine 与 .opencode 迁移建议",
+  "description": "只读检查 server/runtime routing、workflow stages、tools、UI model，以及本地 .opencode 资产如何映射为 IMS-compatible agent。",
+  "status": "completed",
+  "activeForm": "正在分析 IMS interview-agent 架构并形成迁移建议",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "openai/gpt-5.4",
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "threadID": "ses_2a6ca3411ffezx4mWQFVP31rdH"
+}

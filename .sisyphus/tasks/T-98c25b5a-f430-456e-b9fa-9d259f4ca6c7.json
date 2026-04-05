@@ -1,0 +1,12 @@
+{
+  "id": "T-98c25b5a-f430-456e-b9fa-9d259f4ca6c7",
+  "subject": "Simplify source doc modal",
+  "description": "Reduce source document modal to preview-only and improve small-screen close behavior in LUIView",
+  "status": "pending",
+  "activeForm": "Simplifying source document modal",
+  "blocks": [],
+  "blockedBy": [],
+  "repoURL": "",
+  "parentID": "",
+  "threadID": "ses_2a56d6003ffe1j8yiqfXtbspsr"
+}

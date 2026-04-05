@@ -1,0 +1,10 @@
+{
+  "id": "T-b989f828-2aaf-4580-abeb-656905f42450",
+  "subject": "删除前端废弃 Agent 系统",
+  "description": "移除 apps/web/src/agents、相关 store/composable 和残余引用，统一到服务端 lui-workflow 链路",
+  "status": "completed",
+  "activeForm": "正在删除前端废弃 Agent 系统",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

@@ -11,7 +11,7 @@ src/
 ├── api/              # API 客户端
 ├── components/       # 可复用组件
 │   ├── ui/           # shadcn-vue 组件库
-│   └── lui/          # LUI AI 对话组件 (~12 个组件)
+│   └── lui/          # LUI AI 对话组件
 ├── views/             # 页面组件
 │   ├── LUIView.vue   # AI 对话页面 (~2046 行，巨大)
 │   ├── Candidates.vue
@@ -21,9 +21,6 @@ src/
 │   ├── lui.ts        # LUI 状态管理
 │   └── lui/           # LUI 子模块 (messages.ts 等)
 ├── router/          # Vue Router 配置
-├── agents/          # Agent 系统
-│   ├── host.ts       # Agent 注册中心
-│   └── builtin/      # 内置 Agent
 ├── lib/             # 工具函数
 └── styles/          # 全局样式
 ```
@@ -36,7 +33,6 @@ src/
 | 状态管理 | `stores/lui.ts` |
 | LUI 组件 | `components/lui/` |
 | AI 对话 | `views/LUIView.vue` (2046 行) |
-| Agent 系统 | `agents/host.ts` |
 
 ## CONVENTIONS (THIS PACKAGE)
 
@@ -61,11 +57,5 @@ pnpm typecheck    # vue-tsc 检查
 
 ## AGENTS
 
-| Agent | 位置 | 说明 |
-|-------|------|------|
-| `interview-orchestrator` | `agents/builtin/` | 面试协调 Agent |
-| `interview-screening` | `agents/builtin/` | 初筛 Agent |
-| `interview-questioning` | `agents/builtin/` | 出题 Agent |
-| `interview-assessment` | `agents/builtin/` | 评估 Agent |
-
-**注意**: 技术选型为 **DeepAgents**（非 LangGraph）
+前端不再维护本地 AgentHost/Swarm 原型。当前统一通过服务端 `packages/server/src/services/lui-workflow.ts`
+与 `deepagents-runtime.ts` 执行 Agent / Workflow 能力，Web 端只负责 UI、配置与 API 调用。

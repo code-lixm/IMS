@@ -1,0 +1,10 @@
+{
+  "id": "T-702c6600-67f6-42fa-94a3-76dd92eb099a",
+  "subject": "终审 lui-agent-decoupling 质量",
+  "description": "仅复查之前拒绝点：generic/interview 激活隔离、agent-selector 行为完整性、sceneAffinity 运行时链路是否保持",
+  "status": "completed",
+  "activeForm": "正在终审 lui-agent-decoupling 质量",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a62c71e3ffeDaogBc3hFi0C6F"
+}

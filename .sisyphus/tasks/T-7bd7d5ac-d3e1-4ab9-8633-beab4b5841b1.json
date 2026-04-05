@@ -1,0 +1,13 @@
+{
+  "id": "T-7bd7d5ac-d3e1-4ab9-8633-beab4b5841b1",
+  "subject": "支持 builtin Agent 编辑",
+  "description": "让默认内置 Agent 也能进入编辑流程并保存修改",
+  "status": "completed",
+  "activeForm": "正在支持 builtin Agent 编辑",
+  "blocks": [],
+  "blockedBy": [
+    "T-9a7b89dd-ea10-45d3-a1e7-e0fefd56df59"
+  ],
+  "parentID": "T-d3424164-f755-44de-b264-16d9ba85c5fe",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

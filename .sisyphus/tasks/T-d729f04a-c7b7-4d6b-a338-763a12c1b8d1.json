@@ -1,0 +1,10 @@
+{
+  "id": "T-d729f04a-c7b7-4d6b-a338-763a12c1b8d1",
+  "subject": "统一 LUI Agent 默认与删除策略",
+  "description": "检查当前 default/delete 逻辑，集中修复后端与必要前端，验证 builtin 不可删、custom 默认删除回退到 builtin interview agent、任意时刻仅一个默认。",
+  "status": "completed",
+  "activeForm": "正在统一 LUI Agent 默认与删除策略",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a67f5811ffegvd6BDhj779Q3V"
+}

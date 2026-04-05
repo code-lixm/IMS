@@ -1,0 +1,10 @@
+{
+  "id": "T-2b61b47e-843b-4d26-9e58-6d6dc942b6a6",
+  "subject": "修复默认智能体编辑",
+  "description": "定位并修复默认 builtin Agent 仍无法编辑的问题",
+  "status": "completed",
+  "activeForm": "正在修复默认智能体编辑问题",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

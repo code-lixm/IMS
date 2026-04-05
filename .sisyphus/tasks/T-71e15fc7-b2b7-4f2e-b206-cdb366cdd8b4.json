@@ -1,0 +1,11 @@
+{
+  "id": "T-71e15fc7-b2b7-4f2e-b206-cdb366cdd8b4",
+  "subject": "F3 手动QA证据核对",
+  "description": "基于现有本地运行证据、截图、日志与必要的只读验证，审核 lui-agent-decoupling 的关键用户路径是否成立，并给出 APPROVE/REJECT 结论。",
+  "status": "pending",
+  "activeForm": "正在核对手动QA证据",
+  "blocks": [],
+  "blockedBy": [],
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "threadID": "ses_2a62c7127ffeOc6kGPPFMbwhe2"
+}

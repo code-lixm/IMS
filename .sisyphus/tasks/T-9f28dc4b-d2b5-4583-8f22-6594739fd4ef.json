@@ -1,0 +1,13 @@
+{
+  "id": "T-9f28dc4b-d2b5-4583-8f22-6594739fd4ef",
+  "subject": "Implement workflow routing convergence",
+  "description": "Modify the server workflow path to dispatch by agent.engine and unify stage prompt sourcing for builtin and deepagents executors.",
+  "status": "completed",
+  "activeForm": "Implementing workflow routing convergence",
+  "blocks": [],
+  "blockedBy": [
+    "T-572018e5-a941-4c20-8b9a-daf1f9d5de27"
+  ],
+  "parentID": "T-0d77eb16-4d26-4f26-bc36-37b844e1017f",
+  "threadID": "ses_2a63f17e9ffesfwJL2mDiYq7Qk"
+}

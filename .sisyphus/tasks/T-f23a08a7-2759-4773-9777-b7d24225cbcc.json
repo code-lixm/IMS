@@ -1,0 +1,10 @@
+{
+  "id": "T-f23a08a7-2759-4773-9777-b7d24225cbcc",
+  "subject": "复审 lui-agent-decoupling 阻塞修复",
+  "description": "基于当前仓库状态，复核上次 REJECT 的四个阻塞点，并给出新的 APPROVE/REJECT 结论。",
+  "status": "completed",
+  "activeForm": "正在复审 lui-agent-decoupling 阻塞修复",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a62c7338ffevlI48IUZLuXXj7"
+}

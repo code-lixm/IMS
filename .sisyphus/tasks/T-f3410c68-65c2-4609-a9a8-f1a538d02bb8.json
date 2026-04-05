@@ -1,0 +1,12 @@
+{
+  "id": "T-f3410c68-65c2-4609-a9a8-f1a538d02bb8",
+  "subject": "Add resume preview endpoint",
+  "description": "Implement controlled /api/resumes/:id/preview route with inline MIME handling and keep download route intact",
+  "status": "completed",
+  "activeForm": "Implementing resume preview endpoint",
+  "blocks": [],
+  "blockedBy": [],
+  "repoURL": "",
+  "parentID": "",
+  "threadID": "ses_2a56d6003ffe1j8yiqfXtbspsr"
+}

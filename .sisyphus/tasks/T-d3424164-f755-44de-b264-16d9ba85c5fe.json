@@ -1,0 +1,10 @@
+{
+  "id": "T-d3424164-f755-44de-b264-16d9ba85c5fe",
+  "subject": "精简 Agent 设置页",
+  "description": "将当前复杂的 Agent 设置界面调整为仅展示智能体列表，并支持默认 builtin Agent 的编辑修改能力",
+  "status": "completed",
+  "activeForm": "正在精简 Agent 设置页并补齐默认 Agent 编辑能力",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

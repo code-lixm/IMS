@@ -1,0 +1,10 @@
+{
+  "id": "T-00fdd707-55ff-431a-84e9-ca257f139939",
+  "subject": "审核 lui-agent-decoupling 计划符合性",
+  "description": "基于计划 1-9 与对应实现提交，做覆盖度与阻塞项审计，给出 APPROVE/REJECT 结论。",
+  "status": "completed",
+  "activeForm": "正在审核 lui-agent-decoupling 计划符合性",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a62c7338ffevlI48IUZLuXXj7"
+}

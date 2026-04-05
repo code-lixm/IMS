@@ -1,0 +1,11 @@
+{
+  "id": "T-adf8f155-8b05-4c1f-b2a0-66d07fa00e0f",
+  "subject": "确认废弃 Agent 引用范围",
+  "description": "核对 apps/web 中前端 AgentHost/Swarm、store、composable 的全部引用与依赖",
+  "status": "completed",
+  "activeForm": "正在确认废弃 Agent 引用范围",
+  "blocks": [],
+  "blockedBy": [],
+  "parentID": "T-b989f828-2aaf-4580-abeb-656905f42450",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

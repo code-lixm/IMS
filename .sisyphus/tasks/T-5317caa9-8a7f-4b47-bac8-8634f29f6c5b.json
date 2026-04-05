@@ -1,0 +1,13 @@
+{
+  "id": "T-5317caa9-8a7f-4b47-bac8-8634f29f6c5b",
+  "subject": "清理残余引用并校验",
+  "description": "清理导入与文档残留，运行前端和服务端类型检查确认统一完成",
+  "status": "completed",
+  "activeForm": "正在清理残余引用并校验",
+  "blocks": [],
+  "blockedBy": [
+    "T-e70d2ac3-da7f-4902-aed2-9ef614456303"
+  ],
+  "parentID": "T-b989f828-2aaf-4580-abeb-656905f42450",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

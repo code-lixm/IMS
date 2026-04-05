@@ -20,7 +20,7 @@ const DEFAULT_INTERVIEW_AGENT = {
   name: "Interview Agent",
   description: "内置面试智能体，负责统筹候选人初筛、提问、评估与纪要输出。",
   sourceType: "builtin" as const,
-  isMutable: false,
+  isMutable: true,
   sceneAffinity: "interview" as const,
   engine: "builtin" as const,
   mode: "workflow" as const,
@@ -241,15 +241,8 @@ export async function ensureManagedAgents(): Promise<void> {
     await db
       .update(agents)
       .set({
-        name: DEFAULT_INTERVIEW_AGENT.name,
-        description: DEFAULT_INTERVIEW_AGENT.description,
         sourceType: DEFAULT_INTERVIEW_AGENT.sourceType,
         isMutable: DEFAULT_INTERVIEW_AGENT.isMutable,
-        sceneAffinity: DEFAULT_INTERVIEW_AGENT.sceneAffinity,
-        engine: DEFAULT_INTERVIEW_AGENT.engine,
-        mode: DEFAULT_INTERVIEW_AGENT.mode,
-        systemPrompt: DEFAULT_INTERVIEW_AGENT.systemPrompt,
-        toolsJson,
         updatedAt: now,
       })
       .where(eq(agents.id, DEFAULT_INTERVIEW_AGENT_ID));

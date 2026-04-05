@@ -1,0 +1,14 @@
+{
+  "id": "T-4c42a577-e5cb-40d2-b770-2134b8113e68",
+  "subject": "Switch frontend preview flow",
+  "description": "Update candidate resume preview UI to use direct preview URL instead of blob downloads",
+  "status": "completed",
+  "activeForm": "Switching frontend preview flow",
+  "blocks": [],
+  "blockedBy": [
+    "T-f3410c68-65c2-4609-a9a8-f1a538d02bb8"
+  ],
+  "repoURL": "",
+  "parentID": "",
+  "threadID": "ses_2a56d6003ffe1j8yiqfXtbspsr"
+}

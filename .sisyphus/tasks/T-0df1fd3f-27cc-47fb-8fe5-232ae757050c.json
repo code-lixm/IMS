@@ -1,0 +1,12 @@
+{
+  "id": "T-0df1fd3f-27cc-47fb-8fe5-232ae757050c",
+  "subject": "Fix source preview UX",
+  "description": "Fix encoded filename, close button visibility, and source document modal layout in source preview flow",
+  "status": "completed",
+  "activeForm": "Fixing source preview UX",
+  "blocks": [],
+  "blockedBy": [],
+  "repoURL": "",
+  "parentID": "",
+  "threadID": "ses_2a56d6003ffe1j8yiqfXtbspsr"
+}

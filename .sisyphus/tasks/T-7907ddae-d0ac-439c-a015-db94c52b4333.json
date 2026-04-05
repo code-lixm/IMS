@@ -1,0 +1,10 @@
+{
+  "id": "T-7907ddae-d0ac-439c-a015-db94c52b4333",
+  "subject": "init-deep: Deduplicate, validate, trim",
+  "description": "Review generated files for deduplication, validation, and trimming",
+  "status": "completed",
+  "activeForm": "Reviewing and validating",
+  "blocks": [],
+  "blockedBy": [],
+  "threadID": "ses_2a75bf5a5ffe52lh4qq5Ea3kYL"
+}

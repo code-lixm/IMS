@@ -4,12 +4,27 @@ import type {
   CandidateDetailData,
   CreateCandidateInput,
   UpdateCandidateInput,
+  ResumeListData,
 } from "@ims/shared";
 
 export interface DownloadedResumeFile {
   blob: Blob;
   contentType: string | null;
   fileName: string | null;
+}
+
+export function resolveResumePreviewContentType(fileType: string | null | undefined, fileName: string | null | undefined): string | null {
+  const normalizedType = fileType?.trim().toLowerCase() ?? "";
+  const normalizedName = fileName?.trim().toLowerCase() ?? "";
+
+  if (normalizedType === "pdf" || normalizedName.endsWith(".pdf")) return "application/pdf";
+  if (normalizedType === "png" || normalizedName.endsWith(".png")) return "image/png";
+  if (["jpg", "jpeg"].includes(normalizedType) || normalizedName.endsWith(".jpg") || normalizedName.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (normalizedType === "webp" || normalizedName.endsWith(".webp")) return "image/webp";
+
+  return null;
 }
 
 function parseContentDispositionFileName(contentDisposition: string | null): string | null {
@@ -39,6 +54,14 @@ export const candidatesApi = {
 
   get(id: string) {
     return api<CandidateDetailData>(`/api/candidates/${id}`);
+  },
+
+  listResumes(candidateId: string) {
+    return api<ResumeListData>(`/api/candidates/${candidateId}/resumes`);
+  },
+
+  getResumePreviewUrl(id: string) {
+    return `/api/resumes/${id}/preview`;
   },
 
   async downloadResume(id: string): Promise<DownloadedResumeFile> {

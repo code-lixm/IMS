@@ -1,0 +1,11 @@
+{
+  "id": "T-9a7b89dd-ea10-45d3-a1e7-e0fefd56df59",
+  "subject": "定位 Agent 页面与保存链路",
+  "description": "查找前端 Agent 管理页面、相关组件以及后端或本地存储的保存逻辑",
+  "status": "completed",
+  "activeForm": "正在定位 Agent 页面与保存链路",
+  "blocks": [],
+  "blockedBy": [],
+  "parentID": "T-d3424164-f755-44de-b264-16d9ba85c5fe",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "T-05682a00-a6d6-46a6-911b-f429a2ab6877",
+  "subject": "实现 LUI shell 与 interview scene 拆分",
+  "description": "将 interview-specific workflow、candidate 上下文与场景策略下沉到 scene 模块/组件，保持 generic workspace 可独立工作。",
+  "status": "completed",
+  "activeForm": "正在实现 LUI shell 与 interview scene 拆分",
+  "blocks": [],
+  "blockedBy": [
+    "T-3a9b976a-620d-4ee6-9d67-2e859cd01a87"
+  ],
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "threadID": "ses_2a65c6825ffeiHeWtEMrxA94pZ"
+}

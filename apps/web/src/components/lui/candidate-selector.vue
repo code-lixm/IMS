@@ -19,13 +19,13 @@
         @click="open = true"
       >
         <User class="h-3.5 w-3.5" />
-        <span class="hidden max-w-[11rem] truncate sm:inline" :title="currentCandidate?.name">
+        <span
+          class="hidden max-w-[11rem] truncate sm:inline"
+          :title="currentCandidate?.name"
+        >
           {{ currentCandidate?.name ?? "候选人" }}
         </span>
         <ChevronsUpDown class="ml-auto h-3.5 w-3.5 opacity-70" />
-      </Button>
-      <Button variant="ghost" size="icon" class="h-8 w-8" @click="handleRemove">
-        <X class="h-4 w-4" />
       </Button>
     </div>
 
@@ -125,7 +125,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { ChevronsUpDown, Loader2, Search, User, X } from "lucide-vue-next";
+import { ChevronsUpDown, Loader2, Search, User } from "lucide-vue-next";
 import { candidatesApi } from "@/api/candidates";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
@@ -292,12 +292,6 @@ function handleConfirm() {
   selectedId.value = null;
   searchQuery.value = "";
   candidates.value = [];
-}
-
-function handleRemove() {
-  currentCandidate.value = null;
-  emit("update:modelValue", null);
-  emit("select", null);
 }
 
 function formatInterviewTime(timestamp?: number | null) {

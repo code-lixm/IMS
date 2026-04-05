@@ -1,0 +1,12 @@
+{
+  "id": "T-c0a73fc7-4895-45f4-8bbb-35fc2c113c3f",
+  "subject": "整理现有运行证据",
+  "description": "定位与读取截图、日志、相关计划文档中的 F3 上下文，确认需要验证的四条关键路径。",
+  "status": "completed",
+  "activeForm": "正在整理现有运行证据",
+  "blocks": [],
+  "blockedBy": [],
+  "repoURL": "file:///Users/lixiaoming/Desktop/desktop/personal/IMS",
+  "parentID": "T-71e15fc7-b2b7-4f2e-b206-cdb366cdd8b4",
+  "threadID": "ses_2a62c7127ffeOc6kGPPFMbwhe2"
+}

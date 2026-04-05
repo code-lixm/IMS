@@ -1,0 +1,12 @@
+{
+  "id": "T-5670a3ac-844a-4240-9e9d-b1f2c47a4057",
+  "subject": "梳理 stale cleanup 与会话依赖",
+  "description": "检查 LUI agents 清理规则、routes 会话详情接口与前端 conversation store 对 agentId 的假设",
+  "status": "completed",
+  "activeForm": "正在梳理 stale cleanup 与会话依赖",
+  "blocks": [],
+  "blockedBy": [],
+  "owner": "codex",
+  "repoURL": ".",
+  "threadID": "ses_2a67459e3ffeCMZkXp1aqZ1Bdl"
+}

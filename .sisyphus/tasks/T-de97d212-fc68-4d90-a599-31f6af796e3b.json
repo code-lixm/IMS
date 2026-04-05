@@ -1,0 +1,13 @@
+{
+  "id": "T-de97d212-fc68-4d90-a599-31f6af796e3b",
+  "subject": "删除阶段和流程 UI",
+  "description": "移除右上角阶段按钮与左侧面试流程中的出题阶段，保留纯对话视图",
+  "status": "completed",
+  "activeForm": "正在删除阶段和流程 UI",
+  "blocks": [],
+  "blockedBy": [
+    "T-fd7cfe7d-574d-4a53-8b4e-12f47c2c2f96"
+  ],
+  "parentID": "T-9c95c31a-80ce-4d5c-a1da-99787da42e37",
+  "threadID": "ses_2a5bb69beffe0prBD2Ql80MAhj"
+}
