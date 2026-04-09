@@ -765,13 +765,10 @@ const gatewayEndpointForm = reactive({
 const AGENT_ENGINE_OPTIONS = ["builtin", "deepagents"] as const;
 const AGENT_MODE_OPTIONS = ["chat", "ask", "all", "workflow"] as const;
 const AGENT_TOOL_OPTIONS = [
-  "ensureWorkspace",
-  "resolveRound",
-  "buildWechatCopyText",
-  "scanPdf",
-  "sanitizeInterviewNotes",
-  "batchScreenResumes",
-  "writeMarkdown",
+  'scan_resume',
+  'screen_resumes',
+  'sanitize_interview_notes',
+  'generate_wechat_summary',
 ] as const;
 const agentForm = reactive({
   name: "",
