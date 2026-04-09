@@ -32,11 +32,10 @@ const DEFAULT_INTERVIEW_AGENT = {
     "输出保持专业、简洁、可执行，不要暴露底层运行实现。",
   ].join("\n"),
   tools: [
-
-    "scanPdf",
-    "sanitizeInterviewNotes",
-    "batchScreenResumes",
-    "buildWechatCopyText",
+    "scan_resume",
+    "sanitize_interview_notes",
+    "screen_resumes",
+    "generate_wechat_summary",
   ],
 };
 

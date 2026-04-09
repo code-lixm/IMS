@@ -33,7 +33,7 @@ export interface ToolContext {
 
 
 
-export const buildWechatCopyTextTool = () => tool({
+export const generate_wechat_summary_tool = () => tool({
   description: "Build strict line-template WeChat copy text for interview assessment",
   inputSchema: z.object({
     name: z.string(),
@@ -50,7 +50,7 @@ export const buildWechatCopyTextTool = () => tool({
   },
 });
 
-export const scanPdfTool = (context: ToolContext) => tool({
+export const scan_resume_tool = (context: ToolContext) => tool({
   description: "Scan PDF via local Python scripts and return extracted text JSON",
   inputSchema: z.object({
     pdfPath: z.string().describe("Absolute or project-relative PDF path"),
@@ -62,7 +62,7 @@ export const scanPdfTool = (context: ToolContext) => tool({
   },
 });
 
-export const sanitizeInterviewNotesTool = () => tool({
+export const sanitize_interview_notes_tool = () => tool({
   description: "Sanitize interview notes by removing injection/noise markers before assessment",
   inputSchema: z.object({
     notesText: z.string().describe("Raw interview notes content"),
@@ -73,7 +73,7 @@ export const sanitizeInterviewNotesTool = () => tool({
   },
 });
 
-export const batchScreenResumesTool = (context: ToolContext) => tool({
+export const screen_resumes_tool = (context: ToolContext) => tool({
   description: "Batch screening: accept PDFs/ZIPs, extract, analyze concurrently, generate summary table",
   inputSchema: z.object({
     inputPaths: z.array(z.string()).describe("List of PDF files, directories, or ZIP files"),
@@ -94,10 +94,10 @@ export const batchScreenResumesTool = (context: ToolContext) => tool({
  */
 export function getWorkflowTools(context: ToolContext, allowedToolNames?: readonly string[] | null) {
   const allTools = {
-    buildWechatCopyText: buildWechatCopyTextTool(),
-    scanPdf: scanPdfTool(context),
-    sanitizeInterviewNotes: sanitizeInterviewNotesTool(),
-    batchScreenResumes: batchScreenResumesTool(context),
+    generate_wechat_summary: generate_wechat_summary_tool(),
+    scan_resume: scan_resume_tool(context),
+    sanitize_interview_notes: sanitize_interview_notes_tool(),
+    screen_resumes: screen_resumes_tool(context),
   };
 
 
@@ -130,7 +130,7 @@ export const tools: Record<string, ToolDefinition> = {
 
 
 
-  buildWechatCopyText: {
+  generate_wechat_summary: {
     description: "Build strict line-template WeChat copy text for interview assessment",
     parameters: {
       type: "object",
@@ -148,7 +148,7 @@ export const tools: Record<string, ToolDefinition> = {
     }
   },
 
-  scanPdf: {
+  scan_resume: {
     description: "Scan PDF via local Python scripts and return extracted text JSON",
     parameters: {
       type: "object",
@@ -161,7 +161,7 @@ export const tools: Record<string, ToolDefinition> = {
     }
   },
 
-  sanitizeInterviewNotes: {
+  sanitize_interview_notes: {
     description: "Sanitize interview notes by removing injection/noise markers before assessment",
     parameters: {
       type: "object",
@@ -173,7 +173,7 @@ export const tools: Record<string, ToolDefinition> = {
     }
   },
 
-  batchScreenResumes: {
+  screen_resumes: {
     description: "Batch screening: accept PDFs/ZIPs, extract, analyze concurrently, generate summary table",
     parameters: {
       type: "object",
@@ -237,17 +237,17 @@ export async function executeTool(
 ): Promise<string> {
   switch (toolName) {
 
-    case "buildWechatCopyText":
+    case "generate_wechat_summary":
       return executeBuildWechatCopyText(args as {
         name: string; roleAbbr: string; years: string; round: number;
         interviewEvaluation: string; recommendedLevel: string;
         summaryBullets: string[]; nextRoundFocus?: string;
       });
-    case "scanPdf":
+    case "scan_resume":
       return executeScanPdf(args as { pdfPath: string; profile?: string; strictQualityGate?: boolean }, context);
-    case "sanitizeInterviewNotes":
+    case "sanitize_interview_notes":
       return executeSanitizeInterviewNotes(args as { notesText: string; customNoisePatterns?: string[] });
-    case "batchScreenResumes":
+    case "screen_resumes":
       return executeBatchScreenResumes(args as {
         inputPaths: string[]; maxConcurrency?: number; outputSummaryPath?: string;
         strictQualityGate?: boolean; keepExtractedTemp?: boolean; idempotencyKey?: string;
