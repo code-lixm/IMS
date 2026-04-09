@@ -31,28 +31,7 @@ export interface ToolContext {
 // Vercel AI SDK Tool Definitions (with Zod schemas)
 // ============================================================================
 
-export const ensureWorkspaceTool = (context: ToolContext) => tool({
-  description: "Create or verify candidate workspace exists under interviews/YYYY-MM-DD and initialize meta.json",
-  inputSchema: z.object({
-    candidateName: z.string().describe("Candidate name, e.g. 侯世纪"),
-    position: z.string().describe("Position name, e.g. 前端开发工程师"),
-    date: z.string().optional().describe("Date in YYYY-MM-DD format. Defaults to today."),
-  }),
-  execute: async ({ candidateName, position, date }) => {
-    return executeEnsureWorkspace({ candidateName, position, date }, context);
-  },
-});
 
-export const resolveRoundTool = () => tool({
-  description: "Resolve interview round (1-4) from text or previous round. Returns ask_required=true when undetected.",
-  inputSchema: z.object({
-    inputText: z.string().optional().describe("User request text or previous-round summary"),
-    previousRound: z.number().min(1).max(4).optional().describe("Known previous round number"),
-  }),
-  execute: async ({ inputText, previousRound }) => {
-    return executeResolveRound({ inputText, previousRound });
-  },
-});
 
 export const buildWechatCopyTextTool = () => tool({
   description: "Build strict line-template WeChat copy text for interview assessment",
@@ -109,31 +88,18 @@ export const batchScreenResumesTool = (context: ToolContext) => tool({
   },
 });
 
-export const writeMarkdownTool = (context: ToolContext) => tool({
-  description: "Write markdown content to a file. Creates or overwrites the file at the specified path.",
-  inputSchema: z.object({
-    filePath: z.string().describe("Absolute or project-relative file path (must end with .md)"),
-    content: z.string().describe("Markdown content to write"),
-    title: z.string().optional().describe("Optional title for the document"),
-  }),
-  execute: async ({ filePath, content, title }) => {
-    return executeWriteMarkdown({ filePath, content, title }, context);
-  },
-});
 
 /**
  * Get all tools for workflow execution
  */
 export function getWorkflowTools(context: ToolContext, allowedToolNames?: readonly string[] | null) {
   const allTools = {
-    ensureWorkspace: ensureWorkspaceTool(context),
-    resolveRound: resolveRoundTool(),
     buildWechatCopyText: buildWechatCopyTextTool(),
     scanPdf: scanPdfTool(context),
     sanitizeInterviewNotes: sanitizeInterviewNotesTool(),
     batchScreenResumes: batchScreenResumesTool(context),
-    writeMarkdown: writeMarkdownTool(context),
   };
+
 
   if (!allowedToolNames || allowedToolNames.length === 0) {
     return {};
@@ -160,29 +126,9 @@ export interface ToolDefinition {
 }
 
 export const tools: Record<string, ToolDefinition> = {
-  ensureWorkspace: {
-    description: "Create or verify candidate workspace exists under interviews/YYYY-MM-DD and initialize meta.json",
-    parameters: {
-      type: "object",
-      properties: {
-        candidateName: { type: "string", description: "Candidate name, e.g. 侯世纪" },
-        position: { type: "string", description: "Position name, e.g. 前端开发工程师" },
-        date: { type: "string", description: "Date in YYYY-MM-DD format. Defaults to today." }
-      },
-      required: ["candidateName", "position"]
-    }
-  },
 
-  resolveRound: {
-    description: "Resolve interview round (1-4) from text or previous round. Returns ask_required=true when undetected.",
-    parameters: {
-      type: "object",
-      properties: {
-        inputText: { type: "string", description: "User request text or previous-round summary" },
-        previousRound: { type: "number", minimum: 1, maximum: 4, description: "Known previous round number" }
-      }
-    }
-  },
+
+
 
   buildWechatCopyText: {
     description: "Build strict line-template WeChat copy text for interview assessment",
@@ -243,18 +189,6 @@ export const tools: Record<string, ToolDefinition> = {
     }
   },
 
-  writeMarkdown: {
-    description: "Write markdown content to a file. Creates or overwrites the file at the specified path.",
-    parameters: {
-      type: "object",
-      properties: {
-        filePath: { type: "string", description: "Absolute or project-relative file path (must end with .md)" },
-        content: { type: "string", description: "Markdown content to write" },
-        title: { type: "string", description: "Optional title for the document" }
-      },
-      required: ["filePath", "content"]
-    }
-  }
 };
 
 // ============================================================================
@@ -302,10 +236,7 @@ export async function executeTool(
   context: ToolContext
 ): Promise<string> {
   switch (toolName) {
-    case "ensureWorkspace":
-      return executeEnsureWorkspace(args as { candidateName: string; position: string; date?: string }, context);
-    case "resolveRound":
-      return executeResolveRound(args as { inputText?: string; previousRound?: number });
+
     case "buildWechatCopyText":
       return executeBuildWechatCopyText(args as {
         name: string; roleAbbr: string; years: string; round: number;
@@ -321,48 +252,12 @@ export async function executeTool(
         inputPaths: string[]; maxConcurrency?: number; outputSummaryPath?: string;
         strictQualityGate?: boolean; keepExtractedTemp?: boolean; idempotencyKey?: string;
       }, context);
-    case "writeMarkdown":
-      return executeWriteMarkdown(args as { filePath: string; content: string; title?: string }, context);
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
 }
 
-export async function executeEnsureWorkspace(
-  args: { candidateName: string; position: string; date?: string },
-  context: ToolContext
-): Promise<string> {
-  const date = args.date ?? todayDate();
-  const folderName = normalizeFolderName(args.candidateName);
-  const baseDir = path.join(context.directory, "interviews", date, folderName);
-  await mkdir(baseDir, { recursive: true });
-  const metaPath = path.join(baseDir, "meta.json");
-  let createdMeta = false;
-  try {
-    await access(metaPath);
-  } catch {
-    const meta = {
-      candidate: { name: args.candidateName, position: args.position },
-      workflow: { current_stage: "S0", status: "initialized", updated_at: new Date().toISOString() },
-      documents: { S0: null, S1: { latest_round: null, latest_file: null, round_files: {} }, S2: null }
-    };
-    await writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf-8");
-    createdMeta = true;
-  }
-  return JSON.stringify({ ok: true, candidate_folder_path: baseDir, meta_json_path: metaPath, created_meta: createdMeta }, null, 2);
-}
 
-export async function executeResolveRound(args: { inputText?: string; previousRound?: number }): Promise<string> {
-  const parsed = parseRound(args.inputText);
-  if (parsed) {
-    return JSON.stringify({ ok: true, round: parsed, source: "input_text", ask_required: false }, null, 2);
-  }
-  if (args.previousRound) {
-    const nextRound = Math.min(args.previousRound + 1, 4);
-    return JSON.stringify({ ok: true, round: nextRound, source: "previous_round_plus_one", ask_required: false }, null, 2);
-  }
-  return JSON.stringify({ ok: true, round: 1, source: "default", ask_required: true, prompt: "需要第几轮（1-4）？" }, null, 2);
-}
 
 export async function executeBuildWechatCopyText(args: {
   name: string; roleAbbr: string; years: string; round: number;
@@ -758,51 +653,6 @@ ${args.idempotencyKey ? `\n**幂等键**: ${args.idempotencyKey}` : ""}
   }
 }
 
-export async function executeWriteMarkdown(
-  args: { filePath: string; content: string; title?: string },
-  context: ToolContext
-): Promise<string> {
-  // Validate file path ends with .md
-  if (!args.filePath.endsWith(".md")) {
-    throw new Error("File path must end with .md extension");
-  }
-
-  // Resolve the file path
-  const resolvedPath = path.isAbsolute(args.filePath)
-    ? args.filePath
-    : path.join(context.directory, args.filePath);
-
-  // Ensure parent directory exists
-  const parentDir = path.dirname(resolvedPath);
-  await mkdir(parentDir, { recursive: true });
-
-  // Add frontmatter with title if provided
-  let content = args.content;
-  if (args.title) {
-    const frontmatter = `---
-title: "${args.title.replace(/"/g, '\\"')}"
-date: ${new Date().toISOString()}
----
-
-`;
-    content = frontmatter + content;
-  }
-
-  // Write the file
-  await writeFile(resolvedPath, content, "utf-8");
-
-  // Get file stats
-  const stats = await stat(resolvedPath);
-
-  return JSON.stringify({
-    ok: true,
-    file_path: resolvedPath,
-    file_name: path.basename(resolvedPath),
-    size: stats.size,
-    content_length: content.length,
-    message: `Successfully wrote ${stats.size} bytes to ${resolvedPath}`
-  }, null, 2);
-}
 
 // ============================================================================
 // Database-Aware Tool Implementations (IMS Integration)
