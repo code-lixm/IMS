@@ -16,6 +16,9 @@ import { z } from "zod";
 import { tool } from "ai";
 import { db } from "../db";
 import { candidates, resumes, interviews, luiWorkflows } from "../schema";
+import { syncWorkflowMetaFile } from "./workflow-meta";
+import { buildWechatCopyTextFromStructuredAssessment } from "./document-templates";
+import type { StructuredInterviewAssessmentView } from "./document-templates";
 
 // ============================================================================
 // Tool Context
@@ -43,10 +46,58 @@ export const generate_wechat_summary_tool = () => tool({
     interviewEvaluation: z.string(),
     recommendedLevel: z.string(),
     summaryBullets: z.array(z.string()),
+    summaryItems: z.array(z.object({
+      scene: z.string(),
+      performance: z.string(),
+      evaluation: z.string(),
+    })).optional(),
     nextRoundFocus: z.string().optional(),
   }),
   execute: async (args) => {
     return executeBuildWechatCopyText(args);
+  },
+});
+
+export const interview_buildWechatCopyText_tool = () => tool({
+  description: "OpenCode-compatible alias for generate_wechat_summary",
+  inputSchema: z.object({
+    name: z.string(),
+    roleAbbr: z.string(),
+    years: z.string(),
+    round: z.number().min(1).max(4),
+    interviewEvaluation: z.string(),
+    recommendedLevel: z.string(),
+    summaryBullets: z.array(z.string()),
+    summaryItems: z.array(z.object({
+      scene: z.string(),
+      performance: z.string(),
+      evaluation: z.string(),
+    })).optional(),
+    nextRoundFocus: z.string().optional(),
+  }),
+  execute: async (args) => executeBuildWechatCopyText(args),
+});
+
+export const interview_resolveRound_tool = () => tool({
+  description: "OpenCode-compatible round resolver alias",
+  inputSchema: z.object({
+    text: z.string(),
+    fallbackRound: z.number().min(1).max(4).optional(),
+  }),
+  execute: async ({ text, fallbackRound }) => {
+    const directRound = parseRound(text);
+    const nextRoundFromPrevious = (() => {
+      const normalized = String(text).toLowerCase();
+      const previousRoundMatch = normalized.match(/(?:上一轮|上轮|前一轮).*?第\s*([1-4])\s*轮/);
+      if (!previousRoundMatch) {
+        return null;
+      }
+      const nextRound = Number(previousRoundMatch[1]) + 1;
+      return nextRound >= 1 && nextRound <= 4 ? nextRound : null;
+    })();
+    const detectedRound = nextRoundFromPrevious ?? directRound;
+    const resolved = detectedRound ?? fallbackRound ?? 1;
+    return JSON.stringify({ round: resolved, ask_required: detectedRound === null });
   },
 });
 
@@ -95,6 +146,8 @@ export const screen_resumes_tool = (context: ToolContext) => tool({
 export function getWorkflowTools(context: ToolContext, allowedToolNames?: readonly string[] | null) {
   const allTools = {
     generate_wechat_summary: generate_wechat_summary_tool(),
+    interview_buildWechatCopyText: interview_buildWechatCopyText_tool(),
+    interview_resolveRound: interview_resolveRound_tool(),
     scan_resume: scan_resume_tool(context),
     sanitize_interview_notes: sanitize_interview_notes_tool(),
     screen_resumes: screen_resumes_tool(context),
@@ -142,10 +195,62 @@ export const tools: Record<string, ToolDefinition> = {
         interviewEvaluation: { type: "string" },
         recommendedLevel: { type: "string" },
         summaryBullets: { type: "array", items: { type: "string" } },
+        summaryItems: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              scene: { type: "string" },
+              performance: { type: "string" },
+              evaluation: { type: "string" },
+            },
+            required: ["scene", "performance", "evaluation"],
+          },
+        },
         nextRoundFocus: { type: "string" }
       },
       required: ["name", "roleAbbr", "years", "round", "interviewEvaluation", "recommendedLevel", "summaryBullets"]
     }
+  },
+  interview_buildWechatCopyText: {
+    description: "OpenCode-compatible alias for generate_wechat_summary",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        roleAbbr: { type: "string" },
+        years: { type: "string" },
+        round: { type: "number", minimum: 1, maximum: 4 },
+        interviewEvaluation: { type: "string" },
+        recommendedLevel: { type: "string" },
+        summaryBullets: { type: "array", items: { type: "string" } },
+        summaryItems: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              scene: { type: "string" },
+              performance: { type: "string" },
+              evaluation: { type: "string" },
+            },
+            required: ["scene", "performance", "evaluation"],
+          },
+        },
+        nextRoundFocus: { type: "string" },
+      },
+      required: ["name", "roleAbbr", "years", "round", "interviewEvaluation", "recommendedLevel", "summaryBullets"],
+    },
+  },
+  interview_resolveRound: {
+    description: "OpenCode-compatible round resolver alias",
+    parameters: {
+      type: "object",
+      properties: {
+        text: { type: "string" },
+        fallbackRound: { type: "number", minimum: 1, maximum: 4 },
+      },
+      required: ["text"],
+    },
   },
 
   scan_resume: {
@@ -238,11 +343,30 @@ export async function executeTool(
   switch (toolName) {
 
     case "generate_wechat_summary":
+    case "interview_buildWechatCopyText":
       return executeBuildWechatCopyText(args as {
         name: string; roleAbbr: string; years: string; round: number;
         interviewEvaluation: string; recommendedLevel: string;
-        summaryBullets: string[]; nextRoundFocus?: string;
+        summaryBullets: string[];
+        summaryItems?: Array<{ scene: string; performance: string; evaluation: string }>;
+        nextRoundFocus?: string;
       });
+    case "interview_resolveRound": {
+      const input = args as { text: string; fallbackRound?: number };
+      const directRound = parseRound(input.text);
+      const nextRoundFromPrevious = (() => {
+        const normalized = String(input.text).toLowerCase();
+        const previousRoundMatch = normalized.match(/(?:上一轮|上轮|前一轮).*?第\s*([1-4])\s*轮/);
+        if (!previousRoundMatch) {
+          return null;
+        }
+        const nextRound = Number(previousRoundMatch[1]) + 1;
+        return nextRound >= 1 && nextRound <= 4 ? nextRound : null;
+      })();
+      const detectedRound = nextRoundFromPrevious ?? directRound;
+      const round = detectedRound ?? input.fallbackRound ?? 1;
+      return JSON.stringify({ round, ask_required: detectedRound === null });
+    }
     case "scan_resume":
       return executeScanPdf(args as { pdfPath: string; profile?: string; strictQualityGate?: boolean }, context);
     case "sanitize_interview_notes":
@@ -262,12 +386,21 @@ export async function executeTool(
 export async function executeBuildWechatCopyText(args: {
   name: string; roleAbbr: string; years: string; round: number;
   interviewEvaluation: string; recommendedLevel: string;
-  summaryBullets: string[]; nextRoundFocus?: string;
+  summaryBullets: string[];
+  summaryItems?: Array<{ scene: string; performance: string; evaluation: string }>;
+  nextRoundFocus?: string;
 }): Promise<string> {
   const REJECT_EVALUATION_PATTERN = /(淘汰|不合格)/;
+  const REJECT_GRADE_PATTERN = /^(B|C)(?:（.*）)?$/;
   const LEVEL_CODE_PATTERN = /^(P[5-8][+-]?|不推荐)$/;
-  const normalizedEvaluation = String(args.interviewEvaluation ?? "").trim();
-  const isRejectedFlow = REJECT_EVALUATION_PATTERN.test(normalizedEvaluation);
+  const rawEvaluation = String(args.interviewEvaluation ?? "").trim();
+  const normalizedEvaluation = rawEvaluation === "B"
+    ? "B（非必要不推荐）"
+    : rawEvaluation === "C"
+      ? "C（面试淘汰）"
+      : rawEvaluation;
+  const isRejectedFlow = REJECT_EVALUATION_PATTERN.test(normalizedEvaluation)
+    || REJECT_GRADE_PATTERN.test(normalizedEvaluation);
   let normalizedLevel = String(args.recommendedLevel ?? "").trim();
   if (isRejectedFlow) normalizedLevel = "不推荐";
   if (!LEVEL_CODE_PATTERN.test(normalizedLevel)) {
@@ -276,21 +409,90 @@ export async function executeBuildWechatCopyText(args: {
   if (isRejectedFlow && args.recommendedLevel && args.recommendedLevel !== "不推荐") {
     throw new Error("Rejected evaluation must use recommendedLevel=不推荐");
   }
-  const lines = [
-    `${args.name} ${args.roleAbbr} ${args.years}`,
-    `面试轮次：第${args.round}轮`,
-    `面试评价：${normalizedEvaluation}`,
-    `推荐职级：${normalizedLevel}`,
-    "面试总结：",
-    ...args.summaryBullets.map((item) => `- ${item}`)
-  ];
+
+  const normalizedSummaryItems = Array.isArray(args.summaryItems) && args.summaryItems.length > 0
+    ? args.summaryItems
+      .map((item) => ({
+        scene: String(item.scene ?? "").trim(),
+        performance: String(item.performance ?? "").trim(),
+        evaluation: String(item.evaluation ?? "").trim(),
+      }))
+      .filter((item) => item.scene && item.performance && item.evaluation)
+      .slice(0, 3)
+    : args.summaryBullets
+      .map((item) => {
+        const normalized = item.trim();
+        const fullMatch = normalized.match(/^场景：(.+?)；表现：(.+?)；评价：(.+)$/);
+        if (fullMatch) {
+          return {
+            scene: fullMatch[1].trim(),
+            performance: fullMatch[2].trim(),
+            evaluation: fullMatch[3].trim(),
+          };
+        }
+
+        const sceneEvaluationMatch = normalized.match(/^场景：(.+?)；评价：(.+)$/);
+        if (sceneEvaluationMatch) {
+          return {
+            scene: sceneEvaluationMatch[1].trim(),
+            performance: sceneEvaluationMatch[2].trim(),
+            evaluation: sceneEvaluationMatch[2].trim(),
+          };
+        }
+
+        return {
+          scene: normalized,
+          performance: normalized,
+          evaluation: normalized,
+        };
+      })
+      .slice(0, 3);
+
+  const formatNextRoundFocus = (value: string) => {
+    const items = value
+      .split(/[、,，；;\n]+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+
+    if (items.length === 0) {
+      return [];
+    }
+
+    return [
+      "下一阶段面试侧重点：",
+      ...items.map((item) => `- ${item}`),
+    ];
+  };
+
   if (isRejectedFlow && args.nextRoundFocus) {
     throw new Error("Rejected evaluation must not provide nextRoundFocus.");
   }
-  if (!isRejectedFlow && args.nextRoundFocus) {
-    lines.push(`下一阶段面试侧重点：${args.nextRoundFocus.trim()}`);
-  }
-  return lines.join("\n");
+
+  const nextRoundFocusItems = !isRejectedFlow && args.nextRoundFocus
+    ? formatNextRoundFocus(args.nextRoundFocus.trim()).slice(1)
+    : [];
+
+  return buildWechatCopyTextFromStructuredAssessment({
+    candidateName: args.name,
+    roleAbbr: args.roleAbbr,
+    years: args.years,
+    round: args.round,
+    grade: (normalizedEvaluation.split("（")[0]?.trim() || normalizedEvaluation) as "A+" | "A" | "B+" | "B" | "C",
+    recommendedLevel: normalizedLevel,
+    scoreSummary: "待补充",
+    evidenceCompleteness: "待补充",
+    overallJudgement: "待补充",
+    analysisConclusion: "待补充",
+    questionScores: [{ topic: "待补充", observation: "待补充", score: "待补充" }],
+    balanceHighlights: [{ dimension: "待补充", strength: "待补充", risk: "待补充" }],
+    feedbackComparisons: [{ topic: "待补充", systemJudgement: "待补充", interviewerFeedback: "待补充", conclusion: "待补充" }],
+    wechatSummaryItems: normalizedSummaryItems.length > 0 ? normalizedSummaryItems : [{ scene: "待补充", performance: "待补充", evaluation: "待补充" }],
+    eliminateReasons: [],
+    nextRound: isRejectedFlow ? null : Math.min(args.round + 1, 4),
+    nextRoundSuggestions: [],
+    nextRoundFocus: nextRoundFocusItems.map((item) => item.replace(/^- /, "").trim()),
+    shouldContinue: !isRejectedFlow,
+  });
 }
 
 export async function executeScanPdf(
@@ -764,7 +966,7 @@ export async function getCandidateInterviews(candidateId: string): Promise<Array
 export async function updateWorkflowDocument(
   workflowId: string,
   stage: "S0" | "S1" | "S2",
-  document: { filePath?: string; content?: string; summary?: string }
+  document: { filePath?: string; content?: string; summary?: string; round?: number; structuredData?: StructuredInterviewAssessmentView | null }
 ): Promise<void> {
   const [workflow] = await db
     .select({ documentsJson: luiWorkflows.documentsJson })
@@ -775,10 +977,33 @@ export async function updateWorkflowDocument(
   if (!workflow) return;
 
   const documents = workflow.documentsJson ? JSON.parse(workflow.documentsJson) : {};
-  documents[stage] = {
+  const generatedAt = new Date().toISOString();
+  const nextDocument = {
+    ...documents[stage],
     ...document,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
   };
+
+  if (stage === "S1") {
+    const existingRoundFiles = typeof documents.S1?.roundFiles === "object" && documents.S1?.roundFiles
+      ? documents.S1.roundFiles
+      : {};
+    const nextRoundFiles = { ...existingRoundFiles };
+
+    if (typeof document.round === "number" && document.filePath) {
+      nextRoundFiles[document.round] = document.filePath;
+      Object.assign(nextDocument, {
+        round: document.round,
+        latestRound: document.round,
+        latestFile: document.filePath,
+        roundFiles: nextRoundFiles,
+      });
+    } else if (Object.keys(existingRoundFiles).length > 0) {
+      Object.assign(nextDocument, { roundFiles: existingRoundFiles });
+    }
+  }
+
+  documents[stage] = nextDocument;
 
   await db
     .update(luiWorkflows)
@@ -787,4 +1012,6 @@ export async function updateWorkflowDocument(
       updatedAt: new Date(),
     })
     .where(eq(luiWorkflows.id, workflowId));
+
+  await syncWorkflowMetaFile(workflowId);
 }

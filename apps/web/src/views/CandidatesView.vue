@@ -1,24 +1,28 @@
 <template>
   <AppPageShell class="flex h-screen flex-col overflow-hidden">
-    <CandidatePageHeader
-      v-model:search="search"
-      :search-suggestions="searchSuggestions"
-      :is-importing="isImporting"
-      :import-activity-count="importActivity.activeBatchCount.value"
-      :sync-loading="syncStore.loading"
-      :sync-error="syncStore.status.lastError"
-      :sync-enabled="syncStore.status.enabled"
-      @search="scheduleSearch"
-      @create="setCreateDialogOpen(true)"
-      @import="triggerImport"
-      @goto-import="goToImportPage"
-      @sync="runSyncNow"
-    />
+    <div data-onboarding="candidates-header">
+      <CandidatePageHeader
+        v-model:search="search"
+        :search-suggestions="searchSuggestions"
+        :is-importing="isImporting"
+        :import-activity-count="importActivity.activeBatchCount.value"
+        :sync-loading="syncStore.loading"
+        :sync-error="syncStore.status.lastError"
+        :sync-enabled="syncStore.status.enabled"
+        :reset-sync-loading="syncStore.resetLoading"
+        @search="scheduleSearch"
+        @create="setCreateDialogOpen(true)"
+        @import="triggerImport"
+        @goto-import="goToImportPage"
+        @sync="runSyncNow"
+        @reset-sync="runResetSyncNow"
+      />
+    </div>
 
     <AppPageContent class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <CandidateFeedbackBanner :feedback="feedback" class="mb-4 shrink-0" @dismiss="clearFeedback" />
 
-      <div class="flex min-h-0 flex-1 overflow-hidden">
+      <div class="flex min-h-0 flex-1 overflow-hidden" data-onboarding="candidates-list">
         <CandidateList
           :items="store.list"
           :loading="store.loading"
@@ -119,6 +123,10 @@ const isBatchSharing = ref(false);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(store.total / store.pageSize)));
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "未知错误";
+}
+
 // 计算当前页的选择状态
 const pageSelectionState = computed(() => {
   return batchSelection.getSelectionStateForPage(store.list);
@@ -151,6 +159,22 @@ async function handleDelete(candidateId: string) {
 async function runSyncNow() {
   await syncStore.runNow();
   await store.refreshCurrentPage();
+}
+
+async function runResetSyncNow() {
+  try {
+    const result = await syncStore.resetAndRun();
+    await store.refreshCurrentPage();
+    setFeedback({
+      tone: "success",
+      message: `已删除 ${result.clearedCandidates} 条本地候选人记录，并重新同步 ${result.syncedCandidates} 条候选人。`,
+    });
+  } catch (error: unknown) {
+    setFeedback({
+      tone: "error",
+      message: `重置并重新导入失败：${getErrorMessage(error)}`,
+    });
+  }
 }
 
 async function goToPage(targetPage: number) {

@@ -131,59 +131,9 @@ export async function ensureCandidateResumeAvailable(candidateId: string): Promi
 }
 
 export async function syncCandidateResumesToConversation(conversationId: string, candidateId: string): Promise<number> {
-  const candidateResumeRows = await db
-    .select({
-      id: resumes.id,
-      fileName: resumes.fileName,
-      filePath: resumes.filePath,
-      fileSize: resumes.fileSize,
-      extractedText: resumes.extractedText,
-      createdAt: resumes.createdAt,
-    })
-    .from(resumes)
-    .where(eq(resumes.candidateId, candidateId))
-    .orderBy(desc(resumes.createdAt));
-
-  if (candidateResumeRows.length === 0) {
-    return 0;
-  }
-
-  const conversationFileRows = await db
-    .select({
-      filePath: fileResources.filePath,
-      name: fileResources.name,
-      size: fileResources.size,
-    })
-    .from(fileResources)
-    .where(eq(fileResources.conversationId, conversationId));
-
-  const existingKeys = new Set(
-    conversationFileRows.map((file) => `${file.filePath ?? ""}::${file.name}::${file.size}`)
-  );
-
-  const rowsToInsert = candidateResumeRows
-    .filter((resume) => {
-      const key = `${resume.filePath}::${resume.fileName}::${resume.fileSize}`;
-      return !existingKeys.has(key);
-    })
-    .map((resume) => ({
-      id: `file_${crypto.randomUUID()}`,
-      conversationId,
-      name: resume.fileName,
-      type: "document" as const,
-      content: resume.extractedText ?? "",
-      filePath: resume.filePath,
-      language: null,
-      size: resume.fileSize,
-      createdAt: new Date(resume.createdAt),
-    }));
-
-  if (rowsToInsert.length === 0) {
-    return 0;
-  }
-
-  await db.insert(fileResources).values(rowsToInsert);
-  return rowsToInsert.length;
+  void conversationId;
+  void candidateId;
+  return 0;
 }
 
 async function resolveRemoteResumeId(candidateId: string): Promise<string | null> {

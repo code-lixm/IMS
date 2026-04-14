@@ -22,7 +22,11 @@ export function createInterviewConversationPolicy(): LuiConversationPolicy {
   return {
     sceneId: "interview",
     displayName: "面试场景",
-    beforeCreateConversation(conversations, candidateId) {
+    beforeCreateConversation(conversations, candidateId, options) {
+      if (options?.forceCreate) {
+        return {};
+      }
+
       if (!candidateId) {
         return {};
       }
@@ -45,8 +49,7 @@ export function filterInterviewConversations(
   }
 
   return conversations.filter(
-    (conversation) =>
-      conversation.candidateId === null || conversation.candidateId === candidateId,
+    (conversation) => conversation.candidateId === candidateId,
   );
 }
 

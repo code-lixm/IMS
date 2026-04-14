@@ -13,6 +13,46 @@ import { db } from '../db';
 import { messages } from '../schema';
 import { eq, sql } from 'drizzle-orm';
 import type { MessageRole, MessageStatus } from '@ims/shared';
+import {
+  buildInterviewAssessmentMarkdownFromStructuredData,
+  extractStructuredInterviewAssessmentBlock,
+} from './document-templates';
+
+type WorkflowAction = 'confirm-round' | 'advance-stage' | 'complete-workflow';
+
+const WORKFLOW_ACTION_MARKER_PATTERN = /<!--\s*workflow-action:(confirm-round|advance-stage|complete-workflow)\s*-->/g;
+const WORKFLOW_ACTION_META_KIND = '__workflow_action__';
+
+type StreamChunkLike = {
+  type?: unknown;
+  text?: unknown;
+  delta?: unknown;
+  textDelta?: unknown;
+  [key: string]: unknown;
+};
+
+type StreamChunkPayload = {
+  chunk: StreamChunkLike;
+};
+
+type StreamFinishPayload = {
+  text?: unknown;
+  isAborted?: boolean;
+};
+
+type StreamErrorPayload = {
+  error: unknown;
+};
+
+type AssistantStreamPersistenceHandlers = {
+  onChunk: (payload: StreamChunkPayload) => Promise<void>;
+  onFinish: (payload: StreamFinishPayload) => Promise<void>;
+  onError: (payload: StreamErrorPayload) => Promise<void>;
+};
+
+const THINK_OPEN_TAG = '<think>';
+const THINK_CLOSE_TAG = '</think>';
+const STALE_STREAMING_MESSAGE_MS = 2 * 60 * 1000;
 
 // 类型别名
 type MessageRow = typeof messages.$inferSelect;
@@ -40,6 +80,198 @@ function toMessage(row: MessageRow): {
     status: row.status as MessageStatus,
     createdAt: typeof row.createdAt === 'number' ? row.createdAt : new Date(row.createdAt).getTime(),
   };
+}
+
+function parseWorkflowActionMarker(content: string): {
+  cleanedContent: string;
+  workflowAction: WorkflowAction | null;
+} {
+  const matches = Array.from(content.matchAll(WORKFLOW_ACTION_MARKER_PATTERN));
+  const workflowAction = (matches.at(-1)?.[1] ?? null) as WorkflowAction | null;
+  const cleanedContent = content.replace(WORKFLOW_ACTION_MARKER_PATTERN, '').trim();
+
+  return { cleanedContent, workflowAction };
+}
+
+function stripFunctionCalls(content: string): string {
+  if (!content) {
+    return '';
+  }
+  let cleaned = content;
+  cleaned = cleaned.replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '');
+  cleaned = cleaned.replace(/<function_calls>[\s\S]*$/g, '');
+  cleaned = cleaned.replace(/<\/function_calls>/g, '');
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  return cleaned.trim();
+}
+
+function extractEmbeddedReasoning(content: string): {
+  content: string;
+  reasoning: string | null;
+} {
+  if (!content) {
+    return {
+      content: '',
+      reasoning: null,
+    };
+  }
+
+  const trimmedStart = content.trimStart();
+  if (!trimmedStart.startsWith(THINK_OPEN_TAG)) {
+    return {
+      content,
+      reasoning: null,
+    };
+  }
+
+  const leadingWhitespaceLength = content.length - trimmedStart.length;
+  const afterOpen = content.slice(leadingWhitespaceLength + THINK_OPEN_TAG.length);
+  const closeIndex = afterOpen.indexOf(THINK_CLOSE_TAG);
+
+  if (closeIndex < 0) {
+    return {
+      content: '',
+      reasoning: afterOpen || null,
+    };
+  }
+
+  return {
+    content: afterOpen.slice(closeIndex + THINK_CLOSE_TAG.length).trimStart(),
+    reasoning: afterOpen.slice(0, closeIndex) || null,
+  };
+}
+
+function normalizeDisplayState(message: {
+  role: MessageRole;
+  content: string;
+  reasoning: string | null;
+  toolsJson: string | null;
+  status: MessageStatus;
+  createdAt: number | Date;
+}) {
+  const extracted = extractEmbeddedReasoning(message.content);
+  const reasoning = message.reasoning ?? extracted.reasoning;
+  const content = extracted.reasoning ? extracted.content : message.content;
+  const createdAt = typeof message.createdAt === 'number'
+    ? message.createdAt
+    : new Date(message.createdAt).getTime();
+  const age = Date.now() - createdAt;
+  const hasVisibleContent = content.trim().length > 0 || (reasoning?.trim().length ?? 0) > 0;
+  const hasTools = parseStoredToolsJson(message.toolsJson).tools?.length ?? 0;
+
+  const status = message.status === 'streaming'
+    && message.role === 'assistant'
+    && !hasVisibleContent
+    && hasTools === 0
+    && age > STALE_STREAMING_MESSAGE_MS
+    ? 'error'
+    : message.status;
+
+  return {
+    content,
+    reasoning,
+    status,
+  };
+}
+
+function parseStoredToolsJson(toolsJson: string | null): {
+  tools: unknown[] | null;
+  workflowAction: WorkflowAction | null;
+} {
+  if (!toolsJson) {
+    return { tools: null, workflowAction: null };
+  }
+
+  try {
+    const parsed = JSON.parse(toolsJson) as unknown;
+    if (!Array.isArray(parsed)) {
+      return { tools: null, workflowAction: null };
+    }
+
+    let workflowAction: WorkflowAction | null = null;
+    const tools = parsed.filter((entry) => {
+      if (
+        entry
+        && typeof entry === 'object'
+        && WORKFLOW_ACTION_META_KIND in entry
+        && typeof (entry as Record<string, unknown>)[WORKFLOW_ACTION_META_KIND] === 'string'
+      ) {
+        workflowAction = (entry as Record<string, WorkflowAction>)[WORKFLOW_ACTION_META_KIND];
+        return false;
+      }
+      return true;
+    });
+
+    return {
+      tools: tools.length > 0 ? tools : null,
+      workflowAction,
+    };
+  } catch {
+    return { tools: null, workflowAction: null };
+  }
+}
+
+function mergeStoredToolsJson(toolsJson: string | null | undefined, workflowAction: WorkflowAction | null): string | null | undefined {
+  if (toolsJson === undefined && workflowAction === null) {
+    return undefined;
+  }
+
+  const parsed = parseStoredToolsJson(toolsJson ?? null);
+  const nextEntries = parsed.tools ? [...parsed.tools] : [];
+  if (workflowAction) {
+    nextEntries.push({ [WORKFLOW_ACTION_META_KIND]: workflowAction });
+  }
+
+  return nextEntries.length > 0 ? JSON.stringify(nextEntries) : null;
+}
+
+export function getWorkflowActionFromToolsJson(toolsJson: string | null | undefined): WorkflowAction | null {
+  return parseStoredToolsJson(toolsJson ?? null).workflowAction;
+}
+
+export function serializeMessageData(message: {
+  id: string;
+  conversationId: string;
+  role: MessageRole;
+  content: string;
+  reasoning: string | null;
+  toolsJson: string | null;
+  status: MessageStatus;
+  createdAt: number | Date;
+}) {
+  const { tools, workflowAction } = parseStoredToolsJson(message.toolsJson);
+  const normalized = normalizeDisplayState(message);
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    role: message.role,
+    content: normalized.content,
+    reasoning: normalized.reasoning,
+    workflowAction,
+    tools,
+    status: normalized.status,
+    createdAt: typeof message.createdAt === 'number'
+      ? message.createdAt
+      : new Date(message.createdAt).getTime(),
+  };
+}
+
+function coerceChunkText(chunk: StreamChunkLike): string {
+  const candidates = [chunk.text, chunk.textDelta, chunk.delta];
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+  return '';
+}
+
+function isToolLikeChunkType(type: string): boolean {
+  return type.startsWith('tool-') || type.startsWith('source');
+}
+
+function toSerializableChunk(chunk: StreamChunkLike): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(chunk)) as Record<string, unknown>;
 }
 
 /**
@@ -125,6 +357,87 @@ export class MessageService {
     return toMessage(row);
   }
 
+  async createAssistantStreamingMessage(conversationId: string): Promise<string> {
+    const message = await this.createMessage({
+      conversationId,
+      role: 'assistant',
+      content: '',
+    });
+
+    return message.id;
+  }
+
+  createAssistantStreamPersistenceHandlers(messageId: string): AssistantStreamPersistenceHandlers {
+    let finalContent = '';
+    let finalReasoning = '';
+    let toolEntries: Record<string, unknown>[] = [];
+    let queue = Promise.resolve();
+
+    const enqueue = (operation: () => Promise<void>) => {
+      queue = queue
+        .then(operation)
+        .catch((error) => {
+          console.error('[message-service] assistant stream persistence failed', {
+            messageId,
+            error,
+          });
+        });
+      return queue;
+    };
+
+    return {
+      onChunk: async ({ chunk }) => enqueue(async () => {
+        const type = typeof chunk.type === 'string' ? chunk.type : '';
+        const text = coerceChunkText(chunk);
+
+        if (type === 'text' || type === 'text-delta') {
+          if (!text) {
+            return;
+          }
+          finalContent += text;
+          await this.appendContent(messageId, text);
+          return;
+        }
+
+        if (type === 'reasoning' || type === 'reasoning-delta') {
+          if (!text) {
+            return;
+          }
+          finalReasoning += text;
+          await this.updateMessage(messageId, { reasoning: finalReasoning });
+          return;
+        }
+
+        if (type && isToolLikeChunkType(type)) {
+          toolEntries = [...toolEntries, toSerializableChunk(chunk)];
+          await this.updateMessage(messageId, {
+            toolsJson: JSON.stringify(toolEntries),
+          });
+        }
+      }),
+      onFinish: async ({ text, isAborted }) => {
+        await queue;
+
+        if (isAborted) {
+          await this.markError(messageId, finalContent || '消息生成已中止');
+          return;
+        }
+
+        await this.completeMessage(
+          messageId,
+          typeof text === 'string' && text.length > 0 ? text : finalContent,
+        );
+      },
+      onError: async ({ error }) => {
+        await queue;
+        await this.markError(
+          messageId,
+          error instanceof Error ? error.message : '消息生成失败',
+        );
+      },
+    };
+  }
+
   /**
    * 更新消息内容（用于流式追加）
    * @param messageId 消息 ID
@@ -195,7 +508,19 @@ export class MessageService {
     };
 
     if (finalContent !== undefined) {
-      updateData.content = finalContent;
+      const sanitizedContent = stripFunctionCalls(finalContent);
+      const { cleanedContent, workflowAction } = parseWorkflowActionMarker(sanitizedContent);
+      const currentMessage = await this.getMessageById(messageId);
+      const extracted = extractEmbeddedReasoning(cleanedContent);
+      const visibleContent = extracted.reasoning ? extracted.content : cleanedContent;
+      const extractedAssessment = extractStructuredInterviewAssessmentBlock(visibleContent);
+      updateData.content = extractedAssessment.structuredData
+        ? buildInterviewAssessmentMarkdownFromStructuredData(extractedAssessment.structuredData)
+        : extractedAssessment.cleanedContent;
+      if (!currentMessage?.reasoning && extracted.reasoning) {
+        updateData.reasoning = extracted.reasoning;
+      }
+      updateData.toolsJson = mergeStoredToolsJson(currentMessage?.toolsJson, workflowAction);
     }
 
     const [row] = await db

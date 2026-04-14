@@ -51,6 +51,10 @@
           导入任务
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem @click="handleRestartOnboarding">
+          新手引导
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           class="mt-1 bg-destructive text-destructive-foreground focus:bg-destructive/90 focus:text-destructive-foreground data-[highlighted]:bg-destructive/90 data-[highlighted]:text-destructive-foreground"
           @click="handleLogout"
@@ -70,6 +74,7 @@ import { useTheme } from "@/composables/use-theme";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import { useAuthStore } from "@/stores/auth";
+import { useOnboardingStore } from "@/stores/onboarding";
 import DropdownMenu from "@/components/ui/dropdown-menu.vue";
 import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
 import DropdownMenuItem from "@/components/ui/dropdown-menu-item.vue";
@@ -78,6 +83,7 @@ import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
+const onboardingStore = useOnboardingStore();
 const { isDark, toggleTheme } = useTheme();
 const { notifyError } = useAppNotifications();
 const menuOpen = ref(false);
@@ -95,6 +101,11 @@ const userInitial = computed(() => {
   return source ? source.charAt(source.length - 1).toUpperCase() : "我";
 });
 const userAvatarUrl = computed<string | null>(() => null);
+
+function handleRestartOnboarding() {
+  menuOpen.value = false;
+  onboardingStore.requestStart({ force: true });
+}
 
 async function handleLogout() {
   menuOpen.value = false;

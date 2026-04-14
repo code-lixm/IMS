@@ -163,8 +163,7 @@ async function fetchDevices() {
     const data = await shareApi.devices();
     onlineDevices.value = data.onlineDevices;
     recentDevices.value = data.recentContacts;
-  } catch (error) {
-    console.error("获取设备列表失败:", error);
+  } catch (_error) {
   }
 }
 
@@ -176,8 +175,7 @@ async function startDiscover() {
     await shareApi.discoverStart();
     // 轮询设备列表
     await pollDevices();
-  } catch (error) {
-    console.error("启动设备发现失败:", error);
+  } catch (_error) {
   } finally {
     discovering.value = false;
   }
@@ -198,8 +196,7 @@ async function pollDevices() {
   // 停止发现
   try {
     await shareApi.discoverStop();
-  } catch (error) {
-    console.error("停止设备发现失败:", error);
+  } catch (_error) {
   }
 }
 

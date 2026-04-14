@@ -1,10 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Listener, Manager, Runtime,
 };
+use tauri_plugin_updater::UpdaterExt;
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
@@ -133,6 +135,140 @@ fn handle_imr_open<R: Runtime>(app: &AppHandle<R>, path: &str) {
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateStatus {
+    available: bool,
+    version: Option<String>,
+    date: Option<String>,
+    notes: Option<String>,
+    checked_at: u64,
+    installed: bool,
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+async fn check_for_app_update(app: AppHandle) -> Result<AppUpdateStatus, String> {
+    let updater = match app.updater() {
+        Ok(updater) => updater,
+        Err(err) => {
+            let msg = format!("updater init failed: {}", err);
+            eprintln!("[tauri-updater] {}", msg);
+            return Err(msg);
+        }
+    };
+
+    let update = match updater.check().await {
+        Ok(update) => update,
+        Err(err) => {
+            let msg = format!("check failed: {}", err);
+            eprintln!("[tauri-updater] {}", msg);
+            return Err(msg);
+        }
+    };
+
+    if let Some(update) = update {
+        let status = AppUpdateStatus {
+            available: true,
+            version: Some(update.version),
+            date: update.date.map(|v| v.to_string()),
+            notes: update.body,
+            checked_at: now_unix_ms(),
+            installed: false,
+        };
+        return Ok(status);
+    }
+
+    Ok(AppUpdateStatus {
+        available: false,
+        version: None,
+        date: None,
+        notes: None,
+        checked_at: now_unix_ms(),
+        installed: false,
+    })
+}
+
+#[tauri::command]
+async fn install_app_update(app: AppHandle) -> Result<AppUpdateStatus, String> {
+    let updater = match app.updater() {
+        Ok(updater) => updater,
+        Err(err) => {
+            let msg = format!("updater init failed: {}", err);
+            eprintln!("[tauri-updater] {}", msg);
+            return Err(msg);
+        }
+    };
+
+    let update = match updater.check().await {
+        Ok(update) => update,
+        Err(err) => {
+            let msg = format!("check failed before install: {}", err);
+            eprintln!("[tauri-updater] {}", msg);
+            return Err(msg);
+        }
+    };
+
+    let Some(update) = update else {
+        return Ok(AppUpdateStatus {
+            available: false,
+            version: None,
+            date: None,
+            notes: None,
+            checked_at: now_unix_ms(),
+            installed: false,
+        });
+    };
+
+    let version = Some(update.version.clone());
+    let date = update.date.map(|v| v.to_string());
+    let notes = update.body.clone();
+
+    let mut downloaded: usize = 0;
+    update
+        .download_and_install(
+            |chunk_length, content_length| {
+                downloaded += chunk_length;
+                println!(
+                    "[tauri-updater] downloading: {}/{}",
+                    downloaded,
+                    content_length
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "?".to_string())
+                );
+            },
+            || {
+                println!("[tauri-updater] download finished");
+            },
+        )
+        .await
+        .map_err(|err| {
+            let msg = format!("install failed: {}", err);
+            eprintln!("[tauri-updater] {}", msg);
+            msg
+        })?;
+
+    Ok(AppUpdateStatus {
+        available: true,
+        version,
+        date,
+        notes,
+        checked_at: now_unix_ms(),
+        installed: true,
+    })
+}
+
+#[tauri::command]
+fn restart_desktop_app(app: AppHandle) {
+    app.restart();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tauri commands
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,6 +306,7 @@ fn get_app_version() -> &'static str {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // If another instance launches with an .imr file argument, handle it
@@ -243,6 +380,9 @@ pub fn run() {
             show_main_window,
             hide_main_window,
             get_app_version,
+            check_for_app_update,
+            install_app_update,
+            restart_desktop_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

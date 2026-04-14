@@ -83,9 +83,8 @@ export function createLuiTaskQueueModule(options: LuiTaskQueueModuleOptions): Lu
     processQueue();
   }
 
-  function failTask(id: string, error?: string): void {
+  function failTask(id: string, _error?: string): void {
     updateTask(id, { status: "failed" });
-    console.error(`Task ${id} failed:`, error);
     isProcessing.value = false;
     processQueue();
   }

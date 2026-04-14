@@ -102,20 +102,15 @@ export function usePromptInputProvider(props: {
     fileInputRef.value?.click()
   }
 
-  const convertBlobUrlToDataUrl = async (url: string): Promise<string | null> => {
-    try {
-      const response = await fetch(url)
-      const blob = await response.blob()
-      return new Promise((resolve) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve(reader.result as string)
-        reader.onerror = () => resolve(null)
-        reader.readAsDataURL(blob)
-      })
-    }
-    catch {
-      return null
-    }
+  const readFileAsDataUrl = async (file: File): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        resolve(typeof reader.result === 'string' ? reader.result : null)
+      }
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(file)
+    })
   }
 
   const submitForm = async () => {
@@ -125,8 +120,8 @@ export function usePromptInputProvider(props: {
     // Process files (convert blobs to base64 if needed for AI SDK)
     const processedFiles = await Promise.all(
       files.value.map(async (item) => {
-        if (item.url && item.url.startsWith('blob:')) {
-          const dataUrl = await convertBlobUrlToDataUrl(item.url)
+        if (item.file) {
+          const dataUrl = await readFileAsDataUrl(item.file)
           return { ...item, url: dataUrl ?? item.url }
         }
         return item
@@ -157,7 +152,6 @@ export function usePromptInputProvider(props: {
           message: errorMessage,
         })
       }
-      console.error('Submission failed:', e)
     }
     finally {
       isLoading.value = false

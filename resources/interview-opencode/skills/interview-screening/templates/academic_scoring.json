@@ -1,0 +1,31 @@
+{
+  "name": "学术报告评分标准",
+  "description": "适用于学术论文和研究报告的评估",
+  "dimensions": [
+    {
+      "name": "摘要与引言",
+      "max_score": 20,
+      "criteria": "研究背景清晰、问题陈述明确"
+    },
+    {
+      "name": "方法论",
+      "max_score": 25,
+      "criteria": "研究方法科学、可复现"
+    },
+    {
+      "name": "结果呈现",
+      "max_score": 25,
+      "criteria": "数据完整、图表清晰"
+    },
+    {
+      "name": "讨论与结论",
+      "max_score": 20,
+      "criteria": "分析深入、结论有力"
+    },
+    {
+      "name": "文献与格式",
+      "max_score": 10,
+      "criteria": "引用规范、格式标准"
+    }
+  ]
+}

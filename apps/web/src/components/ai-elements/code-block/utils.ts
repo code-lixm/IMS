@@ -119,8 +119,7 @@ export function highlightCode(
         subscribers.delete(tokensCacheKey)
       }
     })
-    .catch((error) => {
-      console.error('Failed to highlight code:', error)
+    .catch((_error) => {
       subscribers.delete(tokensCacheKey)
     })
 

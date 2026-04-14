@@ -83,7 +83,7 @@ export function loadGatewayEndpointsFromStorage(): GatewayEndpoint[] {
     return parsed
       .map(normalizeEndpoint)
       .filter((endpoint): endpoint is GatewayEndpoint => endpoint !== null);
-  } catch {
+  } catch (_error) {
     return [];
   }
 }

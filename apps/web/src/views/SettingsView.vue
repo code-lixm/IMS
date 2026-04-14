@@ -99,6 +99,69 @@
         </Button>
       </Card>
 
+      <!-- App Update -->
+      <Card v-if="isDesktopRuntime" class="p-5">
+        <h2 class="text-sm font-semibold mb-4">应用更新</h2>
+        <Separator class="mb-4" />
+        <div class="space-y-3">
+          <p class="text-xs text-muted-foreground">
+            不会自动打断当前工作，你可以手动检查并决定是否安装更新。
+          </p>
+          <p v-if="updateError" class="text-xs text-destructive">
+            {{ updateError }}
+          </p>
+          <p v-else-if="updateStatus" class="text-xs text-muted-foreground">
+            <template v-if="updateStatus.available">
+              检测到新版本：{{ updateStatus.version ?? "未知版本" }}
+            </template>
+            <template v-else> 当前已是最新版本 </template>
+            <span class="ml-2">
+              {{ fmtTime(updateStatus.checkedAt) }}
+            </span>
+          </p>
+          <div class="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="checkingUpdate || installingUpdate"
+              class="gap-1.5"
+              @click="checkAppUpdate"
+            >
+              <Loader2
+                v-if="checkingUpdate"
+                class="h-3.5 w-3.5 animate-spin"
+              />
+              <RefreshCw v-else class="h-3.5 w-3.5" />
+              检查更新
+            </Button>
+            <Button
+              v-if="updateStatus?.available && !updateStatus.installed"
+              size="sm"
+              :disabled="checkingUpdate || installingUpdate"
+              class="gap-1.5"
+              @click="installAppUpdate"
+            >
+              <Loader2
+                v-if="installingUpdate"
+                class="h-3.5 w-3.5 animate-spin"
+              />
+              <Upload v-else class="h-3.5 w-3.5" />
+              安装更新
+            </Button>
+            <Button
+              v-if="updateStatus?.installed"
+              variant="secondary"
+              size="sm"
+              class="gap-1.5"
+              @click="restartDesktopApp"
+            >
+              <Power class="h-3.5 w-3.5" />
+              立即重启
+            </Button>
+          </div>
+        </div>
+      </Card>
+
       <!-- Theme -->
       <Card class="p-5">
         <h2 class="text-sm font-semibold mb-4">外观</h2>
@@ -159,7 +222,7 @@
         </div>
       </Card>
 
-      <Card class="p-5">
+      <Card class="p-5" data-onboarding="gateway-endpoints">
         <h2 class="text-sm font-semibold mb-4">AI Gateway 自定义端点</h2>
         <Separator class="mb-4" />
 
@@ -403,7 +466,7 @@
         </div>
       </Card>
 
-      <Card class="p-5">
+      <Card class="p-5" data-onboarding="agent-management">
         <h2 class="text-sm font-semibold mb-4">Agent 管理</h2>
         <Separator class="mb-4" />
 
@@ -723,6 +786,15 @@ interface PresetProvider {
   baseURL: string;
 }
 
+interface DesktopUpdateStatus {
+  available: boolean;
+  version: string | null;
+  date: string | null;
+  notes: string | null;
+  checkedAt: number;
+  installed: boolean;
+}
+
 const PRESET_PROVIDER_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
@@ -758,6 +830,11 @@ const showApiKey = ref(false);
 const isAgentDialogOpen = ref(false);
 const editingAgentId = ref<string | null>(null);
 const isSavingAgent = ref(false);
+const isDesktopRuntime = ref(false);
+const checkingUpdate = ref(false);
+const installingUpdate = ref(false);
+const updateStatus = ref<DesktopUpdateStatus | null>(null);
+const updateError = ref<string | null>(null);
 const gatewayEndpointForm = reactive({
   providerId: "",
   apiKey: "",
@@ -817,6 +894,9 @@ const colorDotStyle: Record<string, string> = {
 };
 
 onMounted(async () => {
+  isDesktopRuntime.value = typeof window !== "undefined"
+    && typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+
   await authStore.checkStatus();
   await syncStore.fetchStatus();
   syncEnabled.value = syncStore.status.enabled;
@@ -891,6 +971,19 @@ onMounted(async () => {
   await luiStore.loadAgents();
 });
 
+function getTauriInvoker() {
+  const tauriWindow = window as Window & {
+    __TAURI_INTERNALS__?: {
+      invoke: <T = unknown>(
+        cmd: string,
+        args?: Record<string, unknown>,
+      ) => Promise<T>;
+    };
+  };
+
+  return tauriWindow.__TAURI_INTERNALS__?.invoke ?? null;
+}
+
 function fmtTime(ts: number) {
   return new Date(ts).toLocaleString("zh-CN", {
     month: "2-digit",
@@ -914,6 +1007,70 @@ async function toggleSync() {
 
 async function runSyncNow() {
   await syncStore.runNow();
+}
+
+async function checkAppUpdate() {
+  const invoke = getTauriInvoker();
+  if (!invoke) {
+    notifyWarning("当前环境不支持桌面更新检测");
+    return;
+  }
+
+  checkingUpdate.value = true;
+  updateError.value = null;
+  try {
+    const result = await invoke<DesktopUpdateStatus>("check_for_app_update");
+    updateStatus.value = result;
+    if (result.available) {
+      notifySuccess(`检测到新版本 ${result.version ?? ""}`.trim());
+    } else {
+      notifySuccess("当前已是最新版本");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "检测更新失败";
+    updateError.value = message;
+    notifyError(message);
+  } finally {
+    checkingUpdate.value = false;
+  }
+}
+
+async function installAppUpdate() {
+  const invoke = getTauriInvoker();
+  if (!invoke) {
+    notifyWarning("当前环境不支持桌面更新安装");
+    return;
+  }
+
+  installingUpdate.value = true;
+  updateError.value = null;
+  try {
+    const result = await invoke<DesktopUpdateStatus>("install_app_update");
+    updateStatus.value = result;
+    if (!result.available) {
+      notifySuccess("当前已是最新版本");
+      return;
+    }
+    notifySuccess("更新已安装完成，请重启应用生效");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "安装更新失败";
+    updateError.value = message;
+    notifyError(message);
+  } finally {
+    installingUpdate.value = false;
+  }
+}
+
+async function restartDesktopApp() {
+  const invoke = getTauriInvoker();
+  if (!invoke) {
+    return;
+  }
+  try {
+    await invoke("restart_desktop_app");
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "重启应用失败");
+  }
 }
 
 function resetGatewayEndpointForm() {

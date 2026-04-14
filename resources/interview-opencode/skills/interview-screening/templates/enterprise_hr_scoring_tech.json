@@ -1,0 +1,43 @@
+{
+  "name": "世界500强HR简历评分标准-技术岗",
+  "version": "2.0.0",
+  "based_on": "enterprise_hr_scoring.json",
+  "role_track": "tech",
+  "dimensions": [
+    {
+      "name": "教育与资质",
+      "max_score": 15,
+      "criteria": "学历、专业相关性、技术资质与持续学习证明"
+    },
+    {
+      "name": "经历匹配度",
+      "max_score": 20,
+      "criteria": "技术岗位连续性、业务场景相关性、职责深度"
+    },
+    {
+      "name": "项目产出与业务价值",
+      "max_score": 25,
+      "criteria": "核心项目影响、量化指标、个人贡献边界"
+    },
+    {
+      "name": "岗位核心能力",
+      "max_score": 25,
+      "criteria": "工程质量、架构能力、性能优化、故障定位与复盘"
+    },
+    {
+      "name": "协作与领导",
+      "max_score": 7,
+      "criteria": "跨团队协作、技术推动、带教能力"
+    },
+    {
+      "name": "稳定性与合规风险",
+      "max_score": 8,
+      "criteria": "履历稳定、信息一致、无红线风险"
+    }
+  ],
+  "core_competency_checklist": [
+    "是否有可复述的系统设计或架构决策",
+    "是否有可量化的性能/稳定性优化结果",
+    "是否体现工程化思维（测试、监控、CI/CD）"
+  ]
+}

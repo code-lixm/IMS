@@ -1,11 +1,12 @@
 {
   "name": "@ims/server",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build --compile --target=bun-darwin-arm64 --external playwright --external playwright-core --outfile ./dist/server src/index.ts",
+    "build": "bun build --compile --target=bun-darwin-arm64 --outfile ./dist/server src/index.ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit"
   },
@@ -19,7 +20,6 @@
     "jszip": "^3.10.1",
     "nodemailer": "^8.0.4",
     "pdf-parse": "^1.1.1",
-    "playwright": "^1.54.2",
     "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5",
     "zod": "^3.25.76"

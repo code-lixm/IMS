@@ -50,7 +50,8 @@ capabilities/
 ## ANTI-PATTERNS
 
 - **Desktop dev ≠ standalone** — 必须通过 `pnpm dev:desktop` 启动，而非单独运行 web/server
-- **macOS 特定** — Server 打包目标硬编码为 `bun-darwin-arm64`
+- **macOS 特定** — Server 打包目标硬编码为 `bun-darwin-arm64`（应参数化）
+- **beforeDevCommand 问题** — 使用 shell `&` 后台启动，可能导致僵尸进程
 
 ## COMMANDS
 

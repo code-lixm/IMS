@@ -20,7 +20,7 @@ const displayText = computed(() => {
     const additionalCount = props.sources.length - 1
     return additionalCount > 0 ? `${hostname} +${additionalCount}` : hostname
   }
-  catch {
+  catch (_error) {
     return 'unknown'
   }
 })

@@ -1,6 +1,6 @@
 {
   "name": "ims",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @ims/web dev",
@@ -12,9 +12,16 @@
     "build:web": "pnpm --filter @ims/web build",
     "typecheck": "pnpm --filter @ims/shared check && pnpm --filter @ims/server check && pnpm --filter @ims/web check",
     "check": "turbo run typecheck build --filter=!@ims/desktop",
-    "clean": "turbo run clean && rm -rf node_modules packages/*/node_modules apps/*/node_modules"
+    "clean": "turbo run clean && rm -rf node_modules packages/*/node_modules apps/*/node_modules",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e:remote": "node ./scripts/playwright-remote.mjs",
+    "release:check": "node ./scripts/release-readiness.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "png-to-ico": "^3.0.1",
     "sharp": "^0.34.5",
     "to-ico": "^1.1.5",

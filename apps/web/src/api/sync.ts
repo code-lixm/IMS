@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { SyncStatusData, SyncToggleData, SyncRunData } from "@ims/shared";
+import type { SyncStatusData, SyncToggleData, SyncRunData, SyncResetRunData } from "@ims/shared";
 
 export const syncApi = {
   status() { return api<SyncStatusData>("/api/sync/status"); },
@@ -10,4 +10,5 @@ export const syncApi = {
     });
   },
   run() { return api<SyncRunData>("/api/sync/run", { method: "POST" }); },
+  resetAndRun() { return api<SyncResetRunData>("/api/sync/reset-run", { method: "POST" }); },
 };

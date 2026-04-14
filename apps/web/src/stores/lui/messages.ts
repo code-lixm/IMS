@@ -3,12 +3,13 @@ import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import { type GatewayEndpoint } from "@/lib/ai-gateway-config";
-import { convertFileResource, type FileResource, type Message } from "./types";
+import { convertFileResource, convertMessage, convertWorkflow, type FileResource, type Message, type Workflow } from "./types";
 
 interface LuiMessageModuleOptions {
   selectedId: Ref<string | null>;
   messages: Ref<Record<string, Message[]>>;
   fileResources: Ref<Record<string, FileResource[]>>;
+  workflows: Ref<Record<string, Workflow | null>>;
   selectedAgentId: Ref<string | null>;
   selectedModelId: Ref<string | null>;
   selectedModelProvider: Ref<string | null>;
@@ -29,6 +30,7 @@ export function createLuiMessageModule(options: LuiMessageModuleOptions): LuiMes
     selectedId,
     messages,
     fileResources,
+    workflows,
     selectedAgentId,
     selectedModelId,
     selectedModelProvider,
@@ -155,7 +157,9 @@ export function createLuiMessageModule(options: LuiMessageModuleOptions): LuiMes
       });
 
       const conversationDetail = await luiApi.get(conversationId);
+      messages.value[conversationId] = conversationDetail.messages.map(convertMessage);
       fileResources.value[conversationId] = conversationDetail.files.map(convertFileResource);
+      workflows.value[conversationId] = conversationDetail.workflow ? convertWorkflow(conversationDetail.workflow) : null;
     } catch (err) {
       notifyError(reportAppError("lui/send-message", err, {
         title: "发送消息失败",

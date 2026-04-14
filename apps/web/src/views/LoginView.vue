@@ -290,6 +290,13 @@ async function checkLoginStatus() {
       error: result.error,
       userId: result.user?.id ?? null,
     });
+    if (!result.authenticated && result.error) {
+      qrState.error = result.error;
+      console.warn("[login-view] checkLoginStatus:error", {
+        status: result.status,
+        error: result.error,
+      });
+    }
     if (result.authenticated && result.user) {
       qrState.loginDetected = true;
       qrState.redirecting = true;

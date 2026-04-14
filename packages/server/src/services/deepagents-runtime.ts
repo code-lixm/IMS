@@ -1,18 +1,29 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { agent, execute } from "@deepagents/agent";
 import { and, eq } from "drizzle-orm";
-import type { UIMessage } from "ai";
+import { createUIMessageStream, createUIMessageStreamResponse, generateId, type UIMessage } from "ai";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
 import { conversations, luiWorkflows, messages } from "../schema";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./baobao-resume";
 import { buildCandidateContext, formatCandidateContextForPrompt } from "./lui-context";
-import { getWorkflowTools, type ToolContext } from "./lui-tools";
+import { getWorkflowTools, updateWorkflowDocument, type ToolContext } from "./lui-tools";
 import type { PreparedWorkflowExecutionRequest, WorkflowHistoryMessage } from "./lui-workflow-runtime";
+import { getWorkflowActionFromToolsJson, messageService } from "./message";
+import { fileResourceService } from "./file-resource";
+import { resolveStageFileName, withStageFrontmatter } from "./workflow-artifacts";
+import {
+  buildInterviewAssessmentMarkdownFromStructuredData,
+  buildStructuredInterviewAssessmentInstruction,
+  extractStructuredInterviewAssessmentBlock,
+} from "./document-templates";
 
 type DeepAgentContext = {
   candidateId: string;
   candidateName: string;
+  candidatePosition: string | null;
   currentStage: WorkflowStage;
   conversationTranscript: string;
 };
@@ -22,62 +33,74 @@ const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.
 
 type WorkflowStage = "S0" | "S1" | "S2" | "completed";
 
+function stripThinkingForArtifact(content: string): string {
+  return content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
+
 const STAGE_SYSTEM_PROMPTS: Record<WorkflowStage, string> = {
-  TQ|S0: `You are an Interview Screening Agent (S0 Stage).
-PP|Your task is to screen candidates by analyzing their resumes and initial information.
-HQ|
-HQ|Available tools:
-SH|- scan_resume: Extract and analyze resume PDF content
-PT|- screen_resumes: Process multiple resumes concurrently
-TQ|
-ZN|Workflow:
-JX|1. Analyze candidate resume and basic information
-TK|2. Generate a screening assessment document
-SK|3. Provide a clear recommendation (通过/待定/淘汰)
-MQ|
-ZW|Output format: Create a structured screening report with:
-WV|- Candidate summary
-WM|- Skills assessment
-NZ|- Experience evaluation
-TH|- Recommendation with reasoning`,
+  S0: `You are an Interview Screening Agent (S0 Stage).
+Your task is to screen candidates by analyzing their resumes and initial information.
 
-  QW|  S1: `You are an Interview Questioning Agent (S1 Stage).
-KR|Your task is to generate interview questions based on previous stage results.
-HQ|
-HQ|Available tools:
-ZX|
-NM|
-ZN|Workflow:
-NY|1. Review screening results from S0
-RY|2. Determine the appropriate interview round
-MZ|3. Generate targeted interview questions
-SQ|
-KR|
-WT|Output format: Create an interview question document with:
-HY|- Round number and focus areas
-JK|- Technical questions (if applicable)
-WH|- Behavioral questions
-NB|- Evaluation criteria`,
+Available tools:
+- scan_resume: Extract and analyze resume PDF content
+- screen_resumes: Process multiple resumes concurrently
 
-  HJ|  S2: `You are an Interview Assessment Agent (S2 Stage).
-JX|Your task is to evaluate interview performance and generate assessment reports.
-TH|
-HQ|Available tools:
-SH|- generate_wechat_summary: Generate WeChat-friendly evaluation summary
-JK|- sanitize_interview_notes: Clean interview notes before analysis
-JP|
-SV|
-ZN|Workflow:
-MX|1. Review interview notes (use sanitize_interview_notes if needed)
-BR|2. Analyze candidate performance
-KN|3. Generate evaluation summary
-HP|4. Create WeChat copy text for sharing
-BP|
-TW|Output format: Create an assessment report with:
-HX|- Interview summary
-NN|- Strengths and weaknesses
-XK|- Recommended level (P5-P8 or 不推荐)
-QY|- Next steps recommendation`,
+Workflow:
+1. Analyze candidate resume and basic information
+2. Generate a screening assessment document
+3. Provide a clear recommendation (通过/待定/淘汰)
+
+Output format: Create a structured screening report with:
+- Candidate summary
+- Skills assessment
+- Experience evaluation
+- Recommendation with reasoning
+
+If you recommend moving to the next stage, append this exact marker on its own line at the end: <!-- workflow-action:advance-stage -->.`,
+
+  S1: `You are an Interview Questioning Agent (S1 Stage).
+Your task is to generate interview questions based on previous stage results.
+If the workspace skills include interview-questioning templates or reference files, you must follow them as the authoritative question structure and constraints.
+
+Workflow:
+1. Review screening results from S0
+2. Determine the appropriate interview round and focus areas
+3. Generate targeted interview questions
+
+Output format: Create an interview question document with:
+- Round number and focus areas
+- Technical questions (if applicable)
+- Behavioral questions
+- Evaluation criteria
+
+If the round is not confirmed yet, append this exact marker on its own line at the end: <!-- workflow-action:confirm-round -->.
+If the round is confirmed and you recommend moving on, append this exact marker on its own line at the end: <!-- workflow-action:advance-stage -->.`,
+
+  S2: `You are an Interview Assessment Agent (S2 Stage).
+Your task is to evaluate interview performance and generate an interview-assessment compliant report body.
+
+Available tools:
+- generate_wechat_summary: Generate WeChat-friendly evaluation summary
+- sanitize_interview_notes: Clean interview notes before analysis
+
+${buildStructuredInterviewAssessmentInstruction()}
+
+Workflow:
+1. Review interview notes immediately (use sanitize_interview_notes if needed)
+2. Score only from candidate answers, never from interviewer prompts or hints
+3. Generate the current-round assessment without waiting for another confirmation
+4. Create strict line-template WeChat copy text for sharing
+
+Output format requirements:
+- No H1 title
+- Do not write workflow control text such as "当前阶段" or "推荐动作" into the document body
+- Use this order: ## 一、分析结论 -> ## 二、题目对照评分（第X轮） -> ## 三、加分与扣分（平衡） -> ## 四、系统结论 vs 面试官反馈（差异分析） -> only for non-reject cases ## 五、下一轮建议（第X+1轮）
+- The WeChat block must stay as strict line-template text, not a titled paragraph summary
+- Grade must be one of A+/A/B+/B/C; recommended level must be P5-P8 or 不推荐; when grade is B, render it as B（非必要不推荐）
+- If interview evaluation is B/C, or contains 淘汰/不合格, treat it as non-recommend flow: B means 非必要不推荐, C means 淘汰; recommended level must be 不推荐, no next-round suggestion, and do not use advance-stage
+
+Only when the case is non-reject and clearly needs another round, append this exact marker on its own line at the end: <!-- workflow-action:advance-stage -->.
+Otherwise append this exact marker on its own line at the end: <!-- workflow-action:complete-workflow -->.`,
 
   completed: `You are an Interview Manager Agent.
 The interview workflow is complete. You can:
@@ -141,22 +164,117 @@ function createDeepAgentResponse(
     prompt: (contextVariables?: DeepAgentContext) => [
       request.systemPrompt,
       `## Runtime Context\nCandidate: ${typeof contextVariables?.candidateName === "string" && contextVariables.candidateName ? contextVariables.candidateName : request.candidateName}\nWorkflow Stage: ${typeof contextVariables?.currentStage === "string" ? contextVariables.currentStage : request.workflowStage}\nStage Index: ${request.workflowStageIndex}\nTemperature: ${request.temperature}`,
+      typeof contextVariables?.candidatePosition === "string" && contextVariables.candidatePosition
+        ? `## Candidate Position\n${contextVariables.candidatePosition}`
+        : "",
       typeof contextVariables?.conversationTranscript === "string" && contextVariables.conversationTranscript
         ? `## Conversation Transcript\n${contextVariables.conversationTranscript}`
         : "",
     ].filter(Boolean).join("\n\n"),
   });
 
-  return execute(
-    deepAgent,
-    toUiMessages(request.historyMessages),
-    {
-      candidateId: request.candidateId,
-      candidateName: request.candidateName,
-      currentStage: request.workflowStage,
-      conversationTranscript: transcript,
-    },
-  ).then((result) => result.toUIMessageStreamResponse());
+  return messageService.createAssistantStreamingMessage(request.conversationId).then((assistantMessageId) => {
+    return createUIMessageStreamResponse({ stream: createUIMessageStream({
+      originalMessages: toUiMessages(request.historyMessages),
+      generateId,
+      execute: async ({ writer }) => {
+        const result = await execute(
+          deepAgent,
+          toUiMessages(request.historyMessages),
+          {
+            candidateId: request.candidateId,
+            candidateName: request.candidateName,
+            candidatePosition: request.candidatePosition,
+            currentStage: request.workflowStage,
+            conversationTranscript: transcript,
+          },
+        );
+
+        writer.merge(result.toUIMessageStream({
+          sendFinish: false,
+          sendStart: true,
+          onFinish: async ({ responseMessage }) => {
+            const finalText = responseMessage.parts
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("")
+              .trim();
+
+            await messageService.completeMessage(assistantMessageId, finalText);
+            const persistedMessage = await messageService.getMessageById(assistantMessageId);
+            const workflowAction = getWorkflowActionFromToolsJson(persistedMessage?.toolsJson);
+
+            const [workflow] = await db
+              .select()
+              .from(luiWorkflows)
+              .where(and(eq(luiWorkflows.id, request.workflowId), eq(luiWorkflows.conversationId, request.conversationId)))
+              .limit(1);
+
+            if (workflow && finalText && workflow.currentStage !== "completed") {
+              const stage = workflow.currentStage as WorkflowStage;
+              let round: number | null = null;
+              if (stage === "S1" && workflow.stageDataJson) {
+                try {
+                  const parsed = JSON.parse(workflow.stageDataJson);
+                  round = typeof parsed?.round === "number" ? parsed.round : null;
+                } catch {
+                  round = null;
+                }
+              }
+              const shouldPersist = stage === "S1"
+                ? round !== null
+                : stage === "S2"
+                  ? workflowAction === "advance-stage" || workflowAction === "complete-workflow"
+                  : workflowAction === "advance-stage";
+              if (!shouldPersist) {
+                return;
+              }
+              const strippedArtifactContent = stripThinkingForArtifact(finalText);
+              const extractedAssessment = stage === "S2"
+                ? extractStructuredInterviewAssessmentBlock(strippedArtifactContent)
+                : { structuredData: null, cleanedContent: strippedArtifactContent };
+              const rawArtifactContent = extractedAssessment.structuredData
+                ? buildInterviewAssessmentMarkdownFromStructuredData(extractedAssessment.structuredData)
+                : extractedAssessment.cleanedContent;
+              if (!rawArtifactContent) {
+                return;
+              }
+              const artifactContent = withStageFrontmatter(rawArtifactContent, {
+                stage,
+                candidateName: request.candidateName,
+                position: request.candidatePosition,
+                round,
+              });
+              const fileName = resolveStageFileName(stage, round);
+              const dirPath = join(config.filesDir, "workflow-documents", request.candidateId, request.workflowId);
+              await mkdir(dirPath, { recursive: true });
+              const filePath = join(dirPath, fileName);
+              await Bun.write(filePath, artifactContent);
+              await fileResourceService.createFile({
+                conversationId: request.conversationId,
+                name: fileName,
+                type: "document",
+                content: artifactContent,
+                language: "markdown",
+              });
+              if (stage === "S0" || stage === "S1" || stage === "S2") {
+                await updateWorkflowDocument(request.workflowId, stage, {
+                  filePath,
+                  content: artifactContent,
+                  summary: rawArtifactContent.replace(/```[\s\S]*?```/g, " ").replace(/^#+\s*/gm, "").replace(/\n+/g, " ").trim().slice(0, 160) || undefined,
+                  round: round ?? undefined,
+                  structuredData: extractedAssessment.structuredData ?? undefined,
+                });
+              }
+            }
+          },
+        }));
+
+        await result.consumeStream({ onError: console.error });
+        writer.write({ type: "finish" });
+      },
+    }) });
+  });
 }
 
 export async function executeDeepAgentWorkflow(
@@ -207,7 +325,7 @@ export async function executeDeepAgent(
   const resumeSync = await ensureCandidateResumeAvailable(candidateId);
   await syncCandidateResumesToConversation(conversationId, candidateId);
 
-  let systemPrompt = STAGE_SYSTEM_PROMPTS[workflowStage];
+  let systemPrompt = STAGE_SYSTEM_PROMPTS[workflowStage] ?? STAGE_SYSTEM_PROMPTS.S0;
 
   if (options.agentSystemPrompt?.trim()) {
     systemPrompt = `${options.agentSystemPrompt.trim()}\n\n${systemPrompt}`;
@@ -264,6 +382,7 @@ export async function executeDeepAgent(
     conversationId,
     candidateId,
     candidateName: candidateContext?.candidateName ?? candidateId,
+    candidatePosition: candidateContext?.position ?? null,
     workflowId: workflow?.id ?? `wf-missing-${conversationId}`,
     workflowStage,
     workflowStageIndex: ["S0", "S1", "S2", "completed"].indexOf(workflowStage),

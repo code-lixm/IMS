@@ -16,16 +16,20 @@ lui/
 ├── model-selector.vue     # 模型选择器
 ├── file-resources.vue     # 文件资源列表
 ├── temperature-control.vue # 温度控制
-└── task-queue-indicator.vue # 任务队列指示器
+├── task-queue-indicator.vue # 任务队列指示器
+├── workflow-action-card.vue # 工作流卡片
+└── workflow-artifacts.vue # 工作流产物
 ```
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Agent 选择 | `agent-selector.vue` | `INTERVIEW_AGENT_PROFILE` 行 121-129 |
-| 候选人选择 | `candidate-selector.vue` | 正确显示 `{{ currentCandidate?.name }}` |
+| Agent 选择 | `agent-selector.vue` | `INTERVIEW_AGENT_PROFILE` |
+| 候选人选择 | `candidate-selector.vue` | 显示 `{{ currentCandidate?.name }}` |
 | 会话管理 | `conversation-list.vue` | 会话列表和切换 |
+| 工作流 | `workflow-action-card.vue` | 工作流执行卡片 (11776 行) |
+| 产物 | `workflow-artifacts.vue` | 工作流输出展示 (8016 行) |
 
 ## CONVENTIONS (THIS DIRECTORY)
 
@@ -37,13 +41,12 @@ lui/
 ## KEY IMPLEMENTATIONS
 
 ### Agent 架构
-- 前端不再维护本地 AgentHost/Swarm 原型组件。
-- 当前页面已精简为纯智能体对话，不再暴露前端流程阶段切换、监听或语音转写入口。
-- 当前会话、Agent 列表与消息发送统一走 `stores/lui.ts` + `luiApi` + 服务端 `lui-workflow`。
+- 前端不再维护本地 AgentHost/Swarm 原型组件
+- 统一走 `stores/lui.ts` + `luiApi` + 服务端 `lui-workflow.ts`
+- `deepagents-runtime.ts` 在服务端执行 Agent/Workflow 能力
 
 ### candidate-selector.vue
 - 正确显示候选人姓名：`{{ currentCandidate?.name }}`
-- Bug 已修复，无需修改
 
 ## ANTI-PATTERNS
 

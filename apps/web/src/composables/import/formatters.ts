@@ -121,7 +121,7 @@ export function parseImportTaskResult(resultJson: string | null): ImportTaskResu
 
   try {
     return JSON.parse(resultJson) as ImportTaskResultData;
-  } catch {
+  } catch (_error) {
     return null;
   }
 }

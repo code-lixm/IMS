@@ -45,10 +45,11 @@ services/
 
 ## ANTI-PATTERNS (THIS DIRECTORY)
 
-- **空 catch 块** — 多处 `catch (e) {}` 静默失败
-- **`console.*` 调用** — 使用 console 而非结构化日志
-- **Magic numbers** — 硬编码超时、重试次数
+- **13+ 空 catch 块** — 多处 `catch (e) {}` 静默失败，`.catch(() => {})`
+- **`console.*` 调用** — 57+ 处使用 console 而非结构化日志
+- **Magic numbers** — 硬编码超时、重试次数、15x maxTokens
 - **巨大文件** — `lui-tools.ts` 967 行、`lui-workflow.ts` 558 行
+- **hardcoded 平台** — server build target 硬编码为 `bun-darwin-arm64`
 
 ## NOTES
 

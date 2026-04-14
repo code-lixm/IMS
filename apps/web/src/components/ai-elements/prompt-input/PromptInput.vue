@@ -22,6 +22,11 @@ const emit = defineEmits<{
   (e: 'error', payload: { code: string, message: string }): void
 }>()
 
+interface PromptSubmitPayload {
+  text: string
+  files: PromptInputMessage['files']
+}
+
 const formRef = ref<HTMLFormElement | null>(null)
 
 // --- Dual-mode context handling ---
@@ -33,7 +38,7 @@ const localContext = inheritedContext
       maxFiles: props.maxFiles,
       maxFileSize: props.maxFileSize,
       accept: props.accept,
-      onSubmit: msg => emit('submit', msg as any),
+      onSubmit: msg => emit('submit', msg as PromptSubmitPayload),
       onError: err => emit('error', err),
     })
 

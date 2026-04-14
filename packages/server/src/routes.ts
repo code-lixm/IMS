@@ -8,6 +8,7 @@ import {
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { syncManager } from "./services/sync-manager";
+import { resetCandidateRecords } from "./services/sync-reset";
 import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, exportScreeningResults } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
@@ -31,22 +32,26 @@ import {
   getOrCreateWorkflow,
   getWorkflow,
   getWorkflowByCandidate,
+  getAvailableNextStages,
   updateWorkflow,
   advanceStage,
   resetWorkflow,
   pauseWorkflow,
   resumeWorkflow,
   completeWorkflow,
+  confirmWorkflowRound,
   listCandidateWorkflows,
   executeAgent,
   executeWorkflowAgent,
+  toWorkflowView,
   WorkflowStage,
 } from "./services/lui-workflow";
 import { executeDeepAgent } from "./services/deepagents-runtime";
-import { deleteAgentWithFallback, ensureManagedAgents, isProtectedAgent, resolveConversationAgentResolution, serializeAgent, setDefaultAgent } from "./services/lui-agents";
+import { DEFAULT_INTERVIEW_AGENT_ID, deleteAgentWithFallback, ensureManagedAgents, getResolvedAgent, getResolvedAgentExecutionConfig, isProtectedAgent, listResolvedAgents, resolveConversationAgentResolution, serializeAgent, setDefaultAgent } from "./services/lui-agents";
+import { buildAgentContractPromptSegment, guardAgentUserMessage, resolveAgentContract } from "./services/lui-agent-contract";
 import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
-import { stripWavHeader, transcribeVoskChunk } from "./services/vosk-transcription";
+import { messageService, serializeMessageData } from "./services/message";
 import { messagesRoute } from "./routes/messages";
 import { memoryRoute } from "./routes/memory";
 import { sessionMemoryRoute } from "./routes/session-memory";
@@ -114,6 +119,104 @@ function decodeStoredFileName(fileName: string | null | undefined): string {
   } catch {
     return normalized;
   }
+}
+
+function createStaticLuiStreamResponse(content: string): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const events = [
+        { type: "start" },
+        { type: "start-step" },
+        { type: "text-start", id: "0" },
+        { type: "text-delta", id: "0", delta: content },
+        { type: "text-end", id: "0" },
+        { type: "finish-step" },
+        { type: "finish", finishReason: "stop" },
+      ];
+
+      for (const event of events) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      }
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+async function createCompletedAssistantReply(conversationId: string, content: string): Promise<void> {
+  const assistantMessage = await messageService.createMessage({
+    conversationId,
+    role: "assistant",
+    content: "",
+  });
+  await messageService.completeMessage(assistantMessage.id, content);
+}
+
+function buildWorkflowConfirmationReceipt(input: {
+  type: "round" | "advance" | "complete";
+  previousStage?: string;
+  currentStage?: string;
+  round?: number;
+}): string {
+  if (input.type === "round") {
+    return `已确认：当前为第 ${input.round} 轮面试。请继续补充本轮考察重点，或让我直接生成这一轮的面试题。`;
+  }
+
+  if (input.type === "complete") {
+    return "已确认：当前流程已完成。你可以继续追问评估细节，或开始处理下一位候选人。";
+  }
+
+  if (input.previousStage === "S1" && input.currentStage === "S2") {
+    return [
+      "已确认：进入评估阶段。",
+      "请提供面试纪要或候选人回答记录（文本或文件均可），格式不限，我会基于纪要生成评分报告并给出下一步建议。",
+    ].join("\n");
+  }
+
+  if (input.previousStage === "S2" && input.currentStage === "S1") {
+    return "已确认：回到出题阶段，准备下一轮面试题。请继续选择轮次，或直接生成下一轮题目。";
+  }
+
+  return `已确认：流程已从 ${input.previousStage} 推进到 ${input.currentStage}。接下来我会按照当前阶段继续协助你。`;
+}
+
+function buildWorkflowConfirmationGuidance(workflow: {
+  currentStage: string;
+}): string {
+  if (workflow.currentStage === "S1") {
+    return "当前还缺少面试轮次确认。请直接点击下方按钮，选择要生成的第1轮到第4轮面试题。\n\n<!-- workflow-action:confirm-round -->";
+  }
+
+  if (workflow.currentStage === "S2") {
+    return "当前处于评估阶段，请先提供面试纪要或候选人回答记录（文本或文件均可），格式不限。";
+  }
+
+  return "当前还需要你先确认是否进入下一阶段。请先使用下方确认操作，再继续发送新的要求。\n\n<!-- workflow-action:advance-stage -->";
+}
+
+function detectRoundConfirmation(content: string): number | null {
+  const explicitMatch = content.match(/(?:第\s*([1-4])\s*轮|round\s*([1-4])|^\s*([1-4])\s*$)/i);
+  if (explicitMatch) {
+    return Number(explicitMatch[1] ?? explicitMatch[2] ?? explicitMatch[3]);
+  }
+
+  const previousRoundMatch = content.match(/(?:上一轮|上轮|前一轮)\D*([1-4])\s*轮/i);
+  if (previousRoundMatch) {
+    const nextRound = Number(previousRoundMatch[1]) + 1;
+    return nextRound >= 1 && nextRound <= 4 ? nextRound : null;
+  }
+
+  return null;
 }
 
 function buildContentDisposition(dispositionType: "inline" | "attachment", fileName: string | null | undefined): string {
@@ -734,6 +837,36 @@ async function candidateOrFail(id: string) {
   const row = await db.select({ id: candidates.id }).from(candidates).where(and(eq(candidates.id, id), isNull(candidates.deletedAt))).limit(1);
   if (!row.length) return null;
   return row[0];
+}
+
+async function markInterviewFeedbackReceived(candidateId: string) {
+  const [latestWorkflow] = await db
+    .select()
+    .from(luiWorkflows)
+    .where(eq(luiWorkflows.candidateId, candidateId))
+    .orderBy(desc(luiWorkflows.updatedAt))
+    .limit(1);
+
+  if (!latestWorkflow) {
+    return;
+  }
+
+  const stageData = latestWorkflow.stageDataJson ? JSON.parse(latestWorkflow.stageDataJson) : {};
+  const lastFeedbackAt = new Date().toISOString();
+  const nextFeedbackLoop = {
+    ...(typeof stageData.s2_feedback_loop === "object" && stageData.s2_feedback_loop ? stageData.s2_feedback_loop as Record<string, unknown> : {}),
+    interviewer_feedback_status: "received",
+    last_feedback_at: lastFeedbackAt,
+  };
+
+  await updateWorkflow(latestWorkflow.id, {
+    stageData: {
+      ...stageData,
+      interviewer_feedback_status: "received",
+      last_feedback_at: lastFeedbackAt,
+      s2_feedback_loop: nextFeedbackLoop,
+    },
+  });
 }
 
 async function upsertLocalUser(user: { name: string; email: string | null }) {
@@ -1436,6 +1569,46 @@ export async function route(request: Request): Promise<Response> {
     }
   }
 
+  if (path === "/api/sync/reset-run" && request.method === "POST") {
+    const syncStatus = syncManager.status();
+    const shouldRestartPolling = syncStatus.enabled;
+    let hasClearedLocalRecords = false;
+    syncManager.stop();
+
+    try {
+      const resetResult = await resetCandidateRecords();
+      hasClearedLocalRecords = true;
+      const syncResult = await syncManager.runOnce();
+
+      if (shouldRestartPolling) {
+        syncManager.start(syncStatus.intervalMs);
+      }
+
+      return ok({
+        ...resetResult,
+        ...syncResult,
+        syncAt: syncManager.getLastSyncAt() ?? Date.now(),
+      });
+    } catch (err) {
+      if (shouldRestartPolling && !isBaobaoAuthExpiredError(err)) {
+        syncManager.start(syncStatus.intervalMs);
+      }
+
+      if (isBaobaoAuthExpiredError(err)) {
+        await markBaobaoAuthExpired();
+        const message = hasClearedLocalRecords
+          ? `本地记录已清空，但重新同步前登录状态已失效：${getErrorMessage(err)}`
+          : getErrorMessage(err);
+        return fail("AUTH_EXPIRED", message, 401);
+      }
+
+      const message = hasClearedLocalRecords
+        ? `本地记录已清空，但重新同步失败：${getErrorMessage(err)}`
+        : getErrorMessage(err);
+      return fail("REMOTE_SYNC_FAILED", message, 502);
+    }
+  }
+
   // Candidates
   if (path === "/api/candidates" && request.method === "GET") {
     const search = url.searchParams.get("search")?.trim();
@@ -1706,8 +1879,172 @@ export async function route(request: Request): Promise<Response> {
       if (key in body) updates[key === "manualEvaluation" ? "manualEvaluationJson" : key] = key === "manualEvaluation" ? JSON.stringify(body[key]) : body[key];
     }
     await db.update(interviews).set(updates as any).where(eq(interviews.id, intMatch[1]));
+
+    if ("manualEvaluation" in body && body.manualEvaluation) {
+      await markInterviewFeedbackReceived(existing.candidateId);
+    }
+
     const [row] = await db.select().from(interviews).where(eq(interviews.id, intMatch[1])).limit(1);
     return ok({ ...row, interviewerIds: row.interviewerIdsJson ? JSON.parse(row.interviewerIdsJson) : [], manualEvaluation: row.manualEvaluationJson ? JSON.parse(row.manualEvaluationJson) : null });
+  }
+
+  const baobaoScoreFormMatch = path.match(/^\/api\/interviews\/([^/]+)\/baobao-score-form$/);
+  if (baobaoScoreFormMatch && request.method === "GET") {
+    const interviewId = baobaoScoreFormMatch[1];
+    const [localInterview] = await db.select().from(interviews).where(eq(interviews.id, interviewId)).limit(1);
+    if (!localInterview) return fail("NOT_FOUND", "interview not found", 404);
+    if (!localInterview.remoteId) return fail("REMOTE_SYNC_FAILED", "当前面试未关联抱抱记录", 422);
+
+    const client = getBaobaoClient();
+    if (!client) return fail("AUTH_EXPIRED", "抱抱登录已失效，请重新登录", 401);
+
+    try {
+      const [remoteInfoResponse, positionRanksResponse, interviewResultsResponse, eliminateReasonsResponse] = await Promise.all([
+        client.getInterviewInfo(localInterview.remoteId),
+        client.getAllPositionRank(),
+        client.getDictByType("interview_result"),
+        client.getDictByType("eliminate_reason"),
+      ]);
+
+      const P6_P8_PATTERN = /^P[6-8][+-]?$/;
+
+      return ok({
+        interview: {
+          localInterviewId: localInterview.id,
+          remoteInterviewId: localInterview.remoteId,
+          candidateId: localInterview.candidateId,
+          round: localInterview.round ?? null,
+          name: remoteInfoResponse.data?.name ?? null,
+          organizationName: remoteInfoResponse.data?.organizationName ?? null,
+          applyPositionName: remoteInfoResponse.data?.applyPositionName ?? null,
+          interviewTime: remoteInfoResponse.data?.interviewTime ?? localInterview.scheduledAt ?? null,
+          interviewType: remoteInfoResponse.data?.interviewType ?? localInterview.interviewType ?? null,
+          interviewPlace: remoteInfoResponse.data?.interviewPlace ?? localInterview.interviewPlace ?? null,
+          interviewResult: remoteInfoResponse.data?.interviewResult ?? localInterview.interviewResult ?? null,
+          interviewResultString: remoteInfoResponse.data?.interviewResultString ?? localInterview.interviewResultString ?? null,
+          positionRank: remoteInfoResponse.data?.positionRank ?? null,
+          interviewEvaluation: remoteInfoResponse.data?.interviewEvaluation ?? null,
+          eliminateReasonIds: Array.isArray(remoteInfoResponse.data?.eliminateReason)
+            ? remoteInfoResponse.data.eliminateReason.filter((item) => typeof item === "number" && Number.isFinite(item))
+            : [],
+        },
+        interviewResults: (interviewResultsResponse.data ?? [])
+          .filter((item) => typeof item.name === "string" && item.name.trim())
+          .map((item) => ({
+            value: Number(item.id),
+            label: item.name.trim(),
+            description: item.remark?.trim() || null,
+          }))
+          .filter((item) => Number.isFinite(item.value)),
+        positionRanks: (positionRanksResponse.data ?? [])
+          .filter((item) => typeof item === "string" && P6_P8_PATTERN.test(item))
+          .map((item) => ({
+            value: item,
+            label: item,
+          })),
+        eliminateReasons: (eliminateReasonsResponse.data ?? [])
+          .filter((item) => typeof item.name === "string" && item.name.trim())
+          .map((item) => ({
+            id: Number(item.id),
+            name: item.name.trim(),
+          }))
+          .filter((item) => Number.isFinite(item.id)),
+      });
+    } catch (err) {
+      if (isBaobaoAuthExpiredError(err)) {
+        await markBaobaoAuthExpired();
+        return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
+      }
+      return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
+    }
+  }
+
+  const baobaoScoreUploadMatch = path.match(/^\/api\/interviews\/([^/]+)\/baobao-score-upload$/);
+  if (baobaoScoreUploadMatch && request.method === "POST") {
+    const interviewId = baobaoScoreUploadMatch[1];
+    const [localInterview] = await db.select().from(interviews).where(eq(interviews.id, interviewId)).limit(1);
+    if (!localInterview) return fail("NOT_FOUND", "interview not found", 404);
+    if (!localInterview.remoteId) return fail("REMOTE_SYNC_FAILED", "当前面试未关联抱抱记录", 422);
+
+    const body = await parseJson<{
+      interviewEvaluation?: string;
+      interviewResult?: number;
+      interviewResultLabel?: string;
+      positionRank?: string;
+      eliminateReasonIds?: number[];
+    }>(request);
+
+    const interviewEvaluation = body.interviewEvaluation?.trim() ?? "";
+    const positionRank = body.positionRank?.trim() ?? "";
+    const interviewResult = typeof body.interviewResult === "number" ? body.interviewResult : null;
+    const interviewResultLabel = body.interviewResultLabel?.trim() ?? "";
+    const eliminateReasonIds = Array.isArray(body.eliminateReasonIds)
+      ? body.eliminateReasonIds.filter((item): item is number => typeof item === "number" && Number.isFinite(item))
+      : [];
+
+    if (!interviewEvaluation) return fail("VALIDATION_ERROR", "interviewEvaluation is required", 422);
+    if (!positionRank) return fail("VALIDATION_ERROR", "positionRank is required", 422);
+    if (!interviewResult) return fail("VALIDATION_ERROR", "interviewResult is required", 422);
+
+    const B_OR_C_RESULT_IDS = [9, 10];
+    if (B_OR_C_RESULT_IDS.includes(interviewResult) && eliminateReasonIds.length === 0) {
+      return fail("VALIDATION_ERROR", "eliminateReasonIds is required when interviewResult is B or C", 422);
+    }
+
+    const client = getBaobaoClient();
+    if (!client) return fail("AUTH_EXPIRED", "抱抱登录已失效，请重新登录", 401);
+
+    try {
+      const remoteInfoResponse = await client.getInterviewInfo(localInterview.remoteId);
+      const remoteInfo = remoteInfoResponse.data;
+
+      const saveResponse = await client.saveInterviewRecord({
+        ...remoteInfo,
+        interviewResult,
+        positionRank,
+        interviewEvaluation,
+        eliminateReason: B_OR_C_RESULT_IDS.includes(interviewResult)
+          ? eliminateReasonIds
+          : (Array.isArray(remoteInfo.eliminateReason) ? remoteInfo.eliminateReason : null),
+      });
+
+      if (saveResponse.errno !== 0) {
+        return fail("REMOTE_SYNC_FAILED", saveResponse.errmsg || "上传抱抱面试成绩失败", 502);
+      }
+
+      const existingManualEvaluation = localInterview.manualEvaluationJson ? JSON.parse(localInterview.manualEvaluationJson) : null;
+      const nextManualEvaluation = {
+        rating: typeof existingManualEvaluation?.rating === "number" ? existingManualEvaluation.rating : 0,
+        decision: interviewResultLabel || existingManualEvaluation?.decision || "",
+        comments: interviewEvaluation,
+        eliminateReasonIds,
+      };
+
+      await db.update(interviews)
+        .set({
+          interviewResult,
+          interviewResultString: interviewResultLabel || localInterview.interviewResultString,
+          eliminateReasonString: eliminateReasonIds.length > 0 ? JSON.stringify(eliminateReasonIds) : null,
+          manualEvaluationJson: JSON.stringify(nextManualEvaluation),
+          updatedAt: Date.now(),
+        })
+        .where(eq(interviews.id, localInterview.id));
+
+      await markInterviewFeedbackReceived(localInterview.candidateId);
+
+      const [row] = await db.select().from(interviews).where(eq(interviews.id, localInterview.id)).limit(1);
+      return ok({
+        ...row,
+        interviewerIds: row.interviewerIdsJson ? JSON.parse(row.interviewerIdsJson) : [],
+        manualEvaluation: row.manualEvaluationJson ? JSON.parse(row.manualEvaluationJson) : null,
+      });
+    } catch (err) {
+      if (isBaobaoAuthExpiredError(err)) {
+        await markBaobaoAuthExpired();
+        return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
+      }
+      return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
+    }
   }
 
   // Workspace
@@ -1936,11 +2273,13 @@ export async function route(request: Request): Promise<Response> {
     if (!(await candidateOrFail(body.candidateId))) return fail("NOT_FOUND", "candidate not found", 404);
     try {
       const { buffer, filename } = await exportCandidate(body.candidateId);
+      const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
+      const encodedFilename = encodeURIComponent(filename);
       return new Response(new Blob([Uint8Array.from(buffer)]), {
         status: 200,
         headers: {
           "Content-Type": "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Content-Disposition": `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
           "Content-Length": String(buffer.length),
         },
       });
@@ -2116,7 +2455,7 @@ Always be concise and helpful in your responses.`,
     const id = `conv_${crypto.randomUUID()}`;
     const normalizedTitle = body.title?.trim();
     const title = normalizedTitle || `新会话 ${Date.now()}`;
-    const agentId = body.agentId?.trim() || null;
+    const agentId = body.agentId?.trim() || (body.candidateId?.trim() ? DEFAULT_INTERVIEW_AGENT_ID : null);
     const modelProvider = body.modelProvider?.trim() || null;
     const modelId = body.modelId?.trim() || null;
     const temperature = typeof body.temperature === "number" ? body.temperature : null;
@@ -2176,15 +2515,23 @@ Always be concise and helpful in your responses.`,
 
     const messageRows = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(messages.createdAt);
     const fileRows = await db.select().from(fileResources).where(eq(fileResources.conversationId, id)).orderBy(desc(fileResources.createdAt));
+    const workflow = conv.candidateId ? await getWorkflowByCandidate(conv.candidateId, id) : null;
+    const workflowView = workflow ? toWorkflowView(workflow) : null;
+
+    if (workflowView) {
+      const fileIdByName = new Map(fileRows.map((file) => [file.name, file.id]));
+      workflowView.artifacts = workflowView.artifacts.map((artifact: typeof workflowView.artifacts[number]) => ({
+        ...artifact,
+        fileResourceId: fileIdByName.get(artifact.fileName) ?? null,
+      }));
+    }
 
     return ok({
       conversation: serializeConversation(conv, availableAgents),
       candidate: candidateInfo,
-      messages: messageRows.map(m => ({
-        ...m,
-        tools: m.toolsJson ? JSON.parse(m.toolsJson) : null,
-      })),
+      messages: messageRows.map(serializeMessageData),
       files: fileRows,
+      workflow: workflowView,
     });
   }
 
@@ -2194,7 +2541,7 @@ Always be concise and helpful in your responses.`,
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
     if (!conv) return fail("NOT_FOUND", "conversation not found", 404);
 
-    await db.update(luiWorkflows).set({ conversationId: null }).where(eq(luiWorkflows.conversationId, id));
+    await db.delete(luiWorkflows).where(eq(luiWorkflows.conversationId, id));
 
     // Delete associated messages and files first
     await db.delete(messages).where(eq(messages.conversationId, id));
@@ -2279,6 +2626,7 @@ Always be concise and helpful in your responses.`,
       temperature?: number;
     }>(request);
     if (!body.content?.trim()) return fail("VALIDATION_ERROR", "content is required", 422);
+    const trimmedContent = body.content.trim();
 
     const convConfigUpdates: Partial<typeof conversations.$inferInsert> = {};
     if (body.agentId !== undefined) {
@@ -2307,7 +2655,7 @@ Always be concise and helpful in your responses.`,
       id: msgId,
       conversationId: convId,
       role: "user",
-      content: body.content.trim(),
+      content: trimmedContent,
       status: "complete",
       createdAt: now,
     });
@@ -2335,13 +2683,28 @@ Always be concise and helpful in your responses.`;
     let workflowAgentName: string | undefined;
     let allowedToolNames: string[] | undefined;
     let agentSystemPrompt: string | null = null;
-    if (body.agentId) {
-      const [agent] = await db.select().from(agents).where(eq(agents.id, body.agentId)).limit(1);
-      if (agent) {
-        allowedToolNames = parseAgentTools(agent.toolsJson);
-        agentSystemPrompt = agent.systemPrompt;
-        if (agent.systemPrompt) {
-          systemPrompt = agent.systemPrompt;
+    const effectiveAgentId = body.agentId?.trim() || conv.agentId || (conv.candidateId ? DEFAULT_INTERVIEW_AGENT_ID : null);
+    if (effectiveAgentId && conv.agentId !== effectiveAgentId) {
+      await db.update(conversations)
+        .set({ agentId: effectiveAgentId, updatedAt: new Date() })
+        .where(eq(conversations.id, convId));
+      conv.agentId = effectiveAgentId;
+    }
+
+    if (effectiveAgentId) {
+      const executionConfig = await getResolvedAgentExecutionConfig(effectiveAgentId);
+      if (executionConfig) {
+        const agent = executionConfig.agent;
+        const agentContract = resolveAgentContract({
+          id: agent.id,
+          name: agent.name,
+          sceneAffinity: agent.sceneAffinity,
+          mode: agent.mode,
+        });
+        allowedToolNames = executionConfig.toolNames;
+        agentSystemPrompt = executionConfig.systemPrompt;
+        if (executionConfig.systemPrompt) {
+          systemPrompt = executionConfig.systemPrompt;
         }
         if (agent.temperature !== undefined && agent.temperature !== null) {
           temperature = agent.temperature;
@@ -2352,6 +2715,52 @@ Always be concise and helpful in your responses.`;
         workflowAgentName = agent.name;
 
         systemPrompt = `${systemPrompt}${buildAgentToolConstraints(agent.name, allowedToolNames)}`;
+
+        if (isWorkflowMode && conv.candidateId) {
+          const workflow = await getOrCreateWorkflow(conv.candidateId, convId);
+          const contractPromptSegment = buildAgentContractPromptSegment(agentContract, workflow.currentStage);
+          if (contractPromptSegment) {
+            systemPrompt = `${systemPrompt}\n\n${contractPromptSegment}`;
+            agentSystemPrompt = `${agentSystemPrompt ?? executionConfig.systemPrompt ?? ""}\n\n${contractPromptSegment}`.trim();
+          }
+
+          const guardResult = guardAgentUserMessage({
+            rawContent: trimmedContent,
+            workflowStage: workflow.currentStage,
+            contract: agentContract,
+          });
+
+          if (guardResult.kind === "clarify" || guardResult.kind === "reject") {
+            await createCompletedAssistantReply(convId, guardResult.reply);
+            await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, convId));
+            return createStaticLuiStreamResponse(guardResult.reply.replace(/<!--\s*workflow-action:[^>]+-->/g, "").trim());
+          }
+        }
+      }
+    }
+
+    if (isWorkflowMode && conv.candidateId) {
+      const workflow = await getOrCreateWorkflow(conv.candidateId, convId);
+      const requiresRoundConfirmation = workflow.currentStage === "S1" && typeof workflow.stageData?.round !== "number";
+      const directRound = requiresRoundConfirmation ? detectRoundConfirmation(trimmedContent) : null;
+
+      if (requiresRoundConfirmation && directRound) {
+        await confirmWorkflowRound(workflow.id, directRound);
+        const receipt = buildWorkflowConfirmationReceipt({
+          type: "round",
+          round: directRound,
+          currentStage: workflow.currentStage,
+        });
+        await createCompletedAssistantReply(convId, receipt);
+        await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, convId));
+        return createStaticLuiStreamResponse(receipt);
+      }
+
+      if (requiresRoundConfirmation) {
+        const guidance = buildWorkflowConfirmationGuidance(workflow);
+        await createCompletedAssistantReply(convId, guidance);
+        await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, convId));
+        return createStaticLuiStreamResponse(guidance.replace(/<!--\s*workflow-action:[^>]+-->/g, "").trim());
       }
     }
 
@@ -2452,15 +2861,22 @@ Always be concise and helpful in your responses.`;
     const runtimeTools = getWorkflowTools(toolContext, allowedToolNames);
     const enabledTools = Object.keys(runtimeTools).length > 0 ? runtimeTools : undefined;
 
+    const assistantMessageId = await messageService.createAssistantStreamingMessage(convId);
+    const assistantPersistence = messageService.createAssistantStreamPersistenceHandlers(assistantMessageId);
+
     const result = streamText({
       model: provider.chat(actualModelName),
       messages: historyMessages,
       system: systemPrompt,
       temperature,
       tools: enabledTools,
+      onChunk: assistantPersistence.onChunk,
+      onError: assistantPersistence.onError,
     });
 
-    return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse({
+      onFinish: assistantPersistence.onFinish,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -2469,9 +2885,7 @@ Always be concise and helpful in your responses.`;
 
   // GET /api/lui/agents - List all agents
   if (path === "/api/lui/agents" && request.method === "GET") {
-    await ensureManagedAgents();
-    const rows = await db.select().from(agents).orderBy(desc(agents.isDefault), desc(agents.createdAt));
-    return ok({ items: rows.map(serializeAgent) });
+    return ok({ items: await listResolvedAgents() });
   }
 
   // POST /api/lui/agents - Create agent
@@ -2525,11 +2939,10 @@ Always be concise and helpful in your responses.`;
   // GET /api/lui/agents/:id - Get agent
   const agentMatch = path.match(/^\/api\/lui\/agents\/([^/]+)$/);
   if (agentMatch && request.method === "GET") {
-    await ensureManagedAgents();
     const id = agentMatch[1];
-    const [row] = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
-    if (!row) return fail("NOT_FOUND", "agent not found", 404);
-    return ok(serializeAgent(row));
+    const agent = await getResolvedAgent(id);
+    if (!agent) return fail("NOT_FOUND", "agent not found", 404);
+    return ok(agent);
   }
 
   // PUT /api/lui/agents/:id - Update agent
@@ -2834,46 +3247,6 @@ Always be concise and helpful in your responses.`;
   }
 
   // ---------------------------------------------------------------------------
-  // LUI - Transcribe
-  // ---------------------------------------------------------------------------
-
-  if (path === "/api/lui/transcribe" && request.method === "POST") {
-    try {
-      const formData = await request.formData();
-      const file = formData.get("file");
-      const sessionId = sanitizeString(formData.get("sessionId"));
-      const sampleRate = Number(sanitizeString(formData.get("sampleRate")) || "16000");
-      const isFinal = sanitizeString(formData.get("isFinal")) === "true";
-
-      if (!sessionId) {
-        return fail("VALIDATION_ERROR", "sessionId is required", 422);
-      }
-
-      let pcmBuffer: Uint8Array | null = null;
-      let normalizedSampleRate = sampleRate;
-
-      if (file instanceof File && file.size > 0) {
-        const rawAudio = new Uint8Array(await file.arrayBuffer());
-        const parsedAudio = stripWavHeader(rawAudio);
-        pcmBuffer = parsedAudio.pcmBuffer;
-        normalizedSampleRate = parsedAudio.sampleRate;
-      }
-
-      const result = await transcribeVoskChunk({
-        sessionId,
-        audioBuffer: pcmBuffer,
-        sampleRate: normalizedSampleRate,
-        finalize: isFinal,
-      });
-
-      return ok(result);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return fail("TRANSCRIBE_ERROR", message, 500);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
   // LUI - Agent Execute (Workflow Mode)
   // ---------------------------------------------------------------------------
 
@@ -3005,7 +3378,7 @@ Always be concise and helpful in your responses.`;
     if (!workflow) {
       return fail("NOT_FOUND", "workflow not found", 404);
     }
-    return ok(workflow);
+    return ok(toWorkflowView(workflow));
   }
 
   // PUT /api/lui/workflows/:id - Update workflow
@@ -3031,7 +3404,7 @@ Always be concise and helpful in your responses.`;
     }
 
     const updated = await getWorkflow(id);
-    return ok(updated);
+    return ok(updated ? toWorkflowView(updated) : null);
   }
 
   // POST /api/lui/workflows/:id/advance - Advance to next stage
@@ -3043,8 +3416,52 @@ Always be concise and helpful in your responses.`;
       return fail("NOT_FOUND", "workflow not found", 404);
     }
 
-    const nextStage = await advanceStage(id);
+    const body: { silent?: boolean; targetStage?: WorkflowStage } =
+      await parseJson<{ silent?: boolean; targetStage?: WorkflowStage }>(request).catch(() => ({ silent: false, targetStage: undefined }));
+    const availableNextStages = getAvailableNextStages(workflow);
+    const targetStage = body.targetStage && availableNextStages.includes(body.targetStage)
+      ? body.targetStage
+      : undefined;
+
+    const nextStage = await advanceStage(id, targetStage);
+    if (workflow.conversationId && body.silent !== true) {
+      await createCompletedAssistantReply(
+        workflow.conversationId,
+        buildWorkflowConfirmationReceipt({
+          type: nextStage === "completed" ? "complete" : "advance",
+          previousStage: workflow.currentStage,
+          currentStage: nextStage,
+        }),
+      );
+    }
     return ok({ id, previousStage: workflow.currentStage, currentStage: nextStage });
+  }
+
+  const workflowRoundMatch = path.match(/^\/api\/lui\/workflows\/([^/]+)\/round$/);
+  if (workflowRoundMatch && request.method === "POST") {
+    const id = workflowRoundMatch[1];
+    const workflow = await getWorkflow(id);
+    if (!workflow) {
+      return fail("NOT_FOUND", "workflow not found", 404);
+    }
+
+    const body = await parseJson<{ round: number; silent?: boolean }>(request);
+    if (![1, 2, 3, 4].includes(body.round)) {
+      return fail("VALIDATION_ERROR", "round must be 1-4", 422);
+    }
+
+    const updated = await confirmWorkflowRound(id, body.round);
+    if (workflow.conversationId && body.silent !== true) {
+      await createCompletedAssistantReply(
+        workflow.conversationId,
+        buildWorkflowConfirmationReceipt({
+          type: "round",
+          round: body.round,
+          currentStage: workflow.currentStage,
+        }),
+      );
+    }
+    return ok(updated ? toWorkflowView(updated) : null);
   }
 
   // POST /api/lui/workflows/:id/reset - Reset workflow
@@ -3059,7 +3476,7 @@ Always be concise and helpful in your responses.`;
     const body = await parseJson<{ targetStage?: WorkflowStage }>(request);
     await resetWorkflow(id, body.targetStage ?? "S0");
     const updated = await getWorkflow(id);
-    return ok(updated);
+    return ok(updated ? toWorkflowView(updated) : null);
   }
 
   // GET /api/lui/workflows/by-candidate/:candidateId - Get workflow by candidate
@@ -3076,7 +3493,7 @@ Always be concise and helpful in your responses.`;
     if (!workflow) {
       return fail("NOT_FOUND", "workflow not found", 404);
     }
-    return ok(workflow);
+    return ok(toWorkflowView(workflow));
   }
 
   const messagesResponse = await messagesRoute(request);

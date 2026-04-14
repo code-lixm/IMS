@@ -15,6 +15,11 @@ export type {
   ImportScreeningConclusion,
   ImportScreeningVerdict,
   ImportTaskResultData,
+  LuiAssessmentBalanceHighlightData,
+  LuiAssessmentFeedbackComparisonData,
+  LuiAssessmentQuestionScoreData,
+  LuiAssessmentWechatSummaryItemData,
+  LuiStructuredInterviewAssessmentData,
 } from "./api-types";
 
 // Baobao third-party API types
@@ -22,6 +27,12 @@ export * from "./baobao-types";
 
 // Shared constants
 export * from "./constants";
+
+// Agent contract types
+export * from "./agent-contract";
+
+// Workspace-native agent definitions
+export * from "./workspace-agent";
 
 // Baobao dictionary constants
 export * from "./dictionaries/baobao";

@@ -82,3 +82,46 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+.ims-onboarding-popover {
+  border-radius: 1rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+}
+
+.ims-onboarding-popover .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.ims-onboarding-popover .driver-popover-description {
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
+}
+
+.ims-onboarding-popover .driver-popover-footer {
+  margin-top: 1rem;
+}
+
+.ims-onboarding-popover .driver-popover-progress-text {
+  color: hsl(var(--muted-foreground));
+}
+
+.ims-onboarding-popover .driver-popover-prev-btn,
+.ims-onboarding-popover .driver-popover-next-btn,
+.ims-onboarding-popover .driver-popover-close-btn {
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  text-shadow: none;
+  box-shadow: none;
+}
+
+.ims-onboarding-popover .driver-popover-next-btn {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}

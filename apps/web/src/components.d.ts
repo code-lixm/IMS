@@ -42,6 +42,7 @@ declare module 'vue' {
     CarouselNext: typeof import('./components/ui/carousel/CarouselNext.vue')['default']
     CarouselPrevious: typeof import('./components/ui/carousel/CarouselPrevious.vue')['default']
     Checkbox: typeof import('./components/ui/checkbox.vue')['default']
+    CircularProgress: typeof import('./components/ui/circular-progress.vue')['default']
     Collapsible: typeof import('./components/ui/collapsible/Collapsible.vue')['default']
     CollapsibleContent: typeof import('./components/ui/collapsible/CollapsibleContent.vue')['default']
     CollapsibleTrigger: typeof import('./components/ui/collapsible/CollapsibleTrigger.vue')['default']
@@ -90,6 +91,7 @@ declare module 'vue' {
     InputGroupInput: typeof import('./components/ui/input-group/InputGroupInput.vue')['default']
     InputGroupText: typeof import('./components/ui/input-group/InputGroupText.vue')['default']
     InputGroupTextarea: typeof import('./components/ui/input-group/InputGroupTextarea.vue')['default']
+    InterviewScoreUploadDialog: typeof import('./components/lui/interview-score-upload-dialog.vue')['default']
     Label: typeof import('./components/ui/label.vue')['default']
     ModelSelector: typeof import('./components/lui/model-selector.vue')['default']
     Pagination: typeof import('./components/ui/pagination/Pagination.vue')['default']
@@ -142,5 +144,7 @@ declare module 'vue' {
     TooltipContent: typeof import('./components/ui/tooltip/TooltipContent.vue')['default']
     TooltipProvider: typeof import('./components/ui/tooltip/TooltipProvider.vue')['default']
     TooltipTrigger: typeof import('./components/ui/tooltip/TooltipTrigger.vue')['default']
+    WorkflowActionCard: typeof import('./components/lui/workflow-action-card.vue')['default']
+    WorkflowArtifacts: typeof import('./components/lui/workflow-artifacts.vue')['default']
   }
 }

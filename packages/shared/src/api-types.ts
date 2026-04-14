@@ -170,6 +170,10 @@ export interface SyncRunData {
   syncAt: number;
 }
 
+export interface SyncResetRunData extends SyncRunData {
+  clearedCandidates: number;
+}
+
 export interface EmailConfigListData {
   items: EmailConfig[];
 }
@@ -233,6 +237,34 @@ export interface SendEmailData {
   subject: string;
   body: string;
   sentAt: number;
+}
+
+export interface MatchingTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  prompt: string;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MatchingTemplateListData {
+  items: MatchingTemplate[];
+}
+
+export interface CreateMatchingTemplateInput {
+  name: string;
+  description?: string;
+  content: string;
+  isDefault?: boolean;
+}
+
+export interface UpdateMatchingTemplateInput {
+  name?: string;
+  description?: string;
+  content?: string;
+  isDefault?: boolean;
 }
 
 export interface CreateInterviewAssessmentInput {
@@ -553,6 +585,89 @@ export interface ConversationDetailData {
   conversation: ConversationData;
   messages: MessageData[];
   files: FileResourceData[];
+  workflow: LuiWorkflowData | null;
+}
+
+export type LuiWorkflowStage = "S0" | "S1" | "S2" | "completed";
+
+export interface LuiWorkflowArtifactData {
+  id: string;
+  stage: LuiWorkflowStage;
+  title: string;
+  type: "markdown";
+  fileResourceId: string | null;
+  fileName: string;
+  filePath: string | null;
+  language: "markdown";
+  summary: string | null;
+  createdAt: number;
+}
+
+export interface LuiAssessmentWechatSummaryItemData {
+  scene: string;
+  performance: string;
+  evaluation: string;
+}
+
+export interface LuiAssessmentQuestionScoreData {
+  topic: string;
+  observation: string;
+  score: string;
+}
+
+export interface LuiAssessmentBalanceHighlightData {
+  dimension: string;
+  strength: string;
+  risk: string;
+}
+
+export interface LuiAssessmentFeedbackComparisonData {
+  topic: string;
+  systemJudgement: string;
+  interviewerFeedback: string;
+  conclusion: string;
+}
+
+export interface LuiStructuredInterviewAssessmentData {
+  candidateName: string;
+  roleAbbr: string;
+  years: string;
+  round: number;
+  grade: "A+" | "A" | "B+" | "B" | "C";
+  eliminateReasons: string[];
+  recommendedLevel: string;
+  normalizedRecommendedLevel: string;
+  interviewEvaluationLabel: string;
+  scoreSummary: string;
+  evidenceCompleteness: string;
+  overallJudgement: string;
+  analysisConclusion: string;
+  questionScores: LuiAssessmentQuestionScoreData[];
+  balanceHighlights: LuiAssessmentBalanceHighlightData[];
+  feedbackComparisons: LuiAssessmentFeedbackComparisonData[];
+  wechatSummaryItems: LuiAssessmentWechatSummaryItemData[];
+  nextRound: number | null;
+  nextRoundSuggestions: string[];
+  nextRoundFocus: string[];
+  shouldContinue: boolean;
+  wechatCopyText: string;
+}
+
+export interface LuiWorkflowData {
+  id: string;
+  candidateId: string;
+  conversationId: string | null;
+  currentStage: LuiWorkflowStage;
+  confirmedRound: number | null;
+  suggestedNextRound: number | null;
+  requiresRoundConfirmation: boolean;
+  recommendedNextStage: LuiWorkflowStage | null;
+  availableNextStages: LuiWorkflowStage[];
+  recommendedAction: string | null;
+  status: "active" | "paused" | "completed" | "error";
+  artifacts: LuiWorkflowArtifactData[];
+  latestAssessment: LuiStructuredInterviewAssessmentData | null;
+  updatedAt: number;
 }
 
 export interface CreateConversationInput {
@@ -579,6 +694,7 @@ export interface MessageData {
   role: "user" | "assistant" | "system";
   content: string;
   reasoning: string | null;
+  workflowAction: "confirm-round" | "advance-stage" | "complete-workflow" | null;
   tools: unknown[] | null;
   status: "streaming" | "error" | "complete";
   createdAt: number;

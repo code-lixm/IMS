@@ -1,6 +1,9 @@
 import type {
   ConversationData as ApiConversation,
   FileResourceData as ApiFileResource,
+  LuiStructuredInterviewAssessmentData,
+  LuiWorkflowArtifactData as ApiWorkflowArtifact,
+  LuiWorkflowData as ApiWorkflow,
   MessageData as ApiMessage,
 } from "@ims/shared";
 import type { LuiAgentData } from "@/api/lui";
@@ -31,6 +34,7 @@ export interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   reasoning?: string | null;
+  workflowAction?: "confirm-round" | "advance-stage" | "complete-workflow" | null;
   tools?: unknown[] | null;
   status: "streaming" | "error" | "complete";
   createdAt: Date;
@@ -44,6 +48,36 @@ export interface FileResource {
   language?: string | null;
   size?: number;
   createdAt: Date;
+}
+
+export interface WorkflowArtifact {
+  id: string;
+  stage: "S0" | "S1" | "S2" | "completed";
+  title: string;
+  type: "markdown";
+  fileResourceId: string | null;
+  fileName: string;
+  filePath: string | null;
+  language: "markdown";
+  summary: string | null;
+  createdAt: Date;
+}
+
+export interface Workflow {
+  id: string;
+  candidateId: string;
+  conversationId: string | null;
+  currentStage: "S0" | "S1" | "S2" | "completed";
+  confirmedRound: number | null;
+  suggestedNextRound: number | null;
+  requiresRoundConfirmation: boolean;
+  recommendedNextStage: "S0" | "S1" | "S2" | "completed" | null;
+  availableNextStages: Array<"S0" | "S1" | "S2" | "completed">;
+  recommendedAction: string | null;
+  status: "active" | "paused" | "completed" | "error";
+  artifacts: WorkflowArtifact[];
+  latestAssessment: LuiStructuredInterviewAssessmentData | null;
+  updatedAt: Date;
 }
 
 export function convertConversation(conversation: ApiConversation): Conversation {
@@ -68,6 +102,7 @@ export function convertMessage(message: ApiMessage): Message {
     role: message.role,
     content: message.content,
     reasoning: message.reasoning ?? undefined,
+    workflowAction: message.workflowAction ?? null,
     tools: message.tools ?? undefined,
     status: message.status,
     createdAt: new Date(message.createdAt),
@@ -78,6 +113,29 @@ export function convertFileResource(file: ApiFileResource): FileResource {
   return {
     ...file,
     createdAt: new Date(file.createdAt),
+  };
+}
+
+export function convertWorkflowArtifact(artifact: ApiWorkflowArtifact): WorkflowArtifact {
+  return {
+    ...artifact,
+    createdAt: new Date(artifact.createdAt),
+  };
+}
+
+export function convertWorkflow(workflow: ApiWorkflow): Workflow {
+  const normalizedWorkflow = workflow as ApiWorkflow & {
+    suggestedNextRound: number | null;
+    availableNextStages: Array<"S0" | "S1" | "S2" | "completed">;
+  };
+
+  return {
+    ...normalizedWorkflow,
+    suggestedNextRound: normalizedWorkflow.suggestedNextRound,
+    availableNextStages: normalizedWorkflow.availableNextStages,
+    latestAssessment: normalizedWorkflow.latestAssessment ?? null,
+    artifacts: normalizedWorkflow.artifacts.map(convertWorkflowArtifact),
+    updatedAt: new Date(normalizedWorkflow.updatedAt),
   };
 }
 

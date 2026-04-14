@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HTMLAttributes } from 'vue'
+import type { HTMLAttributes, VNode, VNodeArrayChildren } from 'vue'
 import { cn } from '@/lib/utils'
 import { computed, Fragment, isVNode, onMounted, useSlots, watch } from 'vue'
 import { useMessageBranchContext } from './context'
@@ -16,9 +16,11 @@ const { currentBranch, setBranches } = useMessageBranchContext()
 const branchVNodes = computed(() => {
   const nodes = slots.default?.() ?? []
 
-  const extractChildren = (node: any): any[] => {
+  const extractChildren = (node: VNode): VNode[] => {
     if (isVNode(node) && node.type === Fragment) {
-      return Array.isArray(node.children) ? node.children : []
+      return Array.isArray(node.children)
+        ? node.children.filter((child): child is VNode => isVNode(child as VNodeArrayChildren[number]))
+        : []
     }
     return [node]
   }
@@ -40,7 +42,7 @@ const baseClasses = computed(() => cn('grid gap-2 overflow-hidden [&>div]:pb-0',
 </script>
 
 <template>
-  <template v-for="(node, index) in branchVNodes" :key="(node.key as any) ?? index">
+  <template v-for="(node, index) in branchVNodes" :key="node.key ?? index">
     <div
       :class="cn(baseClasses, index === currentBranch ? 'block' : 'hidden')"
       v-bind="$attrs"

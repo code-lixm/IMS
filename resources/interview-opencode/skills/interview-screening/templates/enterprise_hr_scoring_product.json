@@ -1,0 +1,43 @@
+{
+  "name": "世界500强HR简历评分标准-产品岗",
+  "version": "2.0.0",
+  "based_on": "enterprise_hr_scoring.json",
+  "role_track": "product",
+  "dimensions": [
+    {
+      "name": "教育与资质",
+      "max_score": 10,
+      "criteria": "学历背景、行业认知、产品相关培训/证书"
+    },
+    {
+      "name": "经历匹配度",
+      "max_score": 20,
+      "criteria": "产品岗位连续性、行业经验、业务复杂度"
+    },
+    {
+      "name": "项目产出与业务价值",
+      "max_score": 25,
+      "criteria": "增长指标、留存转化、商业结果与落地效率"
+    },
+    {
+      "name": "岗位核心能力",
+      "max_score": 25,
+      "criteria": "需求洞察、优先级决策、跨团队推进与闭环能力"
+    },
+    {
+      "name": "协作与领导",
+      "max_score": 12,
+      "criteria": "多部门协同、影响力、团队管理与冲突处理"
+    },
+    {
+      "name": "稳定性与合规风险",
+      "max_score": 8,
+      "criteria": "履历连续性、表达一致性、无重大合规风险"
+    }
+  ],
+  "core_competency_checklist": [
+    "是否有完整的需求到上线闭环案例",
+    "是否体现数据驱动决策（A/B、漏斗、留存）",
+    "是否展示跨团队推进阻塞问题的能力"
+  ]
+}

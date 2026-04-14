@@ -114,7 +114,7 @@
           :variant="props.syncError ? 'destructive' : 'secondary'"
           size="sm"
           class="gap-1.5"
-          :disabled="props.syncLoading"
+          :disabled="props.syncLoading || props.resetSyncLoading"
           @click="emit('sync')"
         >
           <RefreshCw
@@ -123,15 +123,68 @@
           />
           <span class="hidden lg:inline">同步</span>
         </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          class="gap-1.5"
+          :disabled="props.syncLoading || props.resetSyncLoading"
+          @click="openResetDialog"
+        >
+          <AlertTriangle class="h-4 w-4" />
+          <span class="hidden xl:inline">重置重导入</span>
+        </Button>
       </div>
 
       <AppUserActions />
     </div>
+
+    <Dialog :open="resetDialogOpen" content-class="sm:max-w-md" @update:open="handleResetDialogOpenChange">
+      <template #content>
+        <DialogHeader>
+          <DialogTitle class="flex items-center gap-2 text-destructive">
+            <AlertTriangle class="h-5 w-5" />
+            高风险操作：删除全部记录并重新导入
+          </DialogTitle>
+          <DialogDescription class="pt-2 text-sm leading-6">
+            该操作会删除当前所有候选人、面试、简历、AI 产物、全部会话记录、会话记忆、工作区与分享记录，然后立即从远端重新同步，且不可撤销。
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          请确认你已经知晓：当前页面看到的候选人记录会被全部清空，只有远端还能重新同步回来的数据才会恢复；如果远端同步失败，本地会暂时保持为空。
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-sm font-medium">请输入 <span class="text-destructive">重新导入</span> 以继续：</p>
+          <Input
+            :model-value="resetConfirmationText"
+            placeholder="重新导入"
+            :disabled="props.resetSyncLoading"
+            @update:model-value="handleResetConfirmationChange"
+          />
+        </div>
+
+        <DialogFooter class="mt-2 gap-2">
+          <Button variant="outline" :disabled="props.resetSyncLoading" @click="resetDialogOpen = false">
+            取消
+          </Button>
+          <Button
+            variant="destructive"
+            :disabled="!canConfirmReset || props.resetSyncLoading"
+            @click="confirmReset"
+          >
+            {{ props.resetSyncLoading ? "重导入中…" : "确认删除并重新导入" }}
+          </Button>
+        </DialogFooter>
+      </template>
+    </Dialog>
   </AppPageHeader>
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from "vue";
 import {
+  AlertTriangle,
   FileClock,
   MoreHorizontal,
   Plus,
@@ -149,6 +202,11 @@ import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
 import DropdownMenuItem from "@/components/ui/dropdown-menu-item.vue";
 import DropdownMenuSeparator from "@/components/ui/dropdown-menu-separator.vue";
 import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue";
+import Dialog from "@/components/ui/dialog.vue";
+import DialogDescription from "@/components/ui/dialog-description.vue";
+import DialogFooter from "@/components/ui/dialog-footer.vue";
+import DialogHeader from "@/components/ui/dialog-header.vue";
+import DialogTitle from "@/components/ui/dialog-title.vue";
 import Input from "@/components/ui/input.vue";
 
 interface CandidatePageHeaderProps {
@@ -159,6 +217,7 @@ interface CandidatePageHeaderProps {
   syncLoading?: boolean;
   syncError?: string | null;
   syncEnabled?: boolean;
+  resetSyncLoading?: boolean;
 }
 
 const props = defineProps<CandidatePageHeaderProps>();
@@ -170,9 +229,41 @@ const emit = defineEmits<{
   (e: "import"): void;
   (e: "goto-import"): void;
   (e: "sync"): void;
+  (e: "reset-sync"): void;
 }>();
+
+const RESET_CONFIRMATION_TEXT = "重新导入";
+const resetDialogOpen = ref(false);
+const resetConfirmationText = ref("");
+const canConfirmReset = computed(() => resetConfirmationText.value.trim() === RESET_CONFIRMATION_TEXT);
 
 function handleSearchUpdate(value: string | number) {
   emit("update:search", String(value));
+}
+
+function handleResetDialogOpenChange(nextOpen: boolean) {
+  resetDialogOpen.value = nextOpen;
+  if (!nextOpen) {
+    resetConfirmationText.value = "";
+  }
+}
+
+function handleResetConfirmationChange(value: string | number) {
+  resetConfirmationText.value = String(value);
+}
+
+function openResetDialog() {
+  resetDialogOpen.value = true;
+  resetConfirmationText.value = "";
+}
+
+function confirmReset() {
+  if (!canConfirmReset.value || props.resetSyncLoading) {
+    return;
+  }
+
+  resetDialogOpen.value = false;
+  resetConfirmationText.value = "";
+  emit("reset-sync");
 }
 </script>

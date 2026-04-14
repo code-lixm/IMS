@@ -1,6 +1,8 @@
 <template>
-  <ScrollAreaRoot :class="cn('relative overflow-hidden', props.class)">
-    <ScrollAreaViewport class="h-full w-full rounded-[inherit]">
+  <ScrollAreaRoot :class="cn('relative min-h-0 min-w-0 overflow-hidden', props.class)">
+    <ScrollAreaViewport
+      :class="cn('h-full w-full rounded-[inherit]', props.viewportClass)"
+    >
       <slot />
     </ScrollAreaViewport>
     <ScrollAreaScrollbar
@@ -26,6 +28,7 @@ import { cn } from "@/lib/utils"
 
 interface ScrollAreaProps {
   class?: HTMLAttributes["class"]
+  viewportClass?: HTMLAttributes["class"]
 }
 
 const props = defineProps<ScrollAreaProps>()

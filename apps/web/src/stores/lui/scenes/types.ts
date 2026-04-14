@@ -11,6 +11,7 @@ export interface LuiConversationPolicy {
   beforeCreateConversation(
     conversations: Conversation[],
     candidateId: string | null,
+    options?: { forceCreate?: boolean },
   ): LuiConversationPolicyDecision;
 }
 

@@ -1,6 +1,7 @@
 <template>
   <div class="min-h-screen bg-background">
     <router-view />
+    <OnboardingTourHost />
     <AppNotificationCenter />
 
     <!-- Auth initializing overlay -->
@@ -42,6 +43,7 @@
 <script setup lang="ts">
 import { Briefcase } from "lucide-vue-next";
 import AppNotificationCenter from "@/components/app-notification-center.vue";
+import OnboardingTourHost from "@/components/onboarding-tour-host.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTheme } from "@/composables/use-theme";
 

@@ -1,0 +1,31 @@
+{
+  "name": "简历评分标准",
+  "description": "通用简历评估标准",
+  "dimensions": [
+    {
+      "name": "基本信息完整性",
+      "max_score": 15,
+      "criteria": "联系方式、教育背景、工作经历是否完整"
+    },
+    {
+      "name": "工作经历匹配度",
+      "max_score": 25,
+      "criteria": "与目标岗位的相关性和深度"
+    },
+    {
+      "name": "技能描述",
+      "max_score": 20,
+      "criteria": "技能列表的清晰度和相关性"
+    },
+    {
+      "name": "项目成果",
+      "max_score": 25,
+      "criteria": "项目描述的详细程度和成果量化"
+    },
+    {
+      "name": "格式与表达",
+      "max_score": 15,
+      "criteria": "排版整洁、语言简洁专业"
+    }
+  ]
+}

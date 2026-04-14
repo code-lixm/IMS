@@ -1,0 +1,43 @@
+{
+  "name": "世界500强HR简历评分标准-运营岗",
+  "version": "2.0.0",
+  "based_on": "enterprise_hr_scoring.json",
+  "role_track": "ops",
+  "dimensions": [
+    {
+      "name": "教育与资质",
+      "max_score": 10,
+      "criteria": "学历与岗位基础要求、运营相关培训/资质"
+    },
+    {
+      "name": "经历匹配度",
+      "max_score": 22,
+      "criteria": "运营场景相关性、岗位稳定性、业务理解深度"
+    },
+    {
+      "name": "项目产出与业务价值",
+      "max_score": 23,
+      "criteria": "活动与策略结果、成本效率、流程优化收益"
+    },
+    {
+      "name": "岗位核心能力",
+      "max_score": 23,
+      "criteria": "策略执行、数据分析、流程治理与风险响应"
+    },
+    {
+      "name": "协作与领导",
+      "max_score": 12,
+      "criteria": "横向协同、资源整合、推动执行落地"
+    },
+    {
+      "name": "稳定性与合规风险",
+      "max_score": 10,
+      "criteria": "职业稳定、履历可信、合规意识与执行记录"
+    }
+  ],
+  "core_competency_checklist": [
+    "是否有可验证的运营指标改善结果",
+    "是否体现流程优化和跨团队协同能力",
+    "是否具备风险识别与应急处理经验"
+  ]
+}

@@ -42,11 +42,14 @@ src/
 
 ## ANTI-PATTERNS (THIS PACKAGE)
 
-- **9+ 空 catch 块** — `services/` 多处 silent failure
-- **`as any` 类型断言** — `routes.ts` 6 处 bypass TS
-- **`console.*` 调用** — 应替换为结构化日志
+- **13+ 空 catch 块** — `services/` 多处 silent failure (`.catch(() => {})`)
+- **`as any` 类型断言** — `routes.ts` 3 处 bypass TS
+- **57+ `console.*` 调用** — 应替换为结构化日志
 - **Magic numbers** — 超时/端口/重试次数硬编码
+- **15x maxTokens 硬编码** — `routes.ts` 15处 `128000` 等硬编码值
 - **巨大单体文件** — `routes.ts` 3059 行，应拆分
+- **hardcoded 平台** — `bun build --compile --target=bun-darwin-arm64` 只能跑 Apple Silicon
+- **Turbo 弱用** — root build 用 `&&` 链而非 `turbo run build`
 
 ## COMMANDS
 
@@ -61,3 +64,9 @@ pnpm typecheck    # tsc --noEmit
 - `bun` — Runtime
 - `drizzle-orm` + `bun:sqlite` — DB
 - `nodemailer` — 邮件发送 (Phase 4)
+
+## TESTING
+
+- **Bun test** — 6 unit test files in `src/services/*.test.ts`
+- **Playwright E2E** — 3 spec files in root `e2e/` directory
+- **无 Vitest** — Vue 组件测试未配置（计划中）

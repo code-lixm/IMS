@@ -36,16 +36,16 @@
             <article
               v-for="file in group.files"
               :key="file.id"
-              class="flex items-center justify-between gap-2 rounded-md border p-3"
+              class="flex items-start gap-2 rounded-xl border border-border/60 bg-card/80 px-3 py-3 shadow-sm transition-colors hover:bg-card"
             >
-              <div class="min-w-0 flex items-center gap-2">
+              <div class="min-w-0 flex flex-1 items-start gap-2.5">
                 <component
                   :is="file.type === 'code' ? FileCode : FileText"
-                  class="h-4 w-4 shrink-0 text-muted-foreground"
+                  class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
                 />
-                <div class="min-w-0">
+                <div class="min-w-0 flex-1">
                   <p class="truncate text-sm font-medium">{{ displayFileName(file.name) }}</p>
-                  <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>{{ formatDate(file.createdAt) }}</span>
                     <Badge v-if="file.language" variant="secondary">{{ file.language }}</Badge>
                   </div>
@@ -55,34 +55,40 @@
               <div class="flex shrink-0 items-center gap-1">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
-                  class="h-8 w-8"
+                  class="h-8 w-8 rounded-md border-border/60 bg-background text-foreground shadow-none hover:bg-accent"
                   title="预览"
                   @click="openPreview(file)"
                 >
                   <Eye class="h-4 w-4" />
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  class="h-8 w-8"
-                  title="下载"
-                  @click="downloadFile(file)"
-                >
-                  <Download class="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  class="h-8 w-8 text-destructive"
-                  title="删除"
-                  @click="removeFile(file.id)"
-                >
-                  <Trash2 class="h-4 w-4" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      class="h-8 w-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                      title="更多操作"
+                    >
+                      <MoreHorizontal class="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" class="w-36">
+                    <DropdownMenuItem @click="downloadFile(file)">
+                      <Download class="h-4 w-4" />
+                      <span>下载</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="text-destructive focus:text-destructive"
+                      @click="removeFile(file.id)"
+                    >
+                      <Trash2 class="h-4 w-4" />
+                      <span>删除</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </article>
           </div>
@@ -107,9 +113,12 @@
         </DialogHeader>
 
         <ScrollArea v-if="previewFile" class="h-[60vh] rounded-md border bg-muted/30">
-          <div v-if="isMarkdownFile(previewFile)" class="p-4">
-            <div class="prose prose-sm max-w-none dark:prose-invert" v-html="renderMarkdown(previewFile.content)" />
-          </div>
+          <Markdown
+            v-if="isMarkdownFile(previewFile)"
+            :content="previewContent(previewFile)"
+            mode="static"
+            class="size-full p-4 [&>*:first-child]:mt-0! [&>*:last-child]:mb-0!"
+          />
           <pre v-else class="whitespace-pre-wrap break-all p-4 text-xs leading-5"><code>{{ previewFile.content }}</code></pre>
         </ScrollArea>
 
@@ -127,11 +136,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import { storeToRefs } from "pinia"
+import { Markdown } from "vue-stream-markdown"
+import "vue-stream-markdown/index.css"
 import {
   Download,
   Eye,
   FileCode,
   FileText,
+  MoreHorizontal,
   Trash2,
 } from "lucide-vue-next"
 import Badge from "@/components/ui/badge.vue"
@@ -141,8 +153,12 @@ import DialogDescription from "@/components/ui/dialog-description.vue"
 import DialogFooter from "@/components/ui/dialog-footer.vue"
 import DialogHeader from "@/components/ui/dialog-header.vue"
 import DialogTitle from "@/components/ui/dialog-title.vue"
+import DropdownMenu from "@/components/ui/dropdown-menu.vue"
+import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue"
+import DropdownMenuItem from "@/components/ui/dropdown-menu-item.vue"
+import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue"
 import ScrollArea from "@/components/ui/scroll-area.vue"
-import { renderSafeMarkdown } from "@/lib/render/render-safe-markdown"
+import { stripDisplayOnlyFrontmatter } from "@/lib/markdown-display"
 import { useLuiStore, type FileResource } from "@/stores/lui"
 
 type FileResourceType = FileResource["type"]
@@ -160,7 +176,6 @@ const { currentFiles } = storeToRefs(luiStore)
 
 const previewOpen = ref(false)
 const previewFile = ref<FileResource | null>(null)
-const renderMarkdown = renderSafeMarkdown
 
 const totalCount = computed(() => currentFiles.value.length)
 
@@ -204,9 +219,15 @@ function displayFileName(name: string): string {
   try {
     return decodeURIComponent(name).replace(/\+/g, " ")
   }
-  catch {
+  catch (_error) {
     return name
   }
+}
+
+function previewContent(file: FileResource): string {
+  return isMarkdownFile(file)
+    ? stripDisplayOnlyFrontmatter(file.content)
+    : file.content
 }
 
 function openPreview(file: FileResource) {

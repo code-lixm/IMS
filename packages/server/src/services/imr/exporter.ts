@@ -7,6 +7,24 @@ import { eq, desc } from "drizzle-orm";
 import type { IMRManifest, IMRChecksums, IMRCandidate } from "./types";
 import { config } from "../../config";
 
+function sanitizeFileNamePart(value: string | null | undefined, fallback: string): string {
+  const normalized = value?.trim();
+  if (!normalized) return fallback;
+
+  return normalized
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim() || fallback;
+}
+
+function formatExperienceForFileName(years: number | null | undefined): string {
+  if (years === null || years === undefined) {
+    return "经验未填写";
+  }
+
+  return `${years}年经验`;
+}
+
 function jsonHash(obj: unknown): string {
   let hash = 0;
   for (const byte of new TextEncoder().encode(JSON.stringify(obj))) {
@@ -31,9 +49,11 @@ export async function exportCandidate(candidateId: string): Promise<{ buffer: Bu
   const artifactRows = await db.select().from(artifacts).where(eq(artifacts.candidateId, candidateId)).orderBy(desc(artifacts.updatedAt));
 
   const zip = new JSZip();
-  const ts = Date.now();
-  const safeName = cand.name.replace(/[^a-zA-Z0-9\u4e00-\u9fff\-_]/g, "_");
-  const base = `candidate-${safeName}-${ts}`;
+  const namePart = sanitizeFileNamePart(cand.name, "未命名候选人");
+  const positionPart = sanitizeFileNamePart(cand.position, "职位未填写");
+  const experiencePart = formatExperienceForFileName(cand.yearsOfExperience);
+  const exportFileName = `${namePart}-${positionPart}-${experiencePart}.imr`;
+  const base = `${namePart}-${positionPart}-${experiencePart}`;
 
   const candidateData: IMRCandidate = {
     id: cand.id, source: cand.source as "local" | "remote" | "hybrid", remoteId: cand.remoteId,
@@ -86,5 +106,5 @@ export async function exportCandidate(candidateId: string): Promise<{ buffer: Bu
   zip.file(`${base}/checksums.json`, JSON.stringify(checksums, null, 2));
 
   const buffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
-  return { buffer, filename: `${base}.imr` };
+  return { buffer, filename: exportFileName };
 }

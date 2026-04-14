@@ -202,6 +202,34 @@ export const luiApi = {
     });
   },
 
+  confirmWorkflowRound(id: string, round: number, options?: { silent?: boolean }) {
+    return api(`/api/lui/workflows/${id}/round`, {
+      method: "POST",
+      json: { round, silent: options?.silent ?? false },
+    });
+  },
+
+  updateWorkflow(id: string, input: { currentStage?: "S0" | "S1" | "S2" | "completed"; status?: "active" | "paused" | "completed" | "error" }) {
+    return api(`/api/lui/workflows/${id}`, {
+      method: "PUT",
+      json: input,
+    });
+  },
+
+  advanceWorkflow(id: string, options?: { silent?: boolean; targetStage?: "S0" | "S1" | "S2" | "completed" }) {
+    return api(`/api/lui/workflows/${id}/advance`, {
+      method: "POST",
+      json: { silent: options?.silent ?? false, targetStage: options?.targetStage },
+    });
+  },
+
+  resetWorkflow(id: string, input?: { targetStage?: "S0" | "S1" | "S2" | "completed" }) {
+    return api(`/api/lui/workflows/${id}/reset`, {
+      method: "POST",
+      json: input ?? {},
+    });
+  },
+
   // Agents
   listAgents() {
     return api<LuiAgentListData>("/api/lui/agents");

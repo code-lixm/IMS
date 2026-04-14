@@ -18,6 +18,8 @@ import type {
   BaobaoJobPositionResponse,
   BaobaoPositionRankResponse,
   BaobaoDictResponse,
+  BaobaoSaveInterviewRecordPayload,
+  BaobaoSaveInterviewRecordResponse,
   BaobaoPaginationParams,
   BaobaoTokenPayload,
 } from "../baobao-types";
@@ -280,7 +282,20 @@ export class BaobaoClient {
    */
   async getDictByType(dictType: string): Promise<BaobaoDictResponse> {
     return this.request<BaobaoDictResponse>("/interviewer/common/getDictByType", {
-      method: "GET",
+      method: "POST",
+      body: {
+        type: dictType,
+      },
+    });
+  }
+
+  /**
+   * Save interview record back to Baobao
+   */
+  async saveInterviewRecord(payload: BaobaoSaveInterviewRecordPayload): Promise<BaobaoSaveInterviewRecordResponse> {
+    return this.request<BaobaoSaveInterviewRecordResponse>("/interviewer/saveInterviewRecord", {
+      method: "POST",
+      body: payload as unknown as Record<string, unknown>,
     });
   }
 

@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-04-04
-**Commit:** aa73d8a
+**Generated:** 2026-04-13
+**Commit:** 8df4ec7
 **Branch:** master
 
 ## OVERVIEW
@@ -49,11 +49,15 @@ ims/
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
-- **9+ 空 catch 块** — `packages/server/src/services/` 多处 silent failure
-- **`as any` 类型断言** — `routes.ts` 中 6 处 bypass 类型安全
-- **console.log/error** — 生产代码使用 console 而非结构化日志
+- **13+ 空 catch 块** — `services/` 多处 silent failure (`.catch(() => {})`)
+- **`as any` 类型断言** — `routes.ts` 3 处 bypass 类型安全
+- **57+ console.* 调用** — server 代码使用 console 而非结构化日志
 - **禁用 linter** — `extractor.ts` 使用 `eslint-disable-next-line`
-- **Magic numbers** — 硬编码超时、端口、重试次数（无配置化）
+- **Magic numbers** — 硬编码超时、端口、重试次数、maxTokens (15x 128000)
+- **`@ts-ignore`** — `apps/web/src/auto-imports.d.ts:85`
+- **hardcoded 平台** — server `bun build --compile --target=bun-darwin-arm64` 只能跑 Apple Silicon
+- **无 CI/CD** — 没有 GitHub Actions/Docker
+- **Turbo 弱用** — root build 用 `&&` 链而非 `turbo run build`
 
 ## UNIQUE STYLES
 
@@ -128,10 +132,9 @@ pnpm clean            # Turbo clean + rm node_modules
 ## KNOWN ISSUES
 
 - **端口** — Server 监听 `:9092`，Web dev server `:9091`（旧文档可能写 3000/5173，需以配置为准）
-- **无 CI/CD** — 无 GitHub Actions/Docker
-- **无测试** — 当前阶段未配置测试基础设施
+- **测试基础设施** — Playwright E2E 已配置 + Bun test 单元测试，但无 Vitest、无 CI 测试任务
 - **runtime/ 未忽略** — SQLite 和日志在仓库内，应配置 `.gitignore`
-- **packages/runtime 幽灵包** — 目录存在但非 workspace 成员
+- **packages/runtime 幽灵包** — 目录存在但非 workspace 成员（pnpm-workspace.yaml 未声明）
 - **双 schema 系统** — `server/schema.ts` (Drizzle) + `shared/db-schema.ts` (TS) 需同步维护
 
 ## NOTES

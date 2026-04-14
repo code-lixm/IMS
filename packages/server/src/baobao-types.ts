@@ -100,31 +100,29 @@ export interface BaobaoApplicantListResponse {
 }
 
 export interface BaobaoInterviewInfo {
-  id: string;
-  applicantName: string;
-  phone: string;
-  email: string;
-  applyPosition: string;
-  organizationName: string;
-  interviewTime: string;
-  status: string;
-  remark: string;
-  resumeUrl: string;
-  interviewRecordList: BaobaoInterviewRecord[];
-}
-
-export interface BaobaoInterviewRecord {
-  id: string;
-  interviewTime: string;
-  interviewerName: string;
-  interviewerResult: string;
-  interviewerRemark: string;
+  id: number | string;
+  name: string;
+  organizationName: string | null;
+  applyPositionName: string | null;
+  interviewTime: number | null;
+  interviewType: number | null;
+  interviewPlace: string | null;
+  interviewResultString: string | null;
+  status: string | number | null;
+  interviewResult: number | null;
+  positionRank: string | null;
+  interviewEvaluation: string | null;
+  eliminateReason: number[] | null;
+  currentSalary: string | null;
+  expectSalary: string | null;
+  suggestSalary: string | null;
+  resumeUrl?: string | null;
 }
 
 export interface BaobaoInterviewInfoResponse {
   errno: 0;
   errcode: string;
-  errmsg: string;
+  errmsg: string | null;
   data: BaobaoInterviewInfo;
 }
 
@@ -160,9 +158,9 @@ export interface BaobaoJobPositionResponse {
 }
 
 export interface BaobaoPositionRank {
-  id: string;
+  id: string | number;
   name: string;
-  level: number;
+  level?: number | null;
 }
 
 export interface BaobaoPositionRankResponse {
@@ -173,24 +171,56 @@ export interface BaobaoPositionRankResponse {
 }
 
 export interface BaobaoDictItem {
-  dictValue: string;
-  dictLabel: string;
+  id: string | number;
+  sort?: number | null;
+  type: string;
+  name: string;
+  code?: string | null;
+  remark?: string | null;
+  disabled?: boolean;
 }
 
 export interface BaobaoDictResponse {
   errno: 0;
   errcode: string;
-  errmsg: string;
+  errmsg: string | null;
   data: BaobaoDictItem[];
+}
+
+// 淘汰原因选项（type: eliminate_reason）
+export interface BaobaoEliminateReasonOption {
+  id: number;
+  sort: number;
+  type: "eliminate_reason";
+  name: string;
+  code: string | null;
+  remark: string | null;
+  disabled: boolean;
+}
+
+export interface BaobaoEliminateReasonResponse {
+  errno: 0;
+  errcode: string;
+  errmsg: string | null;
+  data: BaobaoEliminateReasonOption[];
+}
+
+export interface BaobaoSaveInterviewRecordPayload extends Omit<BaobaoInterviewInfo, "eliminateReason"> {
+  eliminateReason: number[] | null;
+}
+
+export interface BaobaoSaveInterviewRecordResponse {
+  errno: number;
+  errcode?: string;
+  errmsg: string | null;
+  data: null;
 }
 
 // ---------------------------------------------------------------------------
 // File Download
 // ---------------------------------------------------------------------------
 
-export interface BaobaoResumeDownloadResponse {
-  // Binary file content
-}
+export type BaobaoResumeDownloadResponse = ArrayBuffer;
 
 // ---------------------------------------------------------------------------
 // Request/Response Types

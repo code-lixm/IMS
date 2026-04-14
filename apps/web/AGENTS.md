@@ -46,6 +46,14 @@ src/
 
 - 组件中避免直接调用 `fetch`，统一使用 `api/` 下的客户端
 - 避免在 `views/` 放置业务逻辑
+- **`@ts-ignore`** — `src/auto-imports.d.ts:85` 应修复
+
+## TESTING
+
+- **Playwright E2E** — 3 spec files in `e2e/` directory (17+ tests)
+- **Bun test** — 7 unit test files in `src/**/*.test.ts`
+- **Remote CDP** — 支持通过 Chrome DevTools Protocol 连接已登录浏览器
+- **无 Vitest** — Vue 组件测试未配置（计划中）
 
 ## COMMANDS
 

@@ -9,7 +9,7 @@
         >
           <button
             type="button"
-            class="flex min-h-[2.75rem] w-full flex-col justify-center gap-1 rounded-md px-3 py-2 pr-10 text-left text-sm transition-colors"
+            class="flex min-h-[2.75rem] w-full flex-col justify-center gap-1 rounded-md px-3 py-2 pr-16 text-left text-sm transition-colors"
             :class="
               activeId === conversation.id
                 ? 'bg-accent text-accent-foreground'
@@ -42,10 +42,19 @@
             </div>
           </button>
 
-          <!-- 删除按钮：悬浮显示 -->
+          <!-- 操作按钮：悬浮显示 -->
           <div
-            class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
+            class="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
           >
+            <button
+              type="button"
+              class="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground transition-colors"
+              @click.stop="openRename(conversation)"
+              title="重命名会话"
+            >
+              <Pencil class="h-4 w-4" />
+              <span class="sr-only">重命名</span>
+            </button>
             <button
               type="button"
               class="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-destructive/10 hover:text-destructive transition-colors"
@@ -59,13 +68,41 @@
         </li>
       </ul>
     </ScrollArea>
+
+    <Dialog :open="renameOpen" @update:open="handleRenameOpenChange">
+      <template #content>
+        <DialogHeader>
+          <DialogTitle>重命名会话</DialogTitle>
+          <DialogDescription>给当前会话一个更好识别的名字。</DialogDescription>
+        </DialogHeader>
+
+        <Input
+          v-model="renameValue"
+          data-conversation-rename-input
+          placeholder="输入会话名称"
+          @keydown.enter.prevent="submitRename"
+        />
+
+        <DialogFooter class="gap-2">
+          <Button type="button" variant="outline" @click="closeRename">取消</Button>
+          <Button type="button" @click="submitRename">保存</Button>
+        </DialogFooter>
+      </template>
+    </Dialog>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { Trash2 } from "lucide-vue-next";
+import { computed, nextTick, ref } from "vue";
+import { Pencil, Trash2 } from "lucide-vue-next";
 import Badge from "@/components/ui/badge.vue";
+import Button from "@/components/ui/button.vue";
+import Dialog from "@/components/ui/dialog.vue";
+import DialogDescription from "@/components/ui/dialog-description.vue";
+import DialogFooter from "@/components/ui/dialog-footer.vue";
+import DialogHeader from "@/components/ui/dialog-header.vue";
+import DialogTitle from "@/components/ui/dialog-title.vue";
+import Input from "@/components/ui/input.vue";
 import ScrollArea from "@/components/ui/scroll-area.vue";
 import type { Conversation } from "@/stores/lui";
 
@@ -87,6 +124,7 @@ const props = withDefaults(defineProps<ConversationListProps>(), {
 const emit = defineEmits<{
   (e: "select", id: string): void;
   (e: "delete", id: string): void;
+  (e: "rename", id: string, title: string): void;
 }>();
 
 const conversations = computed(() => props.conversations);
@@ -98,6 +136,10 @@ const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour: "2-digit",
   minute: "2-digit",
 });
+
+const renameOpen = ref(false);
+const renameValue = ref("");
+const renameTarget = ref<ExtendedConversation | null>(null);
 
 function formatTime(value: Date) {
   return dateFormatter.format(value);
@@ -140,5 +182,45 @@ function handleSelect(id: string) {
 
 function handleDelete(id: string) {
   emit("delete", id);
+}
+
+function openRename(conversation: ExtendedConversation) {
+  renameTarget.value = conversation;
+  renameValue.value = conversation.title || "";
+  renameOpen.value = true;
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const input = document.querySelector<HTMLInputElement>("[data-conversation-rename-input]");
+      input?.focus();
+      input?.select();
+    });
+  });
+}
+
+function closeRename() {
+  renameOpen.value = false;
+  renameTarget.value = null;
+  renameValue.value = "";
+}
+
+function handleRenameOpenChange(value: boolean) {
+  if (!value) {
+    closeRename();
+    return;
+  }
+  renameOpen.value = value;
+}
+
+function submitRename() {
+  if (!renameTarget.value) {
+    return;
+  }
+  const nextTitle = renameValue.value.trim();
+  if (!nextTitle || nextTitle === renameTarget.value.title.trim()) {
+    closeRename();
+    return;
+  }
+  emit("rename", renameTarget.value.id, nextTitle);
+  closeRename();
 }
 </script>

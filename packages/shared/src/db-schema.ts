@@ -44,7 +44,7 @@ export type FileTaskStatus =
   | "skipped";
 export type ShareType = "send" | "receive";
 export type ShareStatus = "pending" | "success" | "failed" | "conflict";
-export type AgentSourceType = "builtin" | "custom" | "imported";
+export type AgentSourceType = "builtin" | "custom" | "imported" | "workspace";
 export type AgentSceneAffinity = "general" | "interview";
 export type NotificationType =
   | "sync_error"

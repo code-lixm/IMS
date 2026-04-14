@@ -3,7 +3,7 @@ import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import type { LuiConversationPolicy } from "./scenes/types";
-import { convertConversation, convertFileResource, convertMessage, type Conversation, type FileResource, type Message } from "./types";
+import { convertConversation, convertFileResource, convertMessage, convertWorkflow, type Conversation, type FileResource, type Message, type Workflow } from "./types";
 
 interface LuiConversationModuleOptions {
   conversations: Ref<Conversation[]>;
@@ -14,6 +14,7 @@ interface LuiConversationModuleOptions {
   temperature: Ref<number>;
   messages: Ref<Record<string, Message[]>>;
   fileResources: Ref<Record<string, FileResource[]>>;
+  workflows: Ref<Record<string, Workflow | null>>;
   isLoading: Ref<boolean>;
   isLoadingMessages: Ref<boolean>;
   isInitializing: Ref<boolean>;
@@ -37,7 +38,7 @@ export interface LuiConversationModule {
   loadConversations: () => Promise<void>;
   loadConversation: (id: string) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
-  createConversation: (title?: string, candidateId?: string) => Promise<Conversation>;
+  createConversation: (title?: string, candidateId?: string, options?: { forceCreate?: boolean }) => Promise<Conversation>;
   deleteConversation: (id: string) => Promise<void>;
 }
 
@@ -51,6 +52,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
     temperature,
     messages,
     fileResources,
+    workflows,
     isLoading,
     isLoadingMessages,
     isInitializing,
@@ -149,6 +151,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
 
       messages.value[id] = data.messages.map(convertMessage);
       fileResources.value[id] = data.files.map(convertFileResource);
+      workflows.value[id] = data.workflow ? convertWorkflow(data.workflow) : null;
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Failed to load conversation";
       notifyError(reportAppError("lui/load-conversation", err, {
@@ -168,10 +171,11 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
     }
   }
 
-  async function createConversation(title?: string, candidateId?: string) {
+  async function createConversation(title?: string, candidateId?: string, options?: { forceCreate?: boolean }) {
     const decision = conversationPolicy.value?.beforeCreateConversation(
       conversations.value,
       candidateId ?? null,
+      options,
     );
 
     if (decision?.error) {
@@ -208,6 +212,7 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
       applyConversationConfig(conversation);
       messages.value[conversation.id] = [];
       fileResources.value[conversation.id] = [];
+      workflows.value[conversation.id] = null;
       return conversation;
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Failed to create conversation";
@@ -230,8 +235,10 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
       conversations.value = conversations.value.filter((conversation) => conversation.id !== id);
       delete messages.value[id];
       delete fileResources.value[id];
+      delete workflows.value[id];
       if (selectedId.value === id) {
-        selectedId.value = conversations.value[0]?.id ?? null;
+        selectedId.value = null;
+        applyConversationConfig(undefined);
       }
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Failed to delete conversation";
@@ -336,14 +343,20 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
       title,
       updatedAt: new Date(),
     };
-    conversations.value[index] = optimistic;
+    conversations.value = conversations.value.map((item, itemIndex) =>
+      itemIndex === index ? optimistic : item,
+    );
 
     try {
       const updated = await luiApi.update(conversationId, { title });
       const normalized = convertConversation(updated);
-      conversations.value[index] = normalized;
+      conversations.value = conversations.value.map((item, itemIndex) =>
+        itemIndex === index ? normalized : item,
+      );
     } catch (err) {
-      conversations.value[index] = current;
+      conversations.value = conversations.value.map((item, itemIndex) =>
+        itemIndex === index ? current : item,
+      );
       console.error("[updateConversationTitle] Failed:", err);
     }
   }

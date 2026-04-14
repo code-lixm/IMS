@@ -36,6 +36,7 @@ src/
 ## ANTI-PATTERNS
 
 - **双 Schema 系统** — 此包的 `db-schema.ts` (TS) 与 server 的 `schema.ts` (Drizzle) 需同步维护
+- **无运行时代码** — 只包含类型和常量，无业务逻辑（设计决策，非反模式）
 
 ## KEY CONSTANTS
 

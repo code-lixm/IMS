@@ -11,7 +11,7 @@
  * - DELETE /api/messages/conversations/:id - 删除会话所有消息
  */
 
-import { messageService } from "../services/message";
+import { messageService, serializeMessageData } from "../services/message";
 import { corsHeaders, ok, fail } from "../utils/http";
 import type { MessageRole, MessageStatus } from "@ims/shared";
 
@@ -43,7 +43,7 @@ export async function messagesRoute(request: Request): Promise<Response | null> 
       try {
         const result = await messageService.getMessages(conversationId, { limit, offset });
         return ok({
-          messages: result.messages,
+          messages: result.messages.map(serializeMessageData),
           total: result.total,
         });
       } catch (error) {
@@ -77,7 +77,7 @@ export async function messagesRoute(request: Request): Promise<Response | null> 
           toolsJson: body.toolsJson,
         });
 
-        return ok(message, { status: 201 });
+        return ok(serializeMessageData(message), { status: 201 });
       } catch (error) {
         console.error("[messages] Failed to create message:", error);
         return fail("INTERNAL_ERROR", "Failed to create message", 500);
@@ -106,7 +106,7 @@ export async function messagesRoute(request: Request): Promise<Response | null> 
         if (!message) {
           return fail("NOT_FOUND", "Message not found", 404);
         }
-        return ok(message);
+        return ok(serializeMessageData(message));
       } catch (error) {
         console.error("[messages] Failed to get message:", error);
         return fail("INTERNAL_ERROR", "Failed to get message", 500);
@@ -126,7 +126,7 @@ export async function messagesRoute(request: Request): Promise<Response | null> 
         if (!message) {
           return fail("NOT_FOUND", "Message not found", 404);
         }
-        return ok(message);
+        return ok(serializeMessageData(message));
       } catch (error) {
         console.error("[messages] Failed to update message:", error);
         return fail("INTERNAL_ERROR", "Failed to update message", 500);
@@ -155,7 +155,7 @@ export async function messagesRoute(request: Request): Promise<Response | null> 
       if (!message) {
         return fail("NOT_FOUND", "Message not found", 404);
       }
-      return ok(message);
+        return ok(serializeMessageData(message));
     } catch (error) {
       console.error("[messages] Failed to complete message:", error);
       return fail("INTERNAL_ERROR", "Failed to complete message", 500);

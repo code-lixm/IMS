@@ -29,9 +29,15 @@ const delegatedProps = reactiveOmit(props, 'class')
 <template>
   <StickToBottom
     v-bind="delegatedProps"
-    :class="cn('relative flex-1 overflow-y-hidden', props.class)"
+    :class="cn('relative min-h-0 flex-1 overflow-hidden', props.class)"
     role="log"
   >
     <slot />
+    <template #overlay>
+      <slot name="overlay" />
+    </template>
+    <template #after>
+      <slot name="after" />
+    </template>
   </StickToBottom>
 </template>

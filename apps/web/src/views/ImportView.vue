@@ -7,13 +7,19 @@
         <Button
           variant="outline"
           class="gap-2"
+          data-onboarding="export-screening"
           @click="exportDialogOpen = true"
         >
           <Download class="h-4 w-4" />
           导出 AI
         </Button>
         <div class="relative">
-          <Button class="gap-2" :disabled="isImporting" @click="startImport">
+          <Button
+            class="gap-2"
+            :disabled="isImporting"
+            data-onboarding="new-import"
+            @click="startImport"
+          >
             <Plus class="h-4 w-4" />
             新建导入
           </Button>
@@ -52,6 +58,7 @@
           </div>
 
           <div
+            data-onboarding="screening-toggle"
             class="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/80 p-4 md:min-w-[320px]"
           >
             <div class="flex items-center justify-between gap-3">
@@ -457,7 +464,6 @@ import {
   Download,
   FileSearch,
   Plus,
-  User,
   ChevronDown,
   RefreshCw,
   Trash2,

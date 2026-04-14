@@ -1,6 +1,9 @@
+import type { AgentData } from "@ims/shared";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { agents } from "../schema";
+import { loadWorkspaceAgentCatalog, loadWorkspaceAgentDefinition } from "./workspace-agent-loader";
+import type { WorkspaceAgentDefinition, WorkspaceAgentFileRef } from "@ims/shared";
 
 type AgentRow = typeof agents.$inferSelect;
 
@@ -11,6 +14,13 @@ export interface ConversationAgentResolution {
   fallbackAgentName: string | null;
   missing: boolean;
   message: string | null;
+}
+
+export interface ResolvedAgentExecutionConfig {
+  agent: AgentData;
+  workspaceDefinition: WorkspaceAgentDefinition | null;
+  systemPrompt: string | null;
+  toolNames: string[];
 }
 
 export const DEFAULT_INTERVIEW_AGENT_ID = "agent_builtin_interview";
@@ -30,6 +40,9 @@ const DEFAULT_INTERVIEW_AGENT = {
     "你的职责是围绕候选人面试流程开展工作，包括：简历初筛、面试问题生成、面试纪要整理、综合评估与结果建议。",
     "优先基于候选人上下文、工作流阶段与现有文档输出结论；信息不足时明确指出缺失项。",
     "输出保持专业、简洁、可执行，不要暴露底层运行实现。",
+    "正式阶段文档只输出 Markdown 正文，不要把“当前阶段 / 推荐下一阶段 / 推荐动作”写进文档正文。",
+    "如果只是做澄清或补充提示，可以自然语言说明当前阶段与下一步；一旦进入正式文档输出，就只保留文档内容本身。",
+    "如果当前步骤需要用户确认轮次、推进阶段或完成流程，请在正文结尾追加精确 marker：<!-- workflow-action:confirm-round -->、<!-- workflow-action:advance-stage --> 或 <!-- workflow-action:complete-workflow -->。",
   ].join("\n"),
   tools: [
     "scan_resume",
@@ -90,6 +103,157 @@ export function serializeAgent(row: typeof agents.$inferSelect) {
     isDefault: row.isDefault,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+export function serializeWorkspaceAgent(
+  definition: Awaited<ReturnType<typeof loadWorkspaceAgentDefinition>>["definition"],
+): AgentData | null {
+  if (!definition) {
+    return null;
+  }
+
+  const runtime = definition.config.runtime;
+  const engine = resolveWorkspaceExecutionEngine(definition);
+  const mode = definition.config.mode ?? "chat";
+  const sceneAffinity = definition.config.sceneAffinity ?? "interview";
+
+  return {
+    id: definition.agentId,
+    agentId: definition.agentId,
+    name: definition.config.name?.trim() || definition.agentId,
+    displayName: definition.config.name?.trim() || definition.agentId,
+    description: definition.config.description?.trim() || null,
+    engine,
+    mode,
+    temperature: typeof runtime?.temperature === "number" ? runtime.temperature : 0,
+    systemPrompt: definition.config.systemPrompt?.trim() || definition.instructionsFile?.content?.trim() || null,
+    tools: Array.isArray(definition.config.tools) ? definition.config.tools.filter((tool): tool is string => typeof tool === "string") : [],
+    sourceType: "workspace",
+    isBuiltin: false,
+    isMutable: true,
+    isDefault: false,
+    sceneAffinity,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+export function resolveWorkspaceExecutionEngine(
+  definition: WorkspaceAgentDefinition,
+): "builtin" | "deepagents" {
+  const configuredEngine = definition.config.engine === "deepagents" ? "deepagents" : "builtin";
+
+  if (
+    definition.agentId === DEFAULT_INTERVIEW_AGENT_ID
+    && (definition.config.mode ?? "chat") === "workflow"
+    && (definition.config.sceneAffinity ?? "interview") === "interview"
+  ) {
+    return "builtin";
+  }
+
+  return configuredEngine;
+}
+
+export async function listResolvedAgents(): Promise<AgentData[]> {
+  await ensureManagedAgents();
+  const rows = await db.select().from(agents).orderBy(sql`${agents.isDefault} desc`, sql`${agents.createdAt} desc`);
+  const dbAgents = rows.map(serializeAgent);
+  const workspaceCatalog = await loadWorkspaceAgentCatalog();
+  const workspaceAgents = workspaceCatalog.agents
+    .map((definition) => serializeWorkspaceAgent(definition))
+    .filter((agent): agent is AgentData => agent !== null);
+
+  const workspaceIds = new Set(workspaceAgents.map((agent) => agent.id));
+  return [...workspaceAgents, ...dbAgents.filter((agent) => !workspaceIds.has(agent.id))];
+}
+
+export async function getResolvedAgent(agentId: string): Promise<AgentData | null> {
+  const workspaceResult = await loadWorkspaceAgentDefinition(agentId);
+  if (workspaceResult.definition) {
+    return serializeWorkspaceAgent(workspaceResult.definition);
+  }
+
+  await ensureManagedAgents();
+  const [row] = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+  return row ? serializeAgent(row) : null;
+}
+
+function buildWorkspaceExecutionPrompt(definition: WorkspaceAgentDefinition): string | null {
+  const sections: string[] = [];
+  const renderSupportingFiles = (files: WorkspaceAgentFileRef[]) => {
+    return files
+      .map((reference: WorkspaceAgentFileRef) => {
+        const fileName = reference.path.split("/").pop() ?? reference.path;
+        return `#### Reference: ${fileName}\nPath: ${reference.path}\n${reference.content.trim()}`;
+      })
+      .join("\n\n");
+  };
+
+  const systemPrompt = definition.config.systemPrompt?.trim();
+  if (systemPrompt) {
+    sections.push(systemPrompt);
+  }
+
+  const instructions = definition.instructionsFile?.content?.trim();
+  if (instructions) {
+    sections.push(`## Agent Instructions\n${instructions}`);
+  }
+
+  if (definition.skills.length > 0) {
+    const renderedSkills = definition.skills
+      .map((skill) => {
+        const sections = [`### ${skill.skillId}`, skill.file.content.trim()];
+        if (skill.references.length > 0) {
+          const renderedReferences = renderSupportingFiles(skill.references);
+          sections.push(`#### References\n${renderedReferences}`);
+        }
+        return sections.join("\n");
+      })
+      .join("\n\n");
+    sections.push(`## Workspace Skills\n${renderedSkills}`);
+  }
+
+  const memoryPolicy = definition.memory.policyFile?.content?.trim();
+  if (memoryPolicy) {
+    sections.push(`## Workspace Memory Policy\n${memoryPolicy}`);
+  }
+
+  if (definition.memory.seedData !== null) {
+    sections.push(`## Workspace Memory Seed\n${JSON.stringify(definition.memory.seedData, null, 2)}`);
+  }
+
+  return sections.length > 0 ? sections.join("\n\n") : null;
+}
+
+export async function getResolvedAgentExecutionConfig(agentId: string): Promise<ResolvedAgentExecutionConfig | null> {
+  const workspaceResult = await loadWorkspaceAgentDefinition(agentId);
+  if (workspaceResult.definition) {
+    const agent = serializeWorkspaceAgent(workspaceResult.definition);
+    if (!agent) {
+      return null;
+    }
+
+    return {
+      agent,
+      workspaceDefinition: workspaceResult.definition,
+      systemPrompt: buildWorkspaceExecutionPrompt(workspaceResult.definition),
+      toolNames: agent.tools,
+    };
+  }
+
+  await ensureManagedAgents();
+  const [row] = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+  if (!row) {
+    return null;
+  }
+
+  const agent = serializeAgent(row);
+  return {
+    agent,
+    workspaceDefinition: null,
+    systemPrompt: agent.systemPrompt,
+    toolNames: agent.tools,
   };
 }
 

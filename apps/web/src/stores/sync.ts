@@ -4,7 +4,7 @@ import { ApiError } from "@/api/client";
 import { syncApi } from "@/api/sync";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
-import type { SyncStatusData } from "@ims/shared";
+import type { SyncResetRunData, SyncStatusData } from "@ims/shared";
 
 function isBaobaoAuthExpiredMessage(message: string | null | undefined) {
   if (!message) return false;
@@ -28,7 +28,7 @@ async function redirectToLogin() {
 
   try {
     await router.replace({ path: "/login", query: { redirect } });
-  } catch {
+  } catch (_error) {
     window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`);
   }
 }
@@ -36,6 +36,7 @@ async function redirectToLogin() {
 export const useSyncStore = defineStore("sync", () => {
   const status = ref<SyncStatusData>({ enabled: false, intervalMs: 5000, lastSyncAt: null, lastError: null });
   const loading = ref(false);
+  const resetLoading = ref(false);
 
   async function fetchStatus() {
     status.value = await syncApi.status();
@@ -76,5 +77,22 @@ export const useSyncStore = defineStore("sync", () => {
     }
   }
 
-  return { status, loading, fetchStatus, toggle, runNow };
+  async function resetAndRun(): Promise<SyncResetRunData> {
+    resetLoading.value = true;
+    try {
+      const result = await syncApi.resetAndRun();
+      await fetchStatus();
+      return result;
+    } catch (error) {
+      if (isBaobaoAuthExpiredError(error)) {
+        await redirectToLogin();
+        throw error;
+      }
+      throw error;
+    } finally {
+      resetLoading.value = false;
+    }
+  }
+
+  return { status, loading, resetLoading, fetchStatus, toggle, runNow, resetAndRun };
 });

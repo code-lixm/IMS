@@ -16,6 +16,7 @@ import type {
   Message,
   ModelProvider,
   Task,
+  Workflow,
 } from "./lui/types";
 
 export type {
@@ -27,6 +28,8 @@ export type {
   ModelConfig,
   ModelProvider,
   Task,
+  Workflow,
+  WorkflowArtifact,
 } from "./lui/types";
 
 export const useLuiStore = defineStore("lui", () => {
@@ -35,6 +38,7 @@ export const useLuiStore = defineStore("lui", () => {
   const selectedId = ref<string | null>(null);
   const messages = ref<Record<string, Message[]>>({});
   const fileResources = ref<Record<string, FileResource[]>>({});
+  const workflows = ref<Record<string, Workflow | null>>({});
   const isLoading = ref(false);
   const isLoadingMessages = ref(false);
   const isInitializing = ref(false);
@@ -76,6 +80,7 @@ export const useLuiStore = defineStore("lui", () => {
     temperature,
     messages,
     fileResources,
+    workflows,
     isLoading,
     isLoadingMessages,
     isInitializing,
@@ -98,6 +103,7 @@ export const useLuiStore = defineStore("lui", () => {
     selectedId,
     messages,
     fileResources,
+    workflows,
     selectedAgentId,
     selectedModelId,
     selectedModelProvider,
@@ -111,6 +117,10 @@ export const useLuiStore = defineStore("lui", () => {
     fileResources,
     error,
   });
+
+  const selectedWorkflow = computed(() =>
+    selectedId.value ? workflows.value[selectedId.value] ?? null : null,
+  );
 
   const agentModule = createLuiAgentModule({
     agents,
@@ -166,6 +176,8 @@ export const useLuiStore = defineStore("lui", () => {
     selectedId,
     messages,
     fileResources,
+    workflows,
+    selectedWorkflow,
     isLoading,
     isLoadingMessages,
     isInitializing,
