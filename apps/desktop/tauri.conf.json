@@ -77,7 +77,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5VWtNTnJtUkgxOTNUbm9MVjlVdk9STGI2OVp0SVJJU2loSzIxalc2TUhBc0FBQkFBQUFBQUFBQUFBQUlBQUFBQUpWNU1Zd1ExOWs0aFEwVDRrVVBhQzh0bzFVdmU5bE5jcnNaTnlLQUdQdmtQSE54dUVMdEdCQWdUNWNyUEl2OGFCS3l0Z0tZbmxMbms5Tkp0MU42RWlXbjZ5a3FuVWFKNzFYYnlEUWljWHgwRVloNTFRTllYdFJwNnAwVmN5b1crQS92MnBkWG9rN2M9Cg==%",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0RUVGNkU5QjdDRkFFOEQKUldTTnJzKzM2ZmJ1MUF5R3NKMk1SNmx6aHY3cE9XaXQrRnBqMzZMSVZRbUxwK3dWRG1TdzBCelEK",
       "endpoints": [
         "https://github.com/code-lixm/IMS/releases/latest/download/latest.json"
       ]
