@@ -250,116 +250,21 @@
             </Button>
           </div>
 
-          <Dialog
+          <GatewayEndpointDialog
             :open="isGatewayEndpointDialogOpen"
+            :title="gatewayEndpointDialogTitle"
+            description="保存后会同步到本地服务，并在 LUI 模型选择器中可用。"
+            :preset-providers="presetProviders"
+            :initial-provider-id="gatewayEndpointForm.providerId"
+            :initial-api-key="gatewayEndpointForm.apiKey"
+            :saving="isSavingGatewayEndpoint"
+            :testing="isTestingGatewayEndpoint"
+            :disable-provider-selection="editingGatewayEndpointId !== null"
+            :save-button-text="editingGatewayEndpointId ? '保存修改' : '添加端点'"
             @update:open="handleGatewayEndpointDialogOpenChange"
-          >
-            <template #content>
-              <DialogHeader>
-                <DialogTitle>{{ gatewayEndpointDialogTitle }}</DialogTitle>
-                <DialogDescription>
-                  保存后会同步到本地服务，并在 LUI 模型选择器中可用。
-                </DialogDescription>
-              </DialogHeader>
-
-              <Separator class="my-4" />
-
-              <div class="space-y-4">
-                <!-- 提供商选择 -->
-                <div class="space-y-1.5">
-                  <label class="text-xs text-muted-foreground">AI 提供商</label>
-                  <select
-                    v-model="gatewayEndpointForm.providerId"
-                    class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                    :disabled="editingGatewayEndpointId !== null"
-                  >
-                    <option value="">选择提供商...</option>
-                    <option
-                      v-for="p in presetProviders"
-                      :key="p.id"
-                      :value="p.id"
-                    >
-                      {{ p.name }}
-                    </option>
-                  </select>
-                  <p class="text-xs text-muted-foreground">
-                    {{
-                      selectedPresetProvider
-                        ? `Base URL: ${selectedPresetProvider.baseURL}`
-                        : "请选择一个提供商"
-                    }}
-                  </p>
-                </div>
-
-                <!-- API Key -->
-                <div class="space-y-1.5">
-                  <label class="text-xs text-muted-foreground">API Key</label>
-                  <div class="flex gap-2">
-                    <Input
-                      v-model="gatewayEndpointForm.apiKey"
-                      :type="showApiKey ? 'text' : 'password'"
-                      placeholder="输入 API Key"
-                      class="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      class="shrink-0"
-                      @click="showApiKey = !showApiKey"
-                    >
-                      <Eye v-if="!showApiKey" class="h-4 w-4" />
-                      <EyeOff v-else class="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p class="text-xs text-muted-foreground">
-                    留空则使用凭证管理中的 API Key
-                  </p>
-                </div>
-              </div>
-
-              <DialogFooter class="mt-6 gap-2 sm:justify-between">
-                <Button
-                  variant="outline"
-                  class="gap-1.5"
-                  :disabled="
-                    isTestingGatewayEndpoint || isSavingGatewayEndpoint
-                  "
-                  @click="testGatewayEndpointFromDialog"
-                >
-                  <Loader2
-                    v-if="isTestingGatewayEndpoint"
-                    class="h-3.5 w-3.5 animate-spin"
-                  />
-                  <FlaskConical v-else class="h-3.5 w-3.5" />
-                  测试连接
-                </Button>
-                <div class="flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    :disabled="
-                      isSavingGatewayEndpoint || isTestingGatewayEndpoint
-                    "
-                    @click="closeGatewayEndpointDialog"
-                  >
-                    取消
-                  </Button>
-                  <Button
-                    :disabled="
-                      isSavingGatewayEndpoint || isTestingGatewayEndpoint
-                    "
-                    @click="saveGatewayEndpoint"
-                  >
-                    <Loader2
-                      v-if="isSavingGatewayEndpoint"
-                      class="mr-2 h-3.5 w-3.5 animate-spin"
-                    />
-                    {{ editingGatewayEndpointId ? "保存修改" : "添加端点" }}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </template>
-          </Dialog>
+            @save="saveGatewayEndpoint"
+            @test="testGatewayEndpointFromDialog"
+          />
 
           <div
             v-if="luiStore.customEndpoints.length === 0"
@@ -742,8 +647,6 @@
 import { computed, reactive, ref, onMounted } from "vue";
 import {
   CheckCircle,
-  Eye,
-  EyeOff,
   FlaskConical,
   Loader2,
   Pencil,
@@ -761,6 +664,7 @@ import { useAppNotifications } from "@/composables/use-app-notifications";
 import { useTheme } from "@/composables/use-theme";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
+import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
@@ -826,7 +730,6 @@ const testingEndpointId = ref<string | null>(null);
 const isTestingGatewayEndpoint = ref(false);
 const isSavingGatewayEndpoint = ref(false);
 const presetProviders = ref<PresetProvider[]>([]);
-const showApiKey = ref(false);
 const isAgentDialogOpen = ref(false);
 const editingAgentId = ref<string | null>(null);
 const isSavingAgent = ref(false);
@@ -864,12 +767,6 @@ const gatewayEndpointDialogTitle = computed(() =>
 const agentDialogTitle = computed(() =>
   editingAgentId.value ? "编辑智能体" : "创建智能体",
 );
-
-const selectedPresetProvider = computed(() => {
-  return presetProviders.value.find(
-    (p) => p.id === gatewayEndpointForm.providerId,
-  );
-});
 
 const colorLabel: Record<string, string> = {
   neutral: "黑白",
@@ -1076,11 +973,12 @@ async function restartDesktopApp() {
 function resetGatewayEndpointForm() {
   gatewayEndpointForm.providerId = "";
   gatewayEndpointForm.apiKey = "";
-  showApiKey.value = false;
 }
 
-function buildGatewayEndpointFromForm(): GatewayEndpoint {
-  const provider = selectedPresetProvider.value;
+function buildGatewayEndpointFromValues(payload?: { providerId: string; apiKey: string }): GatewayEndpoint {
+  const providerId = payload?.providerId?.trim() || gatewayEndpointForm.providerId;
+  const apiKey = payload?.apiKey?.trim() || gatewayEndpointForm.apiKey.trim();
+  const provider = presetProviders.value.find((item) => item.id === providerId);
   if (!provider) {
     throw new Error("请选择提供商");
   }
@@ -1091,8 +989,8 @@ function buildGatewayEndpointFromForm(): GatewayEndpoint {
     provider: provider.id,
     baseURL: provider.baseURL,
     providerId: provider.id,
-    ...(gatewayEndpointForm.apiKey.trim()
-      ? { apiKey: gatewayEndpointForm.apiKey.trim() }
+    ...(apiKey
+      ? { apiKey }
       : {}),
   };
 }
@@ -1131,8 +1029,6 @@ function openEditGatewayEndpointDialog(endpoint: GatewayEndpoint) {
     gatewayEndpointForm.providerId = providerId;
   }
   gatewayEndpointForm.apiKey = endpoint.apiKey ?? "";
-  // 编辑时默认隐藏 API Key
-  showApiKey.value = false;
   isGatewayEndpointDialogOpen.value = true;
 }
 
@@ -1289,9 +1185,9 @@ function handleGatewayEndpointDialogOpenChange(open: boolean) {
   }
 }
 
-async function saveGatewayEndpoint() {
+async function saveGatewayEndpoint(payload: { providerId: string; apiKey: string }) {
   const endpoint: GatewayEndpoint = {
-    ...buildGatewayEndpointFromForm(),
+    ...buildGatewayEndpointFromValues(payload),
   };
 
   if (!validateGatewayEndpoint(endpoint, true)) {
@@ -1357,9 +1253,9 @@ async function testGatewayEndpoint(endpoint: GatewayEndpoint) {
   await runGatewayEndpointTest(endpoint);
 }
 
-async function testGatewayEndpointFromDialog() {
+async function testGatewayEndpointFromDialog(payload: { providerId: string; apiKey: string }) {
   try {
-    const endpoint = buildGatewayEndpointFromForm();
+    const endpoint = buildGatewayEndpointFromValues(payload);
     if (!validateGatewayEndpoint(endpoint, true)) {
       return;
     }

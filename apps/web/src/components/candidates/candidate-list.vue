@@ -36,7 +36,8 @@
 
     <EmptyState
       v-else-if="!items.length"
-      scenario="candidates"
+      :scenario="emptyScenario"
+      class="flex-1 min-h-0 w-full"
       :action-text="'新建候选人'"
       :action-icon="Plus"
       :action-handler="() => emit('create')"
@@ -423,6 +424,7 @@ import TableRow from "@/components/ui/table-row.vue";
 
 interface CandidateListProps {
   items: CandidateListData["items"];
+  searchKeyword?: string;
   loading: boolean;
   total: number;
   page: number;
@@ -502,6 +504,11 @@ const pageSizeOptions = [20, 50, 100];
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(props.total / props.pageSize)),
 );
+
+const emptyScenario = computed(() => {
+  const keyword = props.searchKeyword?.trim() ?? "";
+  return keyword.length > 0 ? "search" : "candidates";
+});
 
 function sourceLabel(source: CandidateSource) {
   const map: Record<string, string> = {

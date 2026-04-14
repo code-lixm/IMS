@@ -1,6 +1,11 @@
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -9,32 +14,493 @@ use tauri::{
 use tauri_plugin_updater::UpdaterExt;
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
+const LOG_FILE_SIZE_LIMIT: u64 = 10 * 1024 * 1024;
+const LOG_FILE_COUNT_LIMIT: usize = 5;
+const LOG_EXPORT_COUNT_LIMIT: usize = 10;
+const DESKTOP_SERVER_HOST: &str = "127.0.0.1";
+const DESKTOP_SERVER_PORT: u16 = 9092;
+const SERVER_PORT_RELEASE_WAIT_MS: u64 = 300;
 
 // Store the server child process so we can kill it on exit
 struct ServerProcess {
     child: Option<tauri_plugin_shell::process::CommandChild>,
 }
 
+struct AppLogger {
+    dir: PathBuf,
+    current_file: PathBuf,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopAppInfo {
+    version: String,
+    log_dir: String,
+}
+
+impl AppLogger {
+    fn new(dir: PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+        fs::create_dir_all(&dir)?;
+        let current_file = dir.join("ims.log");
+        if !current_file.exists() {
+            File::create(&current_file)?;
+        }
+        Ok(Self { dir, current_file })
+    }
+
+    fn write_line(&mut self, level: &str, source: &str, message: &str) {
+        if self.rotate_if_needed().is_err() {
+            return;
+        }
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let sanitized = message.replace('\n', " ").replace('\r', " ");
+        let line = format!("[{}] [{}] [{}] {}\n", timestamp, level, source, sanitized);
+
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.current_file)
+        {
+            let _ = file.write_all(line.as_bytes());
+            let _ = file.flush();
+        }
+    }
+
+    fn rotate_if_needed(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let size = fs::metadata(&self.current_file).map(|value| value.len()).unwrap_or(0);
+        if size < LOG_FILE_SIZE_LIMIT {
+            return Ok(());
+        }
+
+        for index in (1..=LOG_FILE_COUNT_LIMIT).rev() {
+            let from = self.dir.join(format!("ims.{}.log", index));
+            let to = self.dir.join(format!("ims.{}.log", index + 1));
+            if from.exists() {
+                if index == LOG_FILE_COUNT_LIMIT {
+                    let _ = fs::remove_file(&from);
+                } else {
+                    let _ = fs::rename(&from, &to);
+                }
+            }
+        }
+
+        if self.current_file.exists() {
+            let _ = fs::rename(&self.current_file, self.dir.join("ims.1.log"));
+        }
+        let _ = File::create(&self.current_file)?;
+        Ok(())
+    }
+
+    fn export_bundle(&mut self) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        self.prune_old_exports();
+
+        let exports_dir = self.dir.join("exports");
+        fs::create_dir_all(&exports_dir)?;
+        let export_dir = exports_dir.join(format!("ims-logs-{}", now_unix_ms()));
+        fs::create_dir_all(&export_dir)?;
+
+        for entry in fs::read_dir(&self.dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if !name.ends_with(".log") {
+                continue;
+            }
+            fs::copy(&path, export_dir.join(name))?;
+        }
+
+        let mut meta = File::create(export_dir.join("README.txt"))?;
+        meta.write_all(
+            format!(
+                "IMS 日志导出\n版本: {}\n导出时间: {}\n日志目录: {}\n",
+                get_app_version(),
+                now_unix_ms(),
+                self.dir.display()
+            )
+            .as_bytes(),
+        )?;
+
+        Ok(export_dir)
+    }
+
+    fn prune_old_exports(&self) {
+        let exports_dir = self.dir.join("exports");
+        let Ok(read_dir) = fs::read_dir(&exports_dir) else {
+            return;
+        };
+
+        let mut entries = read_dir
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| {
+                let path = entry.path();
+                let metadata = entry.metadata().ok()?;
+                let modified = metadata.modified().ok()?;
+                Some((path, modified))
+            })
+            .collect::<Vec<_>>();
+
+        entries.sort_by(|a, b| b.1.cmp(&a.1));
+        for (path, _) in entries.into_iter().skip(LOG_EXPORT_COUNT_LIMIT) {
+            let _ = fs::remove_dir_all(path);
+        }
+    }
+
+    fn dir_path(&self) -> PathBuf {
+        self.dir.clone()
+    }
+}
+
+fn log_event<R: Runtime>(app: &AppHandle<R>, level: &str, source: &str, message: impl AsRef<str>) {
+    if let Ok(mut logger) = app.state::<Mutex<AppLogger>>().lock() {
+        logger.write_line(level, source, message.as_ref());
+    }
+
+    match level {
+        "ERROR" => eprintln!("[{}] {}", source, message.as_ref()),
+        _ => println!("[{}] {}", source, message.as_ref()),
+    }
+}
+
+fn open_in_file_manager(path: &Path) -> Result<(), String> {
+    let status = if cfg!(target_os = "macos") {
+        Command::new("open").arg(path).status()
+    } else if cfg!(target_os = "windows") {
+        Command::new("explorer").arg(path).status()
+    } else {
+        Command::new("xdg-open").arg(path).status()
+    }
+    .map_err(|err| err.to_string())?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("failed to open path: {}", path.display()))
+    }
+}
+
+fn stop_managed_server<R: Runtime>(app: &AppHandle<R>) {
+    if let Ok(mut server) = app.state::<Mutex<ServerProcess>>().lock() {
+        if let Some(child) = server.child.take() {
+            let _ = child.kill();
+        }
+    }
+}
+
+#[cfg(unix)]
+fn should_kill_stale_server_process(command: &str) -> bool {
+    let lower = command.to_lowercase();
+    lower.contains("/ims.app/")
+        || lower.contains("interview-manager")
+        || lower.contains("/packages/server/dist/server")
+        || lower.ends_with("/dist/server")
+}
+
+#[cfg(unix)]
+fn release_stale_server_on_port<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let output = match Command::new("lsof")
+        .args([
+            "-nP",
+            &format!("-iTCP:{}", DESKTOP_SERVER_PORT),
+            "-sTCP:LISTEN",
+            "-t",
+        ])
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            log_event(app, "WARN", "tauri", format!("failed to run lsof: {}", error));
+            return false;
+        }
+    };
+
+    let pids = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse::<i32>().ok())
+        .collect::<Vec<_>>();
+
+    if pids.is_empty() {
+        return false;
+    }
+
+    let mut released = false;
+    for pid in pids {
+        let command_output = Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output();
+        let command_text = command_output
+            .ok()
+            .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_string())
+            .unwrap_or_default();
+
+        if !should_kill_stale_server_process(&command_text) {
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!(
+                    "port {} occupied by non-IMS process pid={} command={}",
+                    DESKTOP_SERVER_PORT, pid, command_text
+                ),
+            );
+            continue;
+        }
+
+        let kill_ok = Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+
+        if kill_ok {
+            released = true;
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!("killed stale IMS server process pid={} on port {}", pid, DESKTOP_SERVER_PORT),
+            );
+        }
+    }
+
+    released
+}
+
+#[cfg(not(unix))]
+fn release_stale_server_on_port<R: Runtime>(_app: &AppHandle<R>) -> bool {
+    false
+}
+
+fn find_server_executable(resource_dir: &Path) -> Option<PathBuf> {
+    let server_name = if cfg!(target_os = "windows") {
+        "server.exe"
+    } else {
+        "server"
+    };
+
+    let direct_candidates = [
+        resource_dir.join("dist").join(server_name),
+        resource_dir
+            .join("_up_")
+            .join("_up_")
+            .join("packages")
+            .join("server")
+            .join("dist")
+            .join(server_name),
+        resource_dir.join(server_name),
+    ];
+
+    for candidate in direct_candidates {
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    fn visit(dir: &Path, server_name: &str, depth: usize) -> Option<PathBuf> {
+        if depth > 6 {
+            return None;
+        }
+
+        let entries = fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| value == server_name)
+            {
+                return Some(path);
+            }
+
+            if path.is_dir() {
+                if let Some(found) = visit(&path, server_name, depth + 1) {
+                    return Some(found);
+                }
+            }
+        }
+
+        None
+    }
+
+    visit(resource_dir, server_name, 0)
+}
+
+fn find_bundled_interview_opencode_dir(resource_dir: &Path) -> Option<PathBuf> {
+    let direct_candidates = [
+        resource_dir.join("resources").join("interview-opencode"),
+        resource_dir
+            .join("_up_")
+            .join("_up_")
+            .join("packages")
+            .join("server")
+            .join("resources")
+            .join("interview-opencode"),
+    ];
+
+    for candidate in direct_candidates {
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+
+    fn visit(dir: &Path, depth: usize) -> Option<PathBuf> {
+        if depth > 6 {
+            return None;
+        }
+
+        let entries = fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir()
+                && path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| value == "interview-opencode")
+            {
+                return Some(path);
+            }
+
+            if path.is_dir() {
+                if let Some(found) = visit(&path, depth + 1) {
+                    return Some(found);
+                }
+            }
+        }
+
+        None
+    }
+
+    visit(resource_dir, 0)
+}
+
+fn probe_existing_ims_server() -> Result<Option<String>, String> {
+    let address = (DESKTOP_SERVER_HOST, DESKTOP_SERVER_PORT)
+        .to_socket_addrs()
+        .map_err(|err| err.to_string())?
+        .next()
+        .ok_or_else(|| "failed to resolve desktop server address".to_string())?;
+
+    let mut stream = match TcpStream::connect_timeout(&address, std::time::Duration::from_millis(400)) {
+        Ok(stream) => stream,
+        Err(_) => return Ok(None),
+    };
+
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(1)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(1)));
+
+    if stream
+        .write_all(b"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .is_err()
+    {
+        return Ok(None);
+    }
+
+    let mut response = String::new();
+    if stream.read_to_string(&mut response).is_err() {
+        return Ok(None);
+    }
+
+    if response.contains("\"service\":\"interview-manager\"") && response.contains("\"status\":\"ok\"") {
+        return Ok(Some("existing ims server is healthy".to_string()));
+    }
+
+    Err(format!(
+        "port {} is already occupied by a non-IMS service or unhealthy process",
+        DESKTOP_SERVER_PORT
+    ))
+}
+
 fn start_server<R: Runtime>(
     app: &AppHandle<R>,
-) -> Result<tauri_plugin_shell::process::CommandChild, Box<dyn std::error::Error>> {
+) -> Result<Option<tauri_plugin_shell::process::CommandChild>, Box<dyn std::error::Error>> {
     use tauri_plugin_shell::ShellExt;
 
-    // Get the server executable path from bundled resources
-    let resource_dir = app.path().resource_dir()?;
-    let server_relative = if cfg!(target_os = "windows") {
-        "dist/server.exe"
-    } else {
-        "dist/server"
-    };
-    let server_path = resource_dir.join(server_relative);
-    let node_modules_path = resource_dir.join("node_modules");
-    println!("[tauri] starting server at: {:?}", server_path);
+    match probe_existing_ims_server() {
+        Ok(Some(reason)) => {
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!(
+                    "reusing existing IMS server on {}:{} ({})",
+                    DESKTOP_SERVER_HOST, DESKTOP_SERVER_PORT, reason
+                ),
+            );
+            return Ok(None);
+        }
+        Ok(None) => {}
+        Err(probe_error) => {
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!(
+                    "probe detected occupied or unhealthy port {}: {}",
+                    DESKTOP_SERVER_PORT, probe_error
+                ),
+            );
 
-    let cmd = app
+            if !release_stale_server_on_port(app) {
+                return Err(probe_error.into());
+            }
+
+            std::thread::sleep(Duration::from_millis(SERVER_PORT_RELEASE_WAIT_MS));
+            if let Some(reason) = probe_existing_ims_server()? {
+                log_event(
+                    app,
+                    "WARN",
+                    "tauri",
+                    format!(
+                        "reusing existing IMS server on {}:{} ({})",
+                        DESKTOP_SERVER_HOST, DESKTOP_SERVER_PORT, reason
+                    ),
+                );
+                return Ok(None);
+            }
+        }
+    }
+
+    let resource_dir = app.path().resource_dir()?;
+    let server_path = find_server_executable(&resource_dir)
+        .ok_or_else(|| format!("server executable not found under {}", resource_dir.display()))?;
+    let app_data_dir = app.path().app_data_dir()?;
+    let runtime_dir = app_data_dir.join("runtime");
+    let data_dir = runtime_dir.join("data");
+    let files_dir = runtime_dir.join("files");
+    let agent_workspaces_dir = runtime_dir.join("agent-workspaces");
+    let db_path = runtime_dir.join("interview.db");
+    fs::create_dir_all(&agent_workspaces_dir)?;
+    let node_modules_path = resource_dir.join("node_modules");
+    let bundled_interview_opencode_dir = find_bundled_interview_opencode_dir(&resource_dir);
+    log_event(app, "INFO", "tauri", format!("starting server at: {:?}", server_path));
+    log_event(app, "INFO", "tauri", format!("server runtime dir: {:?}", runtime_dir));
+
+    let mut cmd = app
         .shell()
         .command(&server_path)
-        .env("NODE_PATH", node_modules_path.to_str().unwrap_or(""));
+        .env("NODE_PATH", node_modules_path.to_str().unwrap_or(""))
+        .env("IMS_ROOT_DIR", app_data_dir.to_str().unwrap_or(""))
+        .env("IMS_RUNTIME_DIR", runtime_dir.to_str().unwrap_or(""))
+        .env("IMS_DATA_DIR", data_dir.to_str().unwrap_or(""))
+        .env("IMS_FILES_DIR", files_dir.to_str().unwrap_or(""))
+        .env("IMS_AGENT_WORKSPACES_DIR", agent_workspaces_dir.to_str().unwrap_or(""))
+        .env("IMS_DB_PATH", db_path.to_str().unwrap_or(""));
+
+    if let Some(opencode_dir) = bundled_interview_opencode_dir {
+        cmd = cmd.env(
+            "IMS_BUNDLED_INTERVIEW_OPENCODE_DIR",
+            opencode_dir.to_str().unwrap_or(""),
+        );
+    }
     let (mut rx, child) = cmd.spawn()?;
 
     // Forward server logs to stdout
@@ -43,16 +509,16 @@ fn start_server<R: Runtime>(
         while let Some(event) = rx.recv().await {
             match event {
                 tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
-                    println!("[server] {}", String::from_utf8_lossy(&line));
+                    log_event(&app_handle, "INFO", "server", String::from_utf8_lossy(&line));
                 }
                 tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
-                    eprintln!("[server] {}", String::from_utf8_lossy(&line));
+                    log_event(&app_handle, "ERROR", "server", String::from_utf8_lossy(&line));
                 }
                 tauri_plugin_shell::process::CommandEvent::Error(err) => {
-                    eprintln!("[server] error: {}", err);
+                    log_event(&app_handle, "ERROR", "server", format!("error: {}", err));
                 }
                 tauri_plugin_shell::process::CommandEvent::Terminated(status) => {
-                    println!("[server] terminated with status: {:?}", status);
+                    log_event(&app_handle, "WARN", "server", format!("terminated with status: {:?}", status));
                     // Notify frontend that server has stopped
                     let _ = app_handle.emit("server-stopped", ());
                 }
@@ -61,26 +527,41 @@ fn start_server<R: Runtime>(
         }
     });
 
-    println!("[tauri] server started successfully");
-    Ok(child)
+    log_event(app, "INFO", "tauri", "server started successfully");
+    Ok(Some(child))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tray
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
+fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let version_label = format!("版本 {}", get_app_version());
+    let version_item = MenuItem::with_id(app, "version", version_label, false, None::<&str>)?;
+    let open_logs_item = MenuItem::with_id(app, "open_logs", "打开日志目录", true, None::<&str>)?;
+    let export_logs_item = MenuItem::with_id(app, "export_logs", "导出日志", true, None::<&str>)?;
     let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
     let hide_item = MenuItem::with_id(app, "hide", "隐藏窗口", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
+    let menu = Menu::with_items(app, &[&version_item, &open_logs_item, &export_logs_item, &show_item, &hide_item, &quit_item])?;
 
     let _tray = TrayIconBuilder::with_id("main-tray")
-        .tooltip("面试管理")
+        .tooltip("IMS")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
+            "open_logs" => {
+                if let Err(err) = open_logs_dir(app.clone()) {
+                    log_event(app, "ERROR", "logs", err);
+                }
+            }
+            "export_logs" => {
+                match export_logs_bundle(app.clone()) {
+                    Ok(path) => log_event(app, "INFO", "logs", format!("logs exported to {}", path)),
+                    Err(err) => log_event(app, "ERROR", "logs", err),
+                }
+            }
             "show" => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
@@ -94,13 +575,8 @@ fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::
             }
             "quit" => {
                 QUITTING.store(true, Ordering::SeqCst);
-                // Kill the server before exiting
-                if let Some(server) = app.state::<Mutex<ServerProcess>>().lock().ok() {
-                    let mut process = server;
-                    if let Some(child) = process.child.take() {
-                        let _ = child.kill();
-                    }
-                }
+                // Kill the managed server before exiting
+                stop_managed_server(app);
                 app.exit(0);
             }
             _ => {}
@@ -303,13 +779,57 @@ fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+fn resolve_log_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join("logs"))
+        .map_err(|err| err.to_string())
+}
+
+fn export_logs_bundle(app: AppHandle) -> Result<String, String> {
+    let export_path = {
+        let logger_state = app.state::<Mutex<AppLogger>>();
+        let mut logger = logger_state
+            .lock()
+            .map_err(|_| "failed to lock logger".to_string())?;
+        logger.export_bundle().map_err(|err| err.to_string())?
+    };
+
+    open_in_file_manager(&export_path)?;
+    Ok(export_path.display().to_string())
+}
+
+fn open_logs_dir(app: AppHandle) -> Result<(), String> {
+    let log_dir = {
+        let logger_state = app.state::<Mutex<AppLogger>>();
+        let logger = logger_state
+            .lock()
+            .map_err(|_| "failed to lock logger".to_string())?;
+        logger.dir_path()
+    };
+    open_in_file_manager(&log_dir)
+}
+
+#[tauri::command]
+fn get_desktop_app_info(app: AppHandle) -> Result<DesktopAppInfo, String> {
+    Ok(DesktopAppInfo {
+        version: get_app_version().to_string(),
+        log_dir: resolve_log_dir(&app)?.display().to_string(),
+    })
+}
+
+#[tauri::command]
+fn export_current_logs(app: AppHandle) -> Result<String, String> {
+    export_logs_bundle(app)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // App entry
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
@@ -328,19 +848,25 @@ pub fn run() {
             }
         }))
         .setup(|app| {
+            let log_dir = app.path().app_data_dir()?.join("logs");
+            let logger = AppLogger::new(log_dir)?;
+            app.manage(Mutex::new(logger));
+            log_event(app.handle(), "INFO", "tauri", format!("IMS v{} starting", env!("CARGO_PKG_VERSION")));
+
             // Start the backend server
             match start_server(app.handle()) {
                 Ok(child) => {
-                    app.manage(Mutex::new(ServerProcess { child: Some(child) }));
+                    app.manage(Mutex::new(ServerProcess { child }));
                 }
                 Err(e) => {
-                    eprintln!("[tauri] failed to start server: {}", e);
+                    app.manage(Mutex::new(ServerProcess { child: None }));
+                    log_event(app.handle(), "ERROR", "tauri", format!("failed to start server: {}", e));
                 }
             }
 
             // Setup system tray
             if let Err(e) = setup_tray(app.handle()) {
-                eprintln!("[tauri] tray setup failed: {}", e);
+                log_event(app.handle(), "ERROR", "tauri", format!("tray setup failed: {}", e));
             }
 
             // Listen for .imr deep link / file open events
@@ -356,10 +882,7 @@ pub fn run() {
                 }
             });
 
-            println!(
-                "[tauri] Interview Manager v{} started",
-                env!("CARGO_PKG_VERSION")
-            );
+            log_event(app.handle(), "INFO", "tauri", format!("IMS v{} started", env!("CARGO_PKG_VERSION")));
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -371,12 +894,9 @@ pub fn run() {
                     api.prevent_close();
                     let _ = window.hide();
                 } else {
-                    // Actually quitting - kill the server
-                    if let Ok(mut server) = window.state::<Mutex<ServerProcess>>().lock() {
-                        if let Some(child) = server.child.take() {
-                            let _ = child.kill();
-                        }
-                    }
+                    // Actually quitting - kill the managed server
+                    let app_handle = window.app_handle();
+                    stop_managed_server(&app_handle);
                 }
             }
         })
@@ -385,10 +905,21 @@ pub fn run() {
             show_main_window,
             hide_main_window,
             get_app_version,
+            get_desktop_app_info,
+            export_current_logs,
             check_for_app_update,
             install_app_update,
             restart_desktop_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if matches!(
+            event,
+            tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+        ) {
+            stop_managed_server(app_handle);
+        }
+    });
 }

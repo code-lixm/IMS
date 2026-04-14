@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   APPLICATION_STATUS_LABELS,
+  formatInterviewRoundLabel,
   INTERVIEW_TYPE_LABELS,
   lookupLabelOrDefault,
   resolveApplicationStatusCode,
@@ -52,6 +53,7 @@ import { buildAgentContractPromptSegment, guardAgentUserMessage, resolveAgentCon
 import { getWorkflowTools, TOOL_NAMES, type ToolContext } from "./services/lui-tools";
 import { ensureCandidateResumeAvailable, syncCandidateResumesToConversation } from "./services/baobao-resume";
 import { messageService, serializeMessageData } from "./services/message";
+import { MODELS_DEV_LOCAL_DATA_BACKUP, MODELS_DEV_LOCAL_DATA_PRIMARY } from "./data/models-dev-local-data";
 import { messagesRoute } from "./routes/messages";
 import { memoryRoute } from "./routes/memory";
 import { sessionMemoryRoute } from "./routes/session-memory";
@@ -169,7 +171,7 @@ function buildWorkflowConfirmationReceipt(input: {
   round?: number;
 }): string {
   if (input.type === "round") {
-    return `已确认：当前为第 ${input.round} 轮面试。请继续补充本轮考察重点，或让我直接生成这一轮的面试题。`;
+    return `已确认：当前为${formatInterviewRoundLabel(input.round ?? null)}。请继续补充本轮考察重点，或让我直接生成这一轮的面试题。`;
   }
 
   if (input.type === "complete") {
@@ -184,7 +186,7 @@ function buildWorkflowConfirmationReceipt(input: {
   }
 
   if (input.previousStage === "S2" && input.currentStage === "S1") {
-    return "已确认：回到出题阶段，准备下一轮面试题。请继续选择轮次，或直接生成下一轮题目。";
+    return "已确认：回到出题阶段，准备下一轮角色面试题。请继续选择轮次，或直接生成下一轮题目。";
   }
 
   return `已确认：流程已从 ${input.previousStage} 推进到 ${input.currentStage}。接下来我会按照当前阶段继续协助你。`;
@@ -194,7 +196,7 @@ function buildWorkflowConfirmationGuidance(workflow: {
   currentStage: string;
 }): string {
   if (workflow.currentStage === "S1") {
-    return "当前还缺少面试轮次确认。请直接点击下方按钮，选择要生成的第1轮到第4轮面试题。\n\n<!-- workflow-action:confirm-round -->";
+    return "当前还缺少面试轮次确认。请直接点击下方按钮，选择要生成的技术专家 / 主管 / 总监 / HR 面试。\n\n<!-- workflow-action:confirm-round -->";
   }
 
   if (workflow.currentStage === "S2") {
@@ -589,6 +591,97 @@ type CustomModelDiscoveryConfig = {
   strict?: boolean;
 };
 
+const MODELS_DEV_PROVIDER_DEFAULTS: Record<string, { maxTokens: number; supportsTools: boolean; supportsStreaming: boolean }> = {
+  openai: { maxTokens: 128000, supportsTools: true, supportsStreaming: true },
+  anthropic: { maxTokens: 200000, supportsTools: true, supportsStreaming: true },
+  minimax: { maxTokens: 128000, supportsTools: false, supportsStreaming: true },
+  moonshot: { maxTokens: 128000, supportsTools: true, supportsStreaming: true },
+  deepseek: { maxTokens: 128000, supportsTools: true, supportsStreaming: true },
+  gemini: { maxTokens: 1000000, supportsTools: true, supportsStreaming: true },
+  siliconflow: { maxTokens: 128000, supportsTools: true, supportsStreaming: true },
+  openrouter: { maxTokens: 128000, supportsTools: true, supportsStreaming: true },
+  grok: { maxTokens: 200000, supportsTools: true, supportsStreaming: true },
+};
+
+const MODELS_DEV_PROVIDER_ALIASES: Record<string, string> = {
+  moonshotai: "moonshot",
+  google: "gemini",
+  xai: "grok",
+  "x-ai": "grok",
+};
+
+function mapPresetProviderModels(providerId: string, presetModels: LuiSupportedModel[], apiKey?: string): LuiSupportedModel[] {
+  return presetModels.map((model) => ({
+    ...model,
+    id: toModelIdentityId(providerId, model.name),
+    provider: providerId,
+    requiresAuth: !apiKey,
+  }));
+}
+
+function createManualModelPlaceholder(providerId: string, apiKey?: string): LuiSupportedModel {
+  return {
+    id: toModelIdentityId(providerId, "__manual__"),
+    provider: providerId,
+    name: "__manual__",
+    displayName: "✏️ 输入模型名称...",
+    maxTokens: 128000,
+    supportsStreaming: true,
+    supportsTools: true,
+    requiresAuth: !apiKey,
+    runtimeModel: "__manual__",
+  };
+}
+
+function resolveModelsDevProviderId(rawProviderId: string): string | null {
+  const normalized = rawProviderId.trim().toLowerCase();
+  if (!normalized) return null;
+  if (MODELS_DEV_PROVIDER_DEFAULTS[normalized]) return normalized;
+  if (MODELS_DEV_PROVIDER_ALIASES[normalized]) return MODELS_DEV_PROVIDER_ALIASES[normalized];
+  if (normalized.includes("gemini")) return "gemini";
+  if (normalized.includes("moonshot") || normalized.includes("kimi")) return "moonshot";
+  if (normalized.includes("grok") || normalized.includes("xai")) return "grok";
+  return null;
+}
+
+function getModelsDevLocalNames(rawProviderId: string): string[] {
+  const providerId = resolveModelsDevProviderId(rawProviderId);
+  if (!providerId) return [];
+  const primary = MODELS_DEV_LOCAL_DATA_PRIMARY[providerId] ?? [];
+  const backup = MODELS_DEV_LOCAL_DATA_BACKUP[providerId] ?? [];
+  const merged = new Set<string>();
+  for (const modelName of [...primary, ...backup]) {
+    const normalized = modelName.trim();
+    if (normalized) merged.add(normalized);
+  }
+  return Array.from(merged);
+}
+
+function buildModelsDevLocalFallbackModels(
+  sourceProviderId: string,
+  targetProviderId: string,
+  apiKey?: string,
+): LuiSupportedModel[] {
+  const resolvedSource = resolveModelsDevProviderId(sourceProviderId);
+  const modelNames = getModelsDevLocalNames(sourceProviderId);
+  if (modelNames.length === 0) {
+    return [];
+  }
+
+  const defaults = resolvedSource ? MODELS_DEV_PROVIDER_DEFAULTS[resolvedSource] : undefined;
+  return modelNames.map((modelName) => ({
+    id: toModelIdentityId(targetProviderId, modelName),
+    provider: targetProviderId,
+    name: modelName,
+    displayName: modelName,
+    maxTokens: defaults?.maxTokens ?? 128000,
+    supportsStreaming: defaults?.supportsStreaming ?? true,
+    supportsTools: defaults?.supportsTools ?? true,
+    requiresAuth: !apiKey,
+    runtimeModel: modelName,
+  }));
+}
+
 // Fetch models for a preset provider
 async function fetchPresetProviderModels(
   providerId: string,
@@ -600,16 +693,19 @@ async function fetchPresetProviderModels(
   }
 
   const baseURL = presetProvider.baseURL;
+  const modelsDevLocalFallback = buildModelsDevLocalFallbackModels(providerId, providerId, apiKey);
+  const presetModelFallback = mapPresetProviderModels(providerId, presetProvider.models, apiKey);
+  const stableFallbackModels = modelsDevLocalFallback.length > 0
+    ? modelsDevLocalFallback
+    : presetModelFallback;
+  const fallbackModels = stableFallbackModels.length > 0
+    ? stableFallbackModels
+    : [createManualModelPlaceholder(providerId, apiKey)];
 
   // For providers with preset models (no /models endpoint support)
-  if (!presetProvider.supportsModelsEndpoint && presetProvider.models.length > 0) {
+  if (!presetProvider.supportsModelsEndpoint) {
     return {
-      models: presetProvider.models.map((model) => ({
-        ...model,
-        id: toModelIdentityId(providerId, model.name),
-        provider: providerId,
-        requiresAuth: !apiKey,
-      })),
+      models: fallbackModels,
       errorMessage: null,
     };
   }
@@ -627,48 +723,22 @@ async function fetchPresetProviderModels(
     const response = await fetch(`${trimTrailingSlash(normalizedBaseURL)}/models`, { headers });
 
     if (!response.ok) {
-      console.warn(`[${presetProvider.name}] Failed to fetch models: ${response.status} ${response.statusText}`);
-      // Fall back to preset models if available
-      if (presetProvider.models.length > 0) {
-        return {
-          models: presetProvider.models.map((model) => ({
-            ...model,
-            id: toModelIdentityId(providerId, model.name),
-            provider: providerId,
-            requiresAuth: !apiKey,
-          })),
-          errorMessage: null,
-        };
-      }
+      const errorMessage = `Failed to fetch models: ${response.status} ${response.statusText}`;
+      console.warn(`[${presetProvider.name}] ${errorMessage}`);
       return {
-        models: [{
-          id: toModelIdentityId(providerId, "__manual__"),
-          provider: providerId,
-          name: "__manual__",
-          displayName: "✏️ 输入模型名称...",
-          maxTokens: 128000,
-          supportsStreaming: true,
-          supportsTools: true,
-          requiresAuth: !apiKey,
-          runtimeModel: "__manual__",
-        }],
-        errorMessage: null,
+        models: fallbackModels,
+        errorMessage,
       };
     }
 
     const payload = await response.json() as OpenAiCompatibleModelsResponse;
     const models = Array.isArray(payload?.data) ? payload.data : [];
 
-    if (models.length === 0 && presetProvider.models.length > 0) {
-      // Fall back to preset models
+    if (models.length === 0) {
+      const errorMessage = "Remote /models returned empty model list";
       return {
-        models: presetProvider.models.map((model) => ({
-          ...model,
-          id: toModelIdentityId(providerId, model.name),
-          provider: providerId,
-          requiresAuth: !apiKey,
-        })),
-        errorMessage: null,
+        models: fallbackModels,
+        errorMessage,
       };
     }
 
@@ -689,32 +759,11 @@ async function fetchPresetProviderModels(
       errorMessage: null,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[${presetProvider.name}] Error fetching models:`, error);
-    // Fall back to preset models
-    if (presetProvider.models.length > 0) {
-      return {
-        models: presetProvider.models.map((model) => ({
-          ...model,
-          id: toModelIdentityId(providerId, model.name),
-          provider: providerId,
-          requiresAuth: !apiKey,
-        })),
-        errorMessage: null,
-      };
-    }
     return {
-      models: [{
-        id: toModelIdentityId(providerId, "__manual__"),
-        provider: providerId,
-        name: "__manual__",
-        displayName: "✏️ 输入模型名称...",
-        maxTokens: 128000,
-        supportsStreaming: true,
-        supportsTools: true,
-        requiresAuth: !apiKey,
-        runtimeModel: "__manual__",
-      }],
-      errorMessage: null,
+      models: fallbackModels,
+      errorMessage,
     };
   }
 }
@@ -727,6 +776,10 @@ async function fetchOpenAiCompatibleModels(config: CustomModelDiscoveryConfig): 
   const providerName = config.provider?.trim() || "Custom OpenAI Compatible";
   const providerId = config.providerId?.trim() || normalizeProviderId(providerName);
   const apiKey = config.apiKey?.trim();
+  const modelsDevLocalFallback = buildModelsDevLocalFallbackModels(providerId, providerId, apiKey);
+  const fallbackModels = modelsDevLocalFallback.length > 0
+    ? modelsDevLocalFallback
+    : [createManualModelPlaceholder(providerId, apiKey)];
 
   try {
     const headers: Record<string, string> = {
@@ -742,21 +795,9 @@ async function fetchOpenAiCompatibleModels(config: CustomModelDiscoveryConfig): 
     if (!response.ok) {
       const errorMessage = `Failed to fetch models: ${response.status} ${response.statusText}`;
       console.warn(`[${providerName}] ${errorMessage}`);
-      // Return a placeholder model for providers that don't support /models endpoint
-      // Use __manual__ as special marker for manual input
       return {
-        models: [{
-          id: toModelIdentityId(providerId, "__manual__"),
-          provider: providerId,
-          name: "__manual__",
-          displayName: "✏️ 输入模型名称...",
-          maxTokens: 128000,
-          supportsStreaming: true,
-          supportsTools: true,
-          requiresAuth: !apiKey,
-          runtimeModel: "__manual__",
-        }],
-        errorMessage: null,
+        models: fallbackModels,
+        errorMessage,
       };
     }
 
@@ -764,20 +805,10 @@ async function fetchOpenAiCompatibleModels(config: CustomModelDiscoveryConfig): 
     const models = Array.isArray(payload?.data) ? payload.data : [];
 
     if (models.length === 0) {
-      // No models returned, provide a placeholder for manual input
+      const errorMessage = "Remote /models returned empty model list";
       return {
-        models: [{
-          id: toModelIdentityId(providerId, "__manual__"),
-          provider: providerId,
-          name: "__manual__",
-          displayName: "✏️ 输入模型名称...",
-          maxTokens: 128000,
-          supportsStreaming: true,
-          supportsTools: true,
-          requiresAuth: !apiKey,
-          runtimeModel: "__manual__",
-        }],
-        errorMessage: null,
+        models: fallbackModels,
+        errorMessage,
       };
     }
 
@@ -798,21 +829,11 @@ async function fetchOpenAiCompatibleModels(config: CustomModelDiscoveryConfig): 
       errorMessage: null,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[${providerName}] Error fetching models:`, error);
-    // Network error or other issues, return placeholder for manual input
     return {
-      models: [{
-        id: toModelIdentityId(providerId, "__manual__"),
-        provider: providerId,
-        name: "__manual__",
-        displayName: "✏️ 输入模型名称...",
-        maxTokens: 128000,
-        supportsStreaming: true,
-        supportsTools: true,
-        requiresAuth: !apiKey,
-        runtimeModel: "__manual__",
-      }],
-      errorMessage: null,
+      models: fallbackModels,
+      errorMessage,
     };
   }
 }
@@ -1340,7 +1361,9 @@ export async function route(request: Request): Promise<Response> {
   const path = url.pathname;
 
   // Health
-  if (path === "/api/health" && request.method === "GET") return ok({ service: "interview-manager", status: "ok" });
+  if ((path === "/api/health" || path === "/health") && request.method === "GET") {
+    return ok({ service: "interview-manager", status: "ok" });
+  }
 
   // Auth
   if (path === "/api/auth/status" && request.method === "GET") {
@@ -1454,6 +1477,7 @@ export async function route(request: Request): Promise<Response> {
       return ok({
         provider: "baobao" as const,
         imageSrc: qrCode.imageSrc,
+        qrText: qrCode.qrText,
         source: qrCode.source,
         refreshed: qrCode.refreshed,
         fetchedAt: Date.now(),
@@ -2455,14 +2479,18 @@ Always be concise and helpful in your responses.`,
     const id = `conv_${crypto.randomUUID()}`;
     const normalizedTitle = body.title?.trim();
     const title = normalizedTitle || `新会话 ${Date.now()}`;
-    const agentId = body.agentId?.trim() || (body.candidateId?.trim() ? DEFAULT_INTERVIEW_AGENT_ID : null);
+    const candidateId = body.candidateId?.trim() || null;
+    if (candidateId && !(await candidateOrFail(candidateId))) {
+      return fail("NOT_FOUND", "candidate not found", 404);
+    }
+    const agentId = body.agentId?.trim() || (candidateId ? DEFAULT_INTERVIEW_AGENT_ID : null);
     const modelProvider = body.modelProvider?.trim() || null;
     const modelId = body.modelId?.trim() || null;
     const temperature = typeof body.temperature === "number" ? body.temperature : null;
     await db.insert(conversations).values({
       id,
       title: normalizedTitle || "新会话",
-      candidateId: body.candidateId || null,
+      candidateId,
       agentId,
       modelProvider,
       modelId,
@@ -2475,7 +2503,7 @@ Always be concise and helpful in your responses.`,
       ...serializeConversation({
         id,
         title,
-        candidateId: body.candidateId || null,
+        candidateId,
         agentId,
         modelProvider,
         modelId,

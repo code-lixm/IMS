@@ -15,17 +15,17 @@
 
       <div v-if="workflow.requiresRoundConfirmation" class="space-y-2">
         <div class="flex flex-wrap items-center gap-2">
-          <p class="text-sm font-semibold text-foreground">选择轮次，直接出题</p>
+          <p class="text-sm font-semibold text-foreground">选择角色轮次，直接出题</p>
           <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-primary shadow-sm">
             {{ stageLabel(workflow.currentStage) }}
           </span>
         </div>
         <p class="text-xs leading-5 text-muted-foreground">
           <template v-if="workflow.suggestedNextRound">
-            建议优先继续第 {{ workflow.suggestedNextRound }} 轮；点击一个轮次后会立即开始生成该轮面试题。
+            建议优先继续{{ formatInterviewRoundLabel(workflow.suggestedNextRound) }}；点击一个角色轮次后会立即开始生成该轮面试题。
           </template>
           <template v-else>
-            点击一个轮次后会立即开始生成该轮面试题。
+            点击一个角色轮次后会立即开始生成该轮面试题。
           </template>
           <span v-if="!canGenerateRoundDirectly" class="text-amber-600 dark:text-amber-400">请先选择模型。</span>
         </p>
@@ -41,8 +41,8 @@
           class="h-auto min-h-14 flex-col items-start justify-center gap-0.5 rounded-xl px-3 py-3 text-left shadow-sm"
           @click="generateRound(round)"
         >
-          <span class="text-sm font-semibold">第{{ round }}轮</span>
-          <span class="text-xs opacity-80">立即出题</span>
+          <span class="text-sm font-semibold">{{ getInterviewRoundRoleLabel(round) ?? `第${round}轮` }}</span>
+          <span class="text-xs opacity-80">{{ `第${round}轮 · 立即出题` }}</span>
         </Button>
       </div>
 
@@ -56,7 +56,7 @@
             v-if="assessmentRound"
             class="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground shadow-sm"
           >
-            第{{ assessmentRound }}轮
+            {{ formatInterviewRoundLabel(assessmentRound) }}
           </span>
         </div>
         <p class="text-xs leading-5 text-muted-foreground">
@@ -71,7 +71,7 @@
             @click="advanceToStage('S1')"
           >
             <span class="text-sm font-semibold">
-              {{ workflow.suggestedNextRound ? `继续第${workflow.suggestedNextRound}轮面试` : "继续下一轮面试" }}
+              {{ workflow.suggestedNextRound ? `继续${formatInterviewRoundLabel(workflow.suggestedNextRound)}` : "继续下一轮角色面试" }}
             </span>
             <span class="text-xs opacity-80">返回 S1，立即开始下一轮出题</span>
           </Button>
@@ -181,7 +181,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import type { CandidateDetailData } from "@ims/shared"
+import { formatInterviewRoundLabel, getInterviewRoundRoleLabel, type CandidateDetailData } from "@ims/shared"
 import { luiApi } from "@/api/lui"
 import Button from "@/components/ui/button.vue"
 import { useAppNotifications } from "@/composables/use-app-notifications"
@@ -299,7 +299,7 @@ const assessmentActionTitle = computed(() => {
 })
 const assessmentActionDescription = computed(() => {
   if (props.workflow?.currentStage === "S2" && canLoopToNextRound.value) {
-    return "你可以继续进入下一轮面试；上传面试成绩和复制评价同步到微信会常驻保留，后续随时都能再次触发。"
+    return "你可以继续进入下一轮角色面试；上传面试成绩和复制评价同步到微信会常驻保留，后续随时都能再次触发。"
   }
 
   if (props.workflow?.currentStage === "S2") {
@@ -362,7 +362,8 @@ async function generateRound(round: number) {
   try {
     await luiApi.confirmWorkflowRound(props.workflow.id, round, { silent: true })
     roundConfirmed = true
-    await luiStore.sendMessage(conversationId, `请直接生成第${round}轮的面试题。`)
+    const roundLabel = formatInterviewRoundLabel(round)
+    await luiStore.sendMessage(conversationId, `请直接生成${roundLabel}的面试题，延续该轮默认考察重点。`)
     emit("updated")
   }
   catch (error) {
@@ -371,7 +372,7 @@ async function generateRound(round: number) {
     }
     notifyError(error, {
       title: "生成面试题失败",
-      fallbackMessage: `暂时无法生成第${round}轮面试题`,
+      fallbackMessage: `暂时无法生成${formatInterviewRoundLabel(round)}面试题`,
     })
   }
   finally {

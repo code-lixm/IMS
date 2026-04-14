@@ -250,7 +250,7 @@ watch(() => props.variant, async () => {
   }
 
   if (!source.value) {
-    console.error(`Invalid variant: ${props.variant}`)
+    emits('loadError', new Error(`Invalid variant: ${props.variant}`))
     return
   }
 

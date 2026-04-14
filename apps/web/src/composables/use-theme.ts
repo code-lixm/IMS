@@ -6,6 +6,7 @@ export type ThemeRadius = 0 | 0.3 | 0.5 | 0.75 | 1;
 const COLOR_STORAGE_KEY = "ims-theme-color";
 const RADIUS_STORAGE_KEY = "ims-theme-radius";
 const MODE_STORAGE_KEY = "ims-theme-mode";
+const MODE_USER_SET_KEY = "ims-theme-mode-user-set";
 
 const COLOR_STORAGE_KEY_LEGACY = "currentColor";
 const RADIUS_STORAGE_KEY_LEGACY = "currentRadius";
@@ -192,10 +193,12 @@ let initialized = false;
 
 function resolveStoredDark() {
   if (typeof window === "undefined") return false;
+  const userSet = window.localStorage.getItem(MODE_USER_SET_KEY) === "1";
+  if (!userSet) return false;
   const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
   if (stored === "dark") return true;
   if (stored === "light") return false;
-  return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+  return false;
 }
 
 function resolveStoredColor(): ThemeColor {
@@ -285,6 +288,7 @@ export function useTheme() {
     isDark.value = !isDark.value;
     document.documentElement.classList.toggle("dark", isDark.value);
     applyColorTheme(color.value);
+    window.localStorage.setItem(MODE_USER_SET_KEY, "1");
     window.localStorage.setItem(MODE_STORAGE_KEY, isDark.value ? "dark" : "light");
   }
 

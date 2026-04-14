@@ -73,8 +73,13 @@ export const useCandidatesStore = defineStore("candidates", () => {
 
   async function fetchOne(id: string) {
     loading.value = true;
+    current.value = null;
     try {
       current.value = await candidatesApi.get(id);
+      return current.value;
+    } catch (error) {
+      current.value = null;
+      throw error;
     } finally {
       loading.value = false;
     }

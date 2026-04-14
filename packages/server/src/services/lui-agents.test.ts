@@ -10,7 +10,7 @@ function createWorkspaceAgentDefinition(
     rootDir: "/tmp/agent_builtin_interview",
     config: {
       id: DEFAULT_INTERVIEW_AGENT_ID,
-      name: "Interview Agent",
+      name: "面试专家",
       description: "Workspace interview agent",
       engine: "deepagents",
       mode: "workflow",

@@ -1,13 +1,14 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-const ROOT_DIR = process.cwd();
-const RUNTIME_DIR = join(ROOT_DIR, "runtime");
-const DATA_DIR = join(RUNTIME_DIR, "data");
-const FILES_DIR = join(RUNTIME_DIR, "files");
-const AGENT_WORKSPACES_DIR = join(RUNTIME_DIR, "agent-workspaces");
-const DB_PATH = join(RUNTIME_DIR, "interview.db");
-const BUNDLED_INTERVIEW_OPENCODE_DIR = join(ROOT_DIR, "resources", "interview-opencode");
+const ROOT_DIR = process.env.IMS_ROOT_DIR || process.cwd();
+const RUNTIME_DIR = process.env.IMS_RUNTIME_DIR || join(ROOT_DIR, "runtime");
+const DATA_DIR = process.env.IMS_DATA_DIR || join(RUNTIME_DIR, "data");
+const FILES_DIR = process.env.IMS_FILES_DIR || join(RUNTIME_DIR, "files");
+const AGENT_WORKSPACES_DIR = process.env.IMS_AGENT_WORKSPACES_DIR || join(RUNTIME_DIR, "agent-workspaces");
+const DB_PATH = process.env.IMS_DB_PATH || join(RUNTIME_DIR, "interview.db");
+const BUNDLED_INTERVIEW_OPENCODE_DIR =
+  process.env.IMS_BUNDLED_INTERVIEW_OPENCODE_DIR || join(ROOT_DIR, "resources", "interview-opencode");
 
 mkdirSync(RUNTIME_DIR, { recursive: true });
 mkdirSync(DATA_DIR, { recursive: true });

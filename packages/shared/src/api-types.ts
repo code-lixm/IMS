@@ -112,7 +112,8 @@ export interface AuthLogoutData {
 export interface BaobaoLoginQrData {
   provider: "baobao";
   imageSrc: string;
-  source: "background-image" | "element-screenshot";
+  qrText: string | null;
+  source: "background-image" | "element-screenshot" | "qr-text";
   fetchedAt: number;
   refreshed: boolean;
 }

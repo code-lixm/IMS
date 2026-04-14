@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { executeTool } from "./lui-tools";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { executeScanPdf, executeTool } from "./lui-tools";
 
 describe("lui-tools aliases", () => {
   test("bridges interview_resolveRound to IMS round resolver", async () => {
     const result = await executeTool("interview_resolveRound", {
-      text: "上一轮是第2轮主管面，这次继续下一轮",
+      text: "上一轮是主管面试（第2轮），这次继续下一轮",
     }, {
       directory: process.cwd(),
     });
@@ -33,7 +36,7 @@ describe("lui-tools aliases", () => {
     });
 
     expect(result).toContain("胡少松｜FE｜3年");
-    expect(result).toContain("面试轮次：第2轮");
+    expect(result).toContain("面试轮次：主管面试（第2轮）");
     expect(result).toContain("面试评价：A（推荐复试，可录用）");
     expect(result).toContain("推荐职级：P6");
     expect(result).toContain("- 场景：技术栈匹配");
@@ -93,5 +96,25 @@ describe("lui-tools aliases", () => {
     expect(result).toContain("- 系统设计");
     expect(result).toContain("- 协作推进");
     expect(result).toContain("- 复杂场景取舍");
+  });
+
+  test("decodes percent-encoded pdf path before scanning", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "ims-scan-pdf-"));
+    const fileName = "北京-前端开发-胡少松+脉享.pdf";
+    const encodedFileName = encodeURIComponent(fileName);
+    const actualPath = path.join(tempDir, fileName);
+
+    await writeFile(actualPath, "not-a-real-pdf");
+
+    try {
+      const result = await executeScanPdf({ pdfPath: encodedFileName }, { directory: tempDir });
+      const parsed = JSON.parse(result) as { pdf_path: string; error: string };
+
+      expect(parsed.pdf_path).toBe(actualPath);
+      expect(parsed.error).not.toContain("ENOENT");
+      expect(parsed.error).not.toContain(encodedFileName);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

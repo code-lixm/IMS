@@ -45,6 +45,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   const completedAt = ref<number | null>(null);
   const isActive = ref(false);
   const requestedRunId = ref(0);
+  const initialSyncReady = ref(false);
 
   function hydrate() {
     if (hydrated.value) {
@@ -69,6 +70,10 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     isActive.value = value;
   }
 
+  function setInitialSyncReady(value: boolean) {
+    initialSyncReady.value = value;
+  }
+
   function requestStart(options?: { force?: boolean }) {
     if (options?.force) {
       completed.value = false;
@@ -90,7 +95,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     markCompleted();
   }
 
-  const canAutoStart = computed(() => hydrated.value && !completed.value);
+  const canAutoStart = computed(() => hydrated.value && !completed.value && initialSyncReady.value);
 
   return {
     hydrated,
@@ -98,9 +103,11 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     completedAt,
     isActive,
     requestedRunId,
+    initialSyncReady,
     canAutoStart,
     hydrate,
     setActive,
+    setInitialSyncReady,
     requestStart,
     markCompleted,
     dismiss,

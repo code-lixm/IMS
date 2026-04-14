@@ -27,7 +27,7 @@ export const DEFAULT_INTERVIEW_AGENT_ID = "agent_builtin_interview";
 
 const DEFAULT_INTERVIEW_AGENT = {
   id: DEFAULT_INTERVIEW_AGENT_ID,
-  name: "Interview Agent",
+  name: "面试专家",
   description: "内置面试智能体，负责统筹候选人初筛、提问、评估与纪要输出。",
   sourceType: "builtin" as const,
   isMutable: true,
@@ -402,6 +402,14 @@ export async function ensureManagedAgents(): Promise<void> {
     await db
       .update(agents)
       .set({
+        name: DEFAULT_INTERVIEW_AGENT.name,
+        description: DEFAULT_INTERVIEW_AGENT.description,
+        sceneAffinity: DEFAULT_INTERVIEW_AGENT.sceneAffinity,
+        engine: DEFAULT_INTERVIEW_AGENT.engine,
+        mode: DEFAULT_INTERVIEW_AGENT.mode,
+        temperature: DEFAULT_INTERVIEW_AGENT.temperature,
+        systemPrompt: DEFAULT_INTERVIEW_AGENT.systemPrompt,
+        toolsJson,
         sourceType: DEFAULT_INTERVIEW_AGENT.sourceType,
         isMutable: DEFAULT_INTERVIEW_AGENT.isMutable,
         updatedAt: now,

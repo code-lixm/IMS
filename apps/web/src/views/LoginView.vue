@@ -48,18 +48,30 @@
             <span class="inline-flex items-center gap-2">
               <span
                 class="h-2 w-2 rounded-full"
-                :class="qrState.error ? 'bg-destructive' : 'bg-emerald-500'"
+                :class="qrState.loadError ? 'bg-destructive' : 'bg-emerald-500'"
               />
-              {{ qrState.error ? "二维码加载失败" : "二维码服务可用" }}
+              {{ qrState.loadError ? "二维码加载失败" : "二维码服务可用" }}
             </span>
             <span v-if="qrState.fetchedAt"
               >最近更新：{{ formatTime(qrState.fetchedAt) }}</span
             >
             <span v-if="qrState.refreshed" class="text-amber-600">检测到过期态，已自动刷新二维码</span>
             <span v-if="qrState.loginDetected" class="text-emerald-600">已检测到登录成功，正在进入系统…</span>
+            <span
+              v-else-if="qrState.statusError"
+              :class="isUpstreamConnectionError(qrState.statusError) ? 'text-destructive' : 'text-amber-600'"
+            >
+              {{ qrState.statusError }}
+            </span>
             <span v-else-if="qrState.refreshing" class="text-muted-foreground">正在后台检查二维码状态…</span>
             <span v-else-if="qrState.loginPolling" class="text-muted-foreground">正在确认扫码结果…</span>
           </div>
+          <p
+            v-if="upstreamConnectionHint"
+            class="mt-3 text-sm font-medium text-destructive"
+          >
+            {{ upstreamConnectionHint }}
+          </p>
         </Card>
 
         <Card class="p-6">
@@ -96,7 +108,7 @@
               <p class="text-sm text-muted-foreground">正在拉取最新二维码…</p>
             </div>
             <div
-              v-else-if="qrState.error"
+              v-else-if="qrState.loadError"
               class="flex max-w-sm flex-col items-center gap-4 text-center"
             >
               <div
@@ -107,7 +119,7 @@
               <div>
                 <p class="text-sm font-medium">二维码加载失败</p>
                 <p class="mt-2 text-sm text-muted-foreground">
-                  {{ qrState.error }}
+                  {{ qrState.loadError }}
                 </p>
               </div>
               <Button class="gap-2" @click="loadQrCode">
@@ -116,15 +128,25 @@
               </Button>
             </div>
             <div
-              v-else-if="qrState.imageSrc"
+              v-else-if="qrState.qrSvgMarkup || qrState.imageSrc"
               class="flex flex-col items-center gap-4"
             >
               <div
                 class="overflow-hidden rounded-3xl border border-border bg-white p-3 shadow-sm"
               >
+                <div
+                  v-if="qrState.qrSvgMarkup"
+                  data-testid="login-qr-renderer"
+                  role="img"
+                  aria-label="抱抱登录二维码"
+                  class="h-60 w-60 rounded-2xl [&>svg]:h-full [&>svg]:w-full"
+                  v-html="qrState.qrSvgMarkup"
+                />
                 <img
+                  v-else
                   :src="qrState.imageSrc"
                   alt="抱抱登录二维码"
+                  data-testid="login-qr-renderer"
                   class="h-60 w-60 rounded-2xl object-contain"
                 />
               </div>
@@ -140,7 +162,8 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive } from "vue";
+import QRCode from "qrcode";
 import { useRoute, useRouter } from "vue-router";
 import {
   CircleAlert,
@@ -170,9 +193,11 @@ const qrState = reactive<{
   loading: boolean;
   refreshing: boolean;
   imageSrc: string;
-  error: string;
+  qrSvgMarkup: string;
+  loadError: string;
+  statusError: string;
   fetchedAt: number | null;
-  source: "background-image" | "element-screenshot" | null;
+  source: "background-image" | "element-screenshot" | "qr-text" | null;
   refreshed: boolean;
   loginPolling: boolean;
   loginDetected: boolean;
@@ -181,7 +206,9 @@ const qrState = reactive<{
   loading: false,
   refreshing: false,
   imageSrc: "",
-  error: "",
+  qrSvgMarkup: "",
+  loadError: "",
+  statusError: "",
   fetchedAt: null,
   source: null,
   refreshed: false,
@@ -195,24 +222,74 @@ const STATUS_POLL_MS = 3000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let statusTimer: ReturnType<typeof setInterval> | null = null;
 
+function isUpstreamConnectionError(message: string | null | undefined) {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes("socket connection was closed unexpectedly")
+    || normalized.includes("failed to connect")
+    || normalized.includes("could not resolve host")
+    || normalized.includes("econnrefused")
+    || normalized.includes("econnreset")
+    || normalized.includes("enotfound")
+    || normalized.includes("network")
+    || normalized.includes("timeout");
+}
+
+const upstreamConnectionHint = computed(() => {
+  const message = qrState.loadError || qrState.statusError;
+  if (!isUpstreamConnectionError(message)) {
+    return "";
+  }
+
+  return "上游服务不可达：请检查代理 / VPN / 内网连接后重试。";
+});
+
 onMounted(() => {
   console.log("[login-view] mounted", {
     redirect: route.query.redirect,
   });
-  void loadQrCode();
-  statusTimer = setInterval(() => {
-    void checkLoginStatus();
-  }, STATUS_POLL_MS);
-  refreshTimer = setInterval(() => {
-    void loadQrCode({ silent: true });
-  }, AUTO_REFRESH_MS);
+  void initializeLoginView();
 });
 
 onBeforeUnmount(() => {
   console.log("[login-view] before-unmount");
-  if (refreshTimer) clearInterval(refreshTimer);
-  if (statusTimer) clearInterval(statusTimer);
+  stopPollingTimers();
 });
+
+function hasRenderedQrCode() {
+  return Boolean(qrState.imageSrc || qrState.qrSvgMarkup);
+}
+
+function startPollingTimers() {
+  if (!statusTimer) {
+    statusTimer = setInterval(() => {
+      void checkLoginStatus();
+    }, STATUS_POLL_MS);
+  }
+
+  if (!refreshTimer) {
+    refreshTimer = setInterval(() => {
+      void loadQrCode({ silent: hasRenderedQrCode() });
+    }, AUTO_REFRESH_MS);
+  }
+}
+
+function stopPollingTimers() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+
+  if (statusTimer) {
+    clearInterval(statusTimer);
+    statusTimer = null;
+  }
+}
+
+async function initializeLoginView() {
+  await loadQrCode();
+  startPollingTimers();
+}
 
 function redirectTarget() {
   const redirect = route.query.redirect;
@@ -232,38 +309,52 @@ async function loadQrCode(options?: { silent?: boolean }) {
   const silent = options?.silent ?? false;
   console.log("[login-view] loadQrCode:start", {
     silent,
-    currentImage: Boolean(qrState.imageSrc),
+    hasRenderedQr: hasRenderedQrCode(),
   });
 
   if (silent) {
     qrState.refreshing = true;
   } else {
     qrState.loading = true;
-    qrState.error = "";
+    qrState.loadError = "";
   }
 
   try {
     const result = await authApi.baobaoQr();
+    const resolvedQr = await resolveQrRender(result);
     console.log("[login-view] loadQrCode:success", {
       silent,
       source: result.source,
       refreshed: result.refreshed,
       fetchedAt: result.fetchedAt,
-      imageLength: result.imageSrc.length,
+      imageLength: resolvedQr.imageSrc.length,
+      svgLength: resolvedQr.qrSvgMarkup.length,
     });
-    qrState.imageSrc = result.imageSrc;
+    qrState.imageSrc = resolvedQr.imageSrc;
+    qrState.qrSvgMarkup = resolvedQr.qrSvgMarkup;
     qrState.fetchedAt = result.fetchedAt;
     qrState.source = result.source;
     qrState.refreshed = result.refreshed;
-    qrState.error = "";
+    qrState.loadError = "";
+    qrState.statusError = "";
   } catch (error) {
     reportAppError("login-view/load-qr", error, {
       title: "二维码加载失败",
       fallbackMessage: "获取二维码失败",
     });
-    if (!silent) qrState.imageSrc = "";
-    qrState.error =
-      error instanceof ApiError ? error.message : "获取二维码失败";
+
+    const message = error instanceof ApiError ? error.message : "获取二维码失败";
+
+    if (silent && hasRenderedQrCode()) {
+      qrState.statusError = `二维码刷新失败：${message}`;
+      return;
+    }
+
+    if (!silent) {
+      qrState.imageSrc = "";
+      qrState.qrSvgMarkup = "";
+    }
+    qrState.loadError = message;
   } finally {
     if (silent) {
       qrState.refreshing = false;
@@ -273,8 +364,48 @@ async function loadQrCode(options?: { silent?: boolean }) {
   }
 }
 
+async function resolveQrRender(result: { imageSrc: string; qrText: string | null; source?: string | null }) {
+  if (result.qrText) {
+    try {
+      const qrSvgMarkup = await QRCode.toString(result.qrText, {
+        type: "svg",
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 240,
+      });
+      return {
+        imageSrc: "",
+        qrSvgMarkup,
+      };
+    } catch (error) {
+      reportAppError("login-view/render-qr", error, {
+        title: "本地二维码渲染失败",
+        fallbackMessage: "将尝试使用服务端返回的二维码图片",
+      });
+    }
+  }
+
+  if (result.imageSrc && result.source === "background-image") {
+    return {
+      imageSrc: result.imageSrc,
+      qrSvgMarkup: "",
+    };
+  }
+
+  if (result.imageSrc) {
+    return {
+      imageSrc: result.imageSrc,
+      qrSvgMarkup: "",
+    };
+  }
+
+  throw new Error("未获取到可用二维码数据");
+}
+
 async function checkLoginStatus() {
-  if (qrState.redirecting) return;
+  if (qrState.redirecting || qrState.loading) return;
+  if (!hasRenderedQrCode()) return;
+
   qrState.loginPolling = true;
   console.log("[login-view] checkLoginStatus:start", {
     redirecting: qrState.redirecting,
@@ -290,16 +421,32 @@ async function checkLoginStatus() {
       error: result.error,
       userId: result.user?.id ?? null,
     });
+
     if (!result.authenticated && result.error) {
-      qrState.error = result.error;
+      if (result.error === "No QR session active") {
+        qrState.statusError = "二维码会话已重置，正在重新拉取…";
+        await loadQrCode({ silent: hasRenderedQrCode() });
+        return;
+      }
+
+      qrState.statusError = result.error;
       console.warn("[login-view] checkLoginStatus:error", {
         status: result.status,
         error: result.error,
       });
+
+      if (/invalid_uuid|expired|过期/i.test(result.error)) {
+        await loadQrCode({ silent: hasRenderedQrCode() });
+      }
+    } else if (!result.authenticated) {
+      qrState.statusError = "";
     }
+
     if (result.authenticated && result.user) {
       qrState.loginDetected = true;
       qrState.redirecting = true;
+      qrState.statusError = "";
+      qrState.loadError = "";
       console.log("[login-view] checkLoginStatus:redirect", {
         target: redirectTarget(),
       });
@@ -323,6 +470,7 @@ async function checkLoginStatus() {
     }
   } catch (error) {
     qrState.redirecting = false;
+    qrState.statusError = "登录状态检查失败，稍后自动重试";
     notifyError(reportAppError("login-view/check-login-status", error, {
       title: "登录状态确认失败",
       fallbackMessage: "正在重试登录状态检查",

@@ -110,6 +110,12 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
       nextEndpoints.push(normalized);
     }
 
+    // 首次配置端点时自动设为默认端点，避免后续发送消息还需要额外再选一次默认。
+    if (!defaultEndpointId.value && nextEndpoints.length > 0) {
+      defaultEndpointId.value = normalized.id;
+      saveDefaultGatewayEndpointIdToStorage(normalized.id);
+    }
+
     customEndpoints.value = nextEndpoints;
     saveGatewayEndpointsToStorage(customEndpoints.value);
 
@@ -325,6 +331,36 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     return models.value.find((model) => model.id === id);
   }
 
+  function pickDefaultModel(): ModelConfig | undefined {
+    const preferredEndpoint = defaultEndpointId.value
+      ? customEndpoints.value.find((endpoint) => endpoint.id === defaultEndpointId.value)
+      : null;
+    const preferredProviderIds = new Set<string>();
+
+    if (preferredEndpoint) {
+      const normalizedProviderId = preferredEndpoint.providerId?.trim()
+        || preferredEndpoint.provider?.trim()
+        || preferredEndpoint.id.trim();
+      if (normalizedProviderId) {
+        preferredProviderIds.add(normalizedProviderId);
+      }
+    }
+
+    if (preferredProviderIds.size > 0) {
+      for (const provider of providers.value) {
+        if (!preferredProviderIds.has(provider.id)) {
+          continue;
+        }
+        const firstModel = provider.models[0];
+        if (firstModel) {
+          return firstModel;
+        }
+      }
+    }
+
+    return models.value[0];
+  }
+
   async function loadModels() {
     isLoading.value = true;
 
@@ -333,13 +369,15 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
         const settings = await luiApi.getSettings();
         defaultEndpointId.value = settings.defaultEndpointId;
         saveDefaultGatewayEndpointIdToStorage(settings.defaultEndpointId);
-        if (settings.customEndpoints.length > 0) {
-          customEndpoints.value = settings.customEndpoints;
-          saveGatewayEndpointsToStorage(settings.customEndpoints);
-        } else {
-          customEndpoints.value = loadGatewayEndpointsFromStorage();
-        }
-      } catch {
+        // Server settings are authoritative. When server returns empty endpoints,
+        // also clear stale local cache to avoid resurrecting removed gateways.
+        customEndpoints.value = settings.customEndpoints;
+        saveGatewayEndpointsToStorage(settings.customEndpoints);
+      } catch (error) {
+        reportAppError("lui/load-model-settings", error, {
+          title: "加载模型设置失败",
+          fallbackMessage: "将使用本地缓存的模型设置",
+        });
         customEndpoints.value = loadGatewayEndpointsFromStorage();
         defaultEndpointId.value = loadDefaultGatewayEndpointIdFromStorage();
       }
@@ -362,7 +400,10 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
 
             allProviders.push(...data.providers);
           } catch (err) {
-            console.error(`[loadModels] Failed to fetch models from ${endpoint.name}:`, err);
+            reportAppError("lui/load-models-endpoint", err, {
+              title: `加载 ${endpoint.name} 模型失败`,
+              fallbackMessage: `已跳过端点 ${endpoint.name} 的模型拉取`,
+            });
           }
         }
 
@@ -382,9 +423,20 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     }
 
     try {
-      if (!selectedId.value && models.value[0]) {
-        selectedId.value = models.value[0].id;
-        selectedProviderId.value = models.value[0].provider;
+      const hasValidSelection = Boolean(
+        selectedId.value
+        && selectedProviderId.value
+        && models.value.some(
+          (model) =>
+            model.id === selectedId.value
+            && model.provider === selectedProviderId.value,
+        ),
+      );
+
+      if (!hasValidSelection) {
+        const defaultModel = pickDefaultModel();
+        selectedId.value = defaultModel?.id ?? null;
+        selectedProviderId.value = defaultModel?.provider ?? null;
       }
     } finally {
       isLoading.value = false;

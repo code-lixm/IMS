@@ -4,7 +4,8 @@ import type { AuthStatusData } from "@ims/shared";
 export interface BaobaoLoginQrData {
   provider: "baobao";
   imageSrc: string;
-  source: "background-image" | "element-screenshot";
+  qrText: string | null;
+  source: "background-image" | "element-screenshot" | "qr-text";
   refreshed: boolean;
   fetchedAt: number;
 }

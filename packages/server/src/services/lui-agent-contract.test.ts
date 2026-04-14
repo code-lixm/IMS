@@ -8,7 +8,7 @@ describe("lui-agent-contract S2 guard", () => {
     const decision = guardAgentUserMessage({
       rawContent: [
         "候选人：胡少松",
-        "面试轮次：第1轮",
+        "面试轮次：技术专家面试（第1轮）",
         "1. JavaScript基础 - 优秀/一般/不通过",
         "备注：...",
         "2. Vue原理 - 优秀/一般/不通过",

@@ -87,7 +87,7 @@ describe("workflow-artifacts", () => {
       stage: "S2",
       confirmedRound: null,
       workflowAction: null,
-      content: "## 一、分析结论\n\n- 本轮得分：78/100\n\n胡少松 FE 3年\n面试轮次：第1轮\n面试评价：B+\n推荐职级：P6",
+      content: "## 一、分析结论\n\n- 本轮得分：78/100\n\n胡少松 FE 3年\n面试轮次：技术专家面试（第1轮）\n面试评价：B+\n推荐职级：P6",
     })).toBe(true);
 
     expect(shouldPersistWorkflowArtifact({
@@ -171,7 +171,7 @@ describe("workflow-artifacts", () => {
       stageData: { round: 1 },
       documents: {
         S2: {
-          content: "胡少松 FE 3年\n面试轮次：第1轮\n面试评价：B\n推荐职级：不推荐\n面试总结：\n- 整体总结：不建议继续流程",
+          content: "胡少松 FE 3年\n面试轮次：技术专家面试（第1轮）\n面试评价：B\n推荐职级：不推荐\n面试总结：\n- 整体总结：不建议继续流程",
         },
       },
     } as const;

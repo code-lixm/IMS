@@ -81,6 +81,7 @@ declare module 'vue' {
     DropdownMenuTrigger: typeof import('./components/ui/dropdown-menu/DropdownMenuTrigger.vue')['default']
     EmptyState: typeof import('./components/ui/empty-state.vue')['default']
     FileResources: typeof import('./components/lui/file-resources.vue')['default']
+    GatewayEndpointDialog: typeof import('./components/lui/gateway-endpoint-dialog.vue')['default']
     HoverCard: typeof import('./components/ui/hover-card/HoverCard.vue')['default']
     HoverCardContent: typeof import('./components/ui/hover-card/HoverCardContent.vue')['default']
     HoverCardTrigger: typeof import('./components/ui/hover-card/HoverCardTrigger.vue')['default']

@@ -1,6 +1,6 @@
 {
   "name": "ims",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @ims/web dev",
@@ -8,6 +8,7 @@
     "dev:desktop": "pnpm --filter @ims/desktop tauri dev",
     "build": "pnpm --filter @ims/shared build && pnpm --filter @ims/server build && pnpm --filter @ims/web build",
     "build:desktop": "pnpm build && pnpm --filter @ims/desktop tauri build",
+    "build:desktop:local": "pnpm build && pnpm --filter @ims/desktop tauri build --config tauri.local.conf.json --no-sign",
     "build:server": "pnpm --filter @ims/server build",
     "build:web": "pnpm --filter @ims/web build",
     "typecheck": "pnpm --filter @ims/shared check && pnpm --filter @ims/server check && pnpm --filter @ims/web check",
@@ -18,6 +19,13 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:install": "playwright install chromium",
     "test:e2e:remote": "node ./scripts/playwright-remote.mjs",
+    "reset:web": "bash ./scripts/reset-web-and-dev.sh",
+    "reset:web-state": "bash ./scripts/reset-web-state.sh",
+    "reset:web-state:open": "bash ./scripts/reset-web-state.sh --open",
+    "reset:desktop-state": "bash ./scripts/reset-desktop-state.sh",
+    "reset:desktop-full": "bash ./scripts/reset-desktop-state.sh --full",
+    "desktop:reinstall": "bash ./scripts/reinstall-desktop.sh",
+    "desktop:logs:open": "bash ./scripts/reset-desktop-state.sh --open-logs",
     "release:check": "node ./scripts/release-readiness.mjs"
   },
   "devDependencies": {

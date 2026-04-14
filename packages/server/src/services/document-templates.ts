@@ -1,3 +1,5 @@
+import { formatInterviewRoundLabel } from "@ims/shared";
+
 export type WorkflowDocumentStage = "S0" | "S1" | "S2";
 
 interface MarkdownTemplateDefinition {
@@ -107,7 +109,7 @@ export function buildWorkflowMarkdownTemplateInstruction(stage: WorkflowDocument
   if (stage === "S2") {
     return [
       "S2 文档不要写一级标题，正文从 `## 一、分析结论` 开始。",
-      "二级标题顺序固定：## 一、分析结论 → ## 二、题目对照评分（第X轮） → ## 三、加分与扣分（平衡） → ## 四、系统结论 vs 面试官反馈（差异分析） →（非淘汰时）## 五、下一轮建议（第X轮）。",
+      "二级标题顺序固定：## 一、分析结论 → ## 二、题目对照评分（角色面试＋第X轮） → ## 三、加分与扣分（平衡） → ## 四、系统结论 vs 面试官反馈（差异分析） →（非淘汰时）## 五、下一轮建议（角色面试＋第X轮）。",
       "文末必须追加微信可复制块（无标题、无空行），格式严格遵循 interview-assessment。",
       "若结论为 B/C、淘汰或不合格，必须移除“下一轮建议”并将推荐职级固定为“不推荐”。",
       template.description,
@@ -171,13 +173,13 @@ function buildAssessmentSectionTitle(key: AssessmentSectionKey, round: number | 
     case "analysis":
       return "一、分析结论";
     case "scoring":
-      return `二、题目对照评分（第${round ?? 1}轮）`;
+      return `二、题目对照评分（${formatInterviewRoundLabel(round ?? 1)}）`;
     case "balance":
       return "三、加分与扣分（平衡）";
     case "feedback":
       return "四、系统结论 vs 面试官反馈（差异分析）";
     case "next":
-      return `五、下一轮建议（第${nextRound ?? (round ?? 1) + 1}轮）`;
+      return `五、下一轮建议（${formatInterviewRoundLabel(nextRound ?? (round ?? 1) + 1)}）`;
     default:
       return "";
   }
@@ -301,7 +303,7 @@ export function buildInterviewAssessmentMarkdown(input: {
       `- 综合建议：${input.recommendationLabel}`,
       `- 平均分：${input.averageScore}`,
       "",
-      `## 二、题目对照评分（第${round}轮）`,
+      `## 二、题目对照评分（${formatInterviewRoundLabel(round)}）`,
       "",
       `- 技术能力：${input.technicalScore}/10`,
       `- 沟通能力：${input.communicationScore}/10`,
@@ -319,7 +321,7 @@ export function buildInterviewAssessmentMarkdown(input: {
       input.overallEvaluation,
       "",
       allowNextRound
-        ? `## 五、下一轮建议（第${nextRound ?? round + 1}轮）\n\n- 待补充`
+        ? `## 五、下一轮建议（${formatInterviewRoundLabel(nextRound ?? round + 1)}）\n\n- 待补充`
         : null,
     ].filter(Boolean).join("\n"),
     round,
@@ -537,7 +539,7 @@ export function buildWechatCopyTextFromStructuredAssessment(input: StructuredInt
   const normalizedRecommendedLevel = normalizeRecommendedLevel(input.grade, input.recommendedLevel);
   const lines = [
     `${input.candidateName}｜${input.roleAbbr}｜${input.years}`,
-    `面试轮次：第${input.round}轮`,
+    `面试轮次：${formatInterviewRoundLabel(input.round)}`,
     `面试评价：${interviewEvaluationLabel}`,
     `推荐职级：${normalizedRecommendedLevel}`,
     "面试总结：",
@@ -587,7 +589,7 @@ export function buildInterviewAssessmentMarkdownFromStructuredData(input: Struct
     `| 证据完整度 | ${view.evidenceCompleteness} |`,
     `| 总体判断 | ${view.overallJudgement} |`,
     "",
-    `## 二、题目对照评分（第${view.round}轮）`,
+    `## 二、题目对照评分（${formatInterviewRoundLabel(view.round)}）`,
     "",
     "| 题目方向 | 观察结论 | 得分 |",
     "|---|---|---|",
@@ -614,7 +616,7 @@ export function buildInterviewAssessmentMarkdownFromStructuredData(input: Struct
   ];
 
   if ((view.grade === "A+" || view.grade === "A" || view.grade === "B+") && view.shouldContinue && view.nextRoundSuggestions.length > 0) {
-    sections.push(`## 五、下一轮建议（第${view.nextRound ?? (view.round + 1)}轮）`);
+    sections.push(`## 五、下一轮建议（${formatInterviewRoundLabel(view.nextRound ?? (view.round + 1))})`);
     sections.push("");
     sections.push(...view.nextRoundSuggestions.map((item, index) => `${index + 1}. ${item}`));
     sections.push("");

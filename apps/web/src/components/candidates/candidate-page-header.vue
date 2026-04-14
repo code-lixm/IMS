@@ -41,7 +41,7 @@
             新建候选人
           </DropdownMenuItem>
           <DropdownMenuItem :disabled="isImporting" @click="emit('import')">
-            <Upload class="mr-2 h-4 w-4" />
+            <Download class="mr-2 h-4 w-4" />
             导入文件
             <Badge
               v-if="(importActivityCount ?? 0) > 0"
@@ -74,7 +74,7 @@
           :disabled="isImporting"
           @click="emit('import')"
         >
-          <Upload class="h-4 w-4" />
+          <Download class="h-4 w-4" />
           <span class="hidden lg:inline">导入</span>
         </Button>
         <Badge
@@ -131,7 +131,7 @@
           @click="openResetDialog"
         >
           <AlertTriangle class="h-4 w-4" />
-          <span class="hidden xl:inline">重置重导入</span>
+          <span class="hidden xl:inline">重新导入</span>
         </Button>
       </div>
 
@@ -190,7 +190,7 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Upload,
+  Download,
 } from "lucide-vue-next";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";

@@ -30,7 +30,7 @@
                 variant="outline"
                 class="h-5 px-1.5 text-[10px]"
               >
-                第{{ conversation.interviewRound }}轮
+                {{ formatInterviewRoundLabel(conversation.interviewRound) }}
               </Badge>
               <Badge
                 v-if="conversation.interviewStatus"
@@ -104,6 +104,7 @@ import DialogHeader from "@/components/ui/dialog-header.vue";
 import DialogTitle from "@/components/ui/dialog-title.vue";
 import Input from "@/components/ui/input.vue";
 import ScrollArea from "@/components/ui/scroll-area.vue";
+import { formatInterviewRoundLabel } from "@ims/shared";
 import type { Conversation } from "@/stores/lui";
 
 interface ExtendedConversation extends Conversation {

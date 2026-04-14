@@ -30,7 +30,6 @@ const restoredRemote = persistedRemote[0];
 if (restoredRemote?.token) {
   setBaobaoClient(new BaobaoClient(restoredRemote.token));
   getDiscovery("Interview-Manager", config.port).setLocalUserInfo(restoredRemote.username, restoredRemote.name);
-  await runInitialSync("startup");
 }
 
 const server = Bun.serve({
@@ -48,6 +47,13 @@ const server = Bun.serve({
     return new Response("Interview Manager is running", { headers: { "Content-Type": "text/plain; charset=utf-8" } });
   },
 });
+
+if (restoredRemote?.token) {
+  // Keep health endpoint responsive on startup; remote sync runs in background.
+  queueMicrotask(() => {
+    void runInitialSync("startup");
+  });
+}
 
 const shutdown = async () => {
   syncManager.stop();

@@ -56,7 +56,8 @@ Output format: Create a structured screening report with:
 - Experience evaluation
 - Recommendation with reasoning
 
-If you recommend moving to the next stage, append this exact marker on its own line at the end: <!-- workflow-action:advance-stage -->.`,
+If the screening conclusion is pass/通过, you MUST append this exact marker on its own line at the end: <!-- workflow-action:advance-stage -->.
+If the conclusion is pending/待定 or reject/淘汰, do not append any workflow-action marker.`,
 
   S1: `You are an Interview Questioning Agent (S1 Stage).
 Your task is to generate interview questions based on previous stage results.
@@ -221,15 +222,16 @@ function createDeepAgentResponse(
                   round = null;
                 }
               }
+              const strippedArtifactContent = stripThinkingForArtifact(finalText);
               const shouldPersist = stage === "S1"
                 ? round !== null
                 : stage === "S2"
                   ? workflowAction === "advance-stage" || workflowAction === "complete-workflow"
-                  : workflowAction === "advance-stage";
+                  : workflowAction === "advance-stage"
+                    || /初筛报告|筛选结论|待核验项|六维度评分|通过初筛|进入面试环节|建议：进入面试/.test(strippedArtifactContent);
               if (!shouldPersist) {
                 return;
               }
-              const strippedArtifactContent = stripThinkingForArtifact(finalText);
               const extractedAssessment = stage === "S2"
                 ? extractStructuredInterviewAssessmentBlock(strippedArtifactContent)
                 : { structuredData: null, cleanedContent: strippedArtifactContent };

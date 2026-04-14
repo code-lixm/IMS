@@ -33,7 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": [
       "dmg",
       "app",
@@ -76,12 +76,6 @@
     }
   },
   "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRBOTQxOTQ3NzdFQTQxOTMKUldTVFFlcDNSeG1VU3ZuVlRnUmY2WlhSNHhnQUpqU0VYTVpsQXdONFRCUEVzdHBmb2pOcmxqOVkK",
-      "endpoints": [
-        "https://github.com/code-lixm/IMS/releases/latest/download/latest.json"
-      ]
-    },
     "deep-link": {
       "schemes": [
         "imr"

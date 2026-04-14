@@ -1,73 +1,92 @@
 <template>
   <AppPageShell class="flex h-screen flex-col overflow-hidden">
-    <div data-onboarding="candidates-header">
-      <CandidatePageHeader
-        v-model:search="search"
-        :search-suggestions="searchSuggestions"
-        :is-importing="isImporting"
-        :import-activity-count="importActivity.activeBatchCount.value"
-        :sync-loading="syncStore.loading"
-        :sync-error="syncStore.status.lastError"
-        :sync-enabled="syncStore.status.enabled"
-        :reset-sync-loading="syncStore.resetLoading"
-        @search="scheduleSearch"
-        @create="setCreateDialogOpen(true)"
-        @import="triggerImport"
-        @goto-import="goToImportPage"
-        @sync="runSyncNow"
-        @reset-sync="runResetSyncNow"
-      />
+    <div
+      v-if="initialSyncLoading"
+      class="flex min-h-0 flex-1 items-center justify-center p-6"
+    >
+      <Card class="w-full max-w-md p-8 text-center">
+        <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+          <Spinner class="h-6 w-6 text-primary" />
+        </div>
+        <h2 class="text-lg font-semibold tracking-tight">正在同步中</h2>
+        <p class="mt-2 text-sm text-muted-foreground">
+          正在拉取候选人和面试列表，请稍候…
+        </p>
+      </Card>
     </div>
 
-    <AppPageContent class="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <CandidateFeedbackBanner :feedback="feedback" class="mb-4 shrink-0" @dismiss="clearFeedback" />
-
-      <div class="flex min-h-0 flex-1 overflow-hidden" data-onboarding="candidates-list">
-        <CandidateList
-          :items="store.list"
-          :loading="store.loading"
-          :total="store.total"
-          :page="store.page"
-          :page-size="store.pageSize"
-          :export-loading-id="exportLoadingId"
-          :delete-loading-id="deleteLoadingId"
-          :has-selection="batchSelection.hasSelection.value"
-          :selected-count="batchSelection.selectedCount.value"
-          :is-all-selected-on-page="pageSelectionState.isAllSelected"
-          :is-indeterminate-on-page="pageSelectionState.isIndeterminate"
-          :share-loading="isBatchSharing"
-          :is-selected="batchSelection.isSelected"
+    <template v-else>
+      <div data-onboarding="candidates-header">
+        <CandidatePageHeader
+          v-model:search="search"
+          :search-suggestions="searchSuggestions"
+          :is-importing="isImporting"
+          :import-activity-count="importActivity.activeBatchCount.value"
+          :sync-loading="syncStore.loading"
+          :sync-error="syncStore.status.lastError"
+          :sync-enabled="syncStore.status.enabled"
+          :reset-sync-loading="syncStore.resetLoading"
+          @search="scheduleSearch"
           @create="setCreateDialogOpen(true)"
           @import="triggerImport"
-          @select="goToCandidateDetail"
-          @open-workspace="openWorkspace"
-          @export="exportCandidate"
-          @delete="handleDelete"
-          @page-change="goToPage"
-          @page-size-change="changePageSize"
-          @toggle-selection="handleToggleSelection"
-          @toggle-all="handleToggleAll"
-          @clear-selection="handleClearSelection"
-          @batch-share="openDeviceSelectDialog"
+          @goto-import="goToImportPage"
+          @sync="runSyncNow"
+          @reset-sync="runResetSyncNow"
         />
       </div>
-    </AppPageContent>
 
-    <CandidateCreateDialog
-      :open="createDialogOpen"
-      :model-value="createForm"
-      :is-submitting="isCreating"
-      @update:open="setCreateDialogOpen"
-      @update:model-value="updateCreateForm"
-      @submit="submitCreate"
-    />
+      <AppPageContent class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CandidateFeedbackBanner :feedback="feedback" class="mb-4 shrink-0" @dismiss="clearFeedback" />
 
-    <DeviceSelectDialog
-      :open="deviceSelectDialogOpen"
-      :selected-count="batchSelection.selectedCount.value"
-      @update:open="deviceSelectDialogOpen = $event"
-      @send="handleBatchShare"
-    />
+        <div class="flex min-h-0 flex-1 overflow-hidden" data-onboarding="candidates-list">
+          <CandidateList
+            class="flex-1 min-w-0"
+            :search-keyword="search"
+            :items="store.list"
+            :loading="store.loading"
+            :total="store.total"
+            :page="store.page"
+            :page-size="store.pageSize"
+            :export-loading-id="exportLoadingId"
+            :delete-loading-id="deleteLoadingId"
+            :has-selection="batchSelection.hasSelection.value"
+            :selected-count="batchSelection.selectedCount.value"
+            :is-all-selected-on-page="pageSelectionState.isAllSelected"
+            :is-indeterminate-on-page="pageSelectionState.isIndeterminate"
+            :share-loading="isBatchSharing"
+            :is-selected="batchSelection.isSelected"
+            @create="setCreateDialogOpen(true)"
+            @import="triggerImport"
+            @select="goToCandidateDetail"
+            @open-workspace="openWorkspace"
+            @export="exportCandidate"
+            @delete="handleDelete"
+            @page-change="goToPage"
+            @page-size-change="changePageSize"
+            @toggle-selection="handleToggleSelection"
+            @toggle-all="handleToggleAll"
+            @clear-selection="handleClearSelection"
+            @batch-share="openDeviceSelectDialog"
+          />
+        </div>
+      </AppPageContent>
+
+      <CandidateCreateDialog
+        :open="createDialogOpen"
+        :model-value="createForm"
+        :is-submitting="isCreating"
+        @update:open="setCreateDialogOpen"
+        @update:model-value="updateCreateForm"
+        @submit="submitCreate"
+      />
+
+      <DeviceSelectDialog
+        :open="deviceSelectDialogOpen"
+        :selected-count="batchSelection.selectedCount.value"
+        @update:open="deviceSelectDialogOpen = $event"
+        @send="handleBatchShare"
+      />
+    </template>
   </AppPageShell>
 </template>
 
@@ -80,6 +99,8 @@ import CandidatePageHeader from "@/components/candidates/candidate-page-header.v
 import DeviceSelectDialog from "@/components/candidates/device-select-dialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
+import Card from "@/components/ui/card.vue";
+import Spinner from "@/components/ui/spinner/Spinner.vue";
 import { useCandidateCreateDialog } from "@/composables/candidates/use-candidate-create-dialog";
 import { useCandidatePageActions } from "@/composables/candidates/use-candidate-page-actions";
 import { useCandidateSearch } from "@/composables/candidates/use-candidate-search";
@@ -88,12 +109,15 @@ import { useImportBatches } from "@/composables/import/use-import-batches";
 import { shareApi } from "@/api/share";
 import type { CandidateCreateFormValue } from "@/composables/candidates/types";
 import { useCandidatesStore } from "@/stores/candidates";
+import { useOnboardingStore } from "@/stores/onboarding";
 import { useSyncStore } from "@/stores/sync";
 
 const store = useCandidatesStore();
 const syncStore = useSyncStore();
 const importActivity = useImportBatches();
 const batchSelection = useCandidateBatchSelection();
+const onboardingStore = useOnboardingStore();
+const initialSyncLoading = ref(true);
 
 const { search, searchSuggestions, initialize, scheduleSearch } = useCandidateSearch(store);
 const {
@@ -133,11 +157,32 @@ const pageSelectionState = computed(() => {
 });
 
 onMounted(async () => {
-  await Promise.all([
-    initialize(),
-    importActivity.initialize(),
-    syncStore.fetchStatus(),
-  ]);
+  onboardingStore.setInitialSyncReady(false);
+  initialSyncLoading.value = true;
+
+  try {
+    await Promise.all([
+      importActivity.initialize(),
+      syncStore.fetchStatus(),
+    ]);
+
+    const shouldRunInitialSync = !syncStore.status.lastSyncAt;
+    if (shouldRunInitialSync) {
+      try {
+        await syncStore.runNow();
+      } catch (error: unknown) {
+        setFeedback({
+          tone: "error",
+          message: `首次同步失败：${getErrorMessage(error)}`,
+        });
+      }
+    }
+
+    await initialize();
+  } finally {
+    initialSyncLoading.value = false;
+    onboardingStore.setInitialSyncReady(true);
+  }
 });
 
 function updateCreateForm(value: CandidateCreateFormValue) {

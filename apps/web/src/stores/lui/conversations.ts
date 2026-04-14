@@ -357,7 +357,10 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
       conversations.value = conversations.value.map((item, itemIndex) =>
         itemIndex === index ? current : item,
       );
-      console.error("[updateConversationTitle] Failed:", err);
+      notifyError(reportAppError("lui/update-conversation-title", err, {
+        title: "更新会话标题失败",
+        fallbackMessage: "暂时无法保存会话标题",
+      }));
     }
   }
 

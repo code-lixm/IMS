@@ -152,7 +152,7 @@
                   <Clock class="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                      <p class="text-sm font-medium">第 {{ i.round }} 轮</p>
+                      <p class="text-sm font-medium">{{ formatInterviewRoundLabel(i.round) }}</p>
                       <Badge variant="secondary" class="text-xs">{{ i.status }}</Badge>
                     </div>
                     <p class="text-xs text-muted-foreground mt-0.5">
@@ -332,7 +332,7 @@ import TabsContent from "@/components/ui/tabs-content.vue";
 import TabsList from "@/components/ui/tabs-list.vue";
 import TabsTrigger from "@/components/ui/tabs-trigger.vue";
 import EmptyState from "@/components/ui/empty-state.vue";
-import type { CandidateDetailData } from "@ims/shared";
+import { formatInterviewRoundLabel, type CandidateDetailData } from "@ims/shared";
 
 const route = useRoute();
 const router = useRouter();

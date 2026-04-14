@@ -135,7 +135,7 @@ position: 后端工程师
 round: 1
 source_inputs:
   - ./00_筛选报告.md
-  - "用户粘贴：第1轮评价摘要"
+  - "用户粘贴：技术专家面试（第1轮）评价摘要"
 generated_by: interview-orchestrator
 generated_at: 2026-03-19T12:00:00+08:00
 schema_version: 1.1.0

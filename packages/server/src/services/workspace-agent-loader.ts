@@ -329,7 +329,7 @@ async function createBundledInterviewWorkspaceDefinition(agentId: string): Promi
     rootDir,
     config: {
       id: agentId,
-      name: "Interview Agent",
+      name: "面试专家",
       description: "Workspace-native interview expert using bundled interview-opencode overlay.",
       engine: "deepagents",
       mode: "workflow",
@@ -344,7 +344,7 @@ async function createBundledInterviewWorkspaceDefinition(agentId: string): Promi
       path: join(rootDir, AGENT_CONFIG_FILE),
       content: [
         `id: ${agentId}`,
-        "name: Interview Agent",
+        "name: 面试专家",
         'description: Workspace-native interview expert using bundled interview-opencode overlay.',
         "engine: deepagents",
         "mode: workflow",

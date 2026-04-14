@@ -566,6 +566,19 @@
         </div>
       </template>
     </Dialog>
+
+    <GatewayEndpointDialog
+      :open="gatewaySetupDialogOpen"
+      title="先配置模型厂商"
+      description="发送消息前需要先添加至少一个 AI Gateway 端点。保存后会自动设为默认端点。"
+      :preset-providers="presetProviders"
+      :initial-provider-id="presetProviders[0]?.id ?? ''"
+      :saving="isSavingGatewaySetup"
+      :show-test-button="false"
+      save-button-text="保存并继续"
+      @update:open="handleGatewaySetupDialogOpenChange"
+      @save="saveGatewaySetupFromDialog"
+    />
   </div>
 </template>
 
@@ -646,6 +659,7 @@ import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AgentSelector from "@/components/lui/agent-selector.vue";
 import CandidateSelector from "@/components/lui/candidate-selector.vue";
 import ConversationList from "@/components/lui/conversation-list.vue";
+import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue";
 import WorkflowActionCard from "@/components/lui/workflow-action-card.vue";
 import WorkflowArtifacts from "@/components/lui/workflow-artifacts.vue";
 import TaskQueueIndicator from "@/components/lui/task-queue-indicator.vue";
@@ -664,8 +678,10 @@ import {
   candidatesApi,
   resolveResumePreviewContentType,
 } from "@/api/candidates";
+import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
+import { PRESET_PROVIDER_BASE_URLS, type GatewayEndpoint } from "@/lib/ai-gateway-config";
 import { useAuthStore } from "@/stores/auth";
 import { useCandidatesStore } from "@/stores/candidates";
 import type { Agent, Message as LuiStoreMessage } from "@/stores/lui/types";
@@ -683,6 +699,13 @@ import type { CandidateDetailData } from "@ims/shared";
 interface SourceItem {
   href: string;
   title: string;
+}
+
+interface PresetProvider {
+  id: string;
+  name: string;
+  icon: string;
+  baseURL: string;
 }
 
 interface UiMessageItem {
@@ -720,7 +743,7 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const candidatesStore = useCandidatesStore();
-const { notifyError } = useAppNotifications();
+const { notifyError, notifySuccess } = useAppNotifications();
 
 const LUI_LEFT_PANEL_WIDTH_STORAGE_KEY = "lui-left-panel-width";
 const LUI_LEFT_TOP_PANE_SIZE_STORAGE_KEY = "lui-left-top-pane-size";
@@ -732,6 +755,9 @@ const modelSelectorOpen = ref(false);
 const isSubmittingPrompt = ref(false);
 const lastSubmittedPrompt = ref<{ text: string; files: File[]; conversationId: string } | null>(null);
 const lastFailedPrompt = ref<{ text: string; files: File[]; conversationId: string } | null>(null);
+const gatewaySetupDialogOpen = ref(false);
+const isSavingGatewaySetup = ref(false);
+const presetProviders = ref<PresetProvider[]>([]);
 const leftPanelWidth = ref(readStoredPanelSize(
   LUI_LEFT_PANEL_WIDTH_STORAGE_KEY,
   31,
@@ -1010,7 +1036,8 @@ const canSubmitPrompt = computed(() => {
     return false;
   }
 
-  return hasSelectedModel.value && hasReadyManualModelName.value;
+  // 模型/厂商校验在发送前统一拦截，并弹出对应配置入口。
+  return true;
 });
 
 watch(
@@ -1322,8 +1349,105 @@ function onPromptError(payload: { code: string; message: string }) {
   );
 }
 
+function buildFallbackPresetProviders(): PresetProvider[] {
+  return [
+    { id: "openai", name: "OpenAI", icon: "OpenAI", baseURL: PRESET_PROVIDER_BASE_URLS.openai ?? "" },
+    { id: "anthropic", name: "Anthropic", icon: "Anthropic", baseURL: PRESET_PROVIDER_BASE_URLS.anthropic ?? "" },
+    { id: "minimax", name: "MiniMax", icon: "MiniMax", baseURL: PRESET_PROVIDER_BASE_URLS.minimax ?? "" },
+    { id: "moonshot", name: "Moonshot", icon: "Moonshot", baseURL: PRESET_PROVIDER_BASE_URLS.moonshot ?? "" },
+    { id: "deepseek", name: "DeepSeek", icon: "DeepSeek", baseURL: PRESET_PROVIDER_BASE_URLS.deepseek ?? "" },
+    { id: "gemini", name: "Google Gemini", icon: "Gemini", baseURL: PRESET_PROVIDER_BASE_URLS.gemini ?? "" },
+    { id: "siliconflow", name: "SiliconFlow", icon: "SiliconFlow", baseURL: PRESET_PROVIDER_BASE_URLS.siliconflow ?? "" },
+    { id: "openrouter", name: "OpenRouter", icon: "OpenRouter", baseURL: PRESET_PROVIDER_BASE_URLS.openrouter ?? "" },
+    { id: "grok", name: "Grok", icon: "Grok", baseURL: PRESET_PROVIDER_BASE_URLS.grok ?? "" },
+  ];
+}
+
+async function loadPresetProviders() {
+  try {
+    const data = await luiApi.listPresetProviders();
+    presetProviders.value = data.providers.map((provider) => ({
+      ...provider,
+      baseURL: PRESET_PROVIDER_BASE_URLS[provider.id] ?? "",
+    }));
+  } catch (error) {
+    reportAppError("lui/load-preset-providers", error, {
+      title: "加载预设模型厂商失败",
+      fallbackMessage: "将使用内置厂商列表",
+    });
+    presetProviders.value = buildFallbackPresetProviders();
+  }
+}
+
+function openGatewaySetupDialog() {
+  if (presetProviders.value.length === 0) {
+    presetProviders.value = buildFallbackPresetProviders();
+  }
+  gatewaySetupDialogOpen.value = true;
+}
+
+function handleGatewaySetupDialogOpenChange(open: boolean) {
+  if (!open && isSavingGatewaySetup.value) {
+    return;
+  }
+  gatewaySetupDialogOpen.value = open;
+}
+
+async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey: string }) {
+  const provider = presetProviders.value.find((item) => item.id === payload.providerId);
+  if (!provider) {
+    notifyError("请选择模型厂商");
+    return;
+  }
+
+  const apiKey = payload.apiKey.trim();
+  if (!apiKey) {
+    notifyError("请输入 API Key");
+    return;
+  }
+
+  isSavingGatewaySetup.value = true;
+  try {
+    const endpoint: GatewayEndpoint = {
+      id: provider.id,
+      name: provider.name,
+      provider: provider.id,
+      baseURL: provider.baseURL,
+      providerId: provider.id,
+      apiKey,
+    };
+    await store.registerCustomEndpoint(endpoint);
+    notifySuccess("模型厂商已保存");
+    gatewaySetupDialogOpen.value = false;
+    if (!store.selectedModelId || !store.selectedModelProvider) {
+      modelSelectorOpen.value = true;
+    }
+  } catch (error) {
+    notifyError(
+      reportAppError("lui/save-gateway-from-dialog", error, {
+        title: "保存模型厂商配置失败",
+        fallbackMessage: "请检查 API Key 或稍后重试",
+      }),
+    );
+  } finally {
+    isSavingGatewaySetup.value = false;
+  }
+}
+
 function ensurePromptCanSend(text: string) {
+  if (text && store.customEndpoints.length === 0) {
+    openGatewaySetupDialog();
+    notifyError(
+      reportAppError("lui/provider-required", new Error("请先配置模型厂商"), {
+        title: "无法发送消息",
+        fallbackMessage: "请先配置模型厂商后再发送消息",
+      }),
+    );
+    return false;
+  }
+
   if (text && !hasSelectedModel.value) {
+    modelSelectorOpen.value = true;
     notifyError(
       reportAppError("lui/model-required", new Error("请先选择模型"), {
         title: "无法发送消息",
@@ -1452,7 +1576,7 @@ function formatResumeSize(size: number) {
 function decodeDisplayFileName(fileName: string) {
   try {
     return decodeURIComponent(fileName);
-  } catch {
+  } catch (_error) {
     return fileName;
   }
 }
@@ -1601,40 +1725,55 @@ function shouldRenderWorkflowActionCard(message: UiMessageItem) {
     return false;
   }
 
-  if (!store.selectedWorkflow) {
+  const workflow = store.selectedWorkflow;
+  if (!workflow) {
     return false;
   }
 
-  if (store.selectedWorkflow.artifacts.some((artifact) => artifact.stage === "S2")) {
+  const hasAssessmentArtifact = workflow.artifacts.some(
+    (artifact) => artifact.stage === "S2",
+  );
+  if (hasAssessmentArtifact) {
     return true;
   }
 
-  if (store.selectedWorkflow.requiresRoundConfirmation) {
+  if (workflow.requiresRoundConfirmation) {
+    return true;
+  }
+
+  const needsAssessmentNotes = workflow.currentStage === "S2" && !hasAssessmentArtifact;
+  const canAdvanceByWorkflowState = Boolean(
+    !needsAssessmentNotes
+    && workflow.currentStage !== "completed"
+    && workflow.recommendedNextStage
+    && workflow.recommendedNextStage !== workflow.currentStage,
+  );
+  if (canAdvanceByWorkflowState) {
     return true;
   }
 
   if (
-    store.selectedWorkflow.currentStage === "S2"
-    && store.selectedWorkflow.availableNextStages.length > 0
+    workflow.currentStage === "S2"
+    && workflow.availableNextStages.length > 0
     && (message.workflowAction === "advance-stage" || message.workflowAction === "complete-workflow")
   ) {
     return true;
   }
 
   if (message.workflowAction === "confirm-round") {
-    return store.selectedWorkflow.requiresRoundConfirmation;
+    return workflow.requiresRoundConfirmation;
   }
 
   if (message.workflowAction === "advance-stage") {
     return Boolean(
-      store.selectedWorkflow.recommendedNextStage
-      && store.selectedWorkflow.recommendedNextStage !== "completed"
-      && !store.selectedWorkflow.requiresRoundConfirmation,
+      workflow.recommendedNextStage
+      && workflow.recommendedNextStage !== "completed"
+      && !workflow.requiresRoundConfirmation,
     );
   }
 
   if (message.workflowAction === "complete-workflow") {
-    return store.selectedWorkflow.recommendedNextStage === "completed";
+    return workflow.recommendedNextStage === "completed";
   }
 
   return false;
@@ -1741,6 +1880,7 @@ function sanitizeMessageContent(content: string | null | undefined): string {
 }
 
 onMounted(async () => {
+  await loadPresetProviders();
   const candidateId = explicitRouteCandidateId.value ?? undefined;
   await store.initialize({ skipAutoSelect: true });
 

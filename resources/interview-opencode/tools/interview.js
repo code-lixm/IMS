@@ -20,6 +20,16 @@ function normalizeFolderName(input) {
     .replace(/\s+/g, "");
 }
 
+function decodePossibleEncodedPath(inputPath) {
+  const normalized = String(inputPath ?? "").trim();
+  if (!normalized) return normalized;
+  try {
+    return decodeURIComponent(normalized);
+  } catch {
+    return normalized;
+  }
+}
+
 function parseRound(text) {
   if (!text) return null;
   const normalized = String(text).toLowerCase();
@@ -795,9 +805,10 @@ export const scanPdf = tool({
       metadata: { reason: "Store parse cache for single-PDF fast path" },
     });
 
-    const resolvedPdfPath = path.isAbsolute(args.pdfPath)
-      ? args.pdfPath
-      : path.join(context.directory, args.pdfPath);
+    const normalizedPdfPath = decodePossibleEncodedPath(args.pdfPath);
+    const resolvedPdfPath = path.isAbsolute(normalizedPdfPath)
+      ? normalizedPdfPath
+      : path.join(context.directory, normalizedPdfPath);
 
     const scriptPath =
       args.profile === "questioning"
@@ -911,9 +922,12 @@ export const batchScreenResumes = tool({
       metadata: { reason: "Batch screening summary generation and local unzip temp files" },
     });
 
-    const resolvedInputs = args.inputPaths.map((inputPath) =>
-      path.isAbsolute(inputPath) ? inputPath : path.join(context.directory, inputPath),
-    );
+    const resolvedInputs = args.inputPaths.map((inputPath) => {
+      const normalizedInputPath = decodePossibleEncodedPath(inputPath);
+      return path.isAbsolute(normalizedInputPath)
+        ? normalizedInputPath
+        : path.join(context.directory, normalizedInputPath);
+    });
 
     const runStateDir = path.join(context.directory, "interviews", "_batch_runs");
     await mkdir(runStateDir, { recursive: true });
@@ -1062,9 +1076,12 @@ export const batchScreenResumes = tool({
       "batch_筛选汇总.md",
     );
     const summaryPath = args.outputSummaryPath
-      ? path.isAbsolute(args.outputSummaryPath)
-        ? args.outputSummaryPath
-        : path.join(context.directory, args.outputSummaryPath)
+      ? (() => {
+          const normalizedOutputPath = decodePossibleEncodedPath(args.outputSummaryPath);
+          return path.isAbsolute(normalizedOutputPath)
+            ? normalizedOutputPath
+            : path.join(context.directory, normalizedOutputPath);
+        })()
       : defaultSummaryPath;
 
     await mkdir(path.dirname(summaryPath), { recursive: true });

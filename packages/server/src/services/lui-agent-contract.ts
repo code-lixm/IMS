@@ -312,7 +312,7 @@ function buildStageClarifyReply(stage: AgentWorkflowStage, hints: string[] | und
 function buildRoundClarifyReply(): string {
   return [
     `${WORKFLOW_CLARIFY_BASE}当前在出题阶段，需要先确认轮次。`,
-    "请直接点击下方按钮，选择要生成的第1轮到第4轮面试题。",
+    "请直接点击下方按钮，选择要生成的技术专家 / 主管 / 总监 / HR 面试。",
   ].join(" ");
 }
 

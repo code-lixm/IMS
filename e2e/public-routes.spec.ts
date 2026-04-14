@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { mockLoginPageApis, mockUnauthenticatedSession } from "./support/auth";
+import {
+  mockLoginPageApis,
+  mockLoginPageApisWithStatusError,
+  mockUnauthenticatedSession,
+} from "./support/auth";
 
 test.describe("公开页面 smoke", () => {
   test.beforeEach(async ({ page }) => {
@@ -31,7 +35,15 @@ test.describe("登录页 smoke", () => {
     await expect(page.getByRole("heading", { name: "使用抱抱 App 扫码登录 IMS" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "当前登录二维码" })).toBeVisible();
     await expect(page.getByRole("button", { name: "刷新" })).toBeEnabled();
-    await expect(page.locator('img[alt="抱抱登录二维码"]')).toBeVisible();
+    await expect(page.getByTestId("login-qr-renderer")).toBeVisible();
     await expect(page.getByText("二维码服务可用")).toBeVisible();
+  });
+
+  test("登录状态轮询报错时仍保留二维码", async ({ page }) => {
+    await mockLoginPageApisWithStatusError(page, "No QR session active");
+    await page.goto("/login");
+
+    await expect(page.getByTestId("login-qr-renderer")).toBeVisible();
+    await expect(page.getByText("二维码加载失败")).toHaveCount(0);
   });
 });

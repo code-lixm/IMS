@@ -10,7 +10,7 @@
           data-onboarding="export-screening"
           @click="exportDialogOpen = true"
         >
-          <Download class="h-4 w-4" />
+          <Upload class="h-4 w-4" />
           导出 AI
         </Button>
         <div class="relative">
@@ -461,7 +461,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
-  Download,
+  Upload,
   FileSearch,
   Plus,
   ChevronDown,

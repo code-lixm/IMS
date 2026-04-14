@@ -13,6 +13,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { formatInterviewRoundLabel, getInterviewRoundRoleLabel } from "@ims/shared";
 import { luiWorkflows, conversations, messages } from "../schema";
 import { buildCandidateContext, formatCandidateContextForPrompt } from "./lui-context";
 import { getWorkflowTools, updateWorkflowDocument, type ToolContext } from "./lui-tools";
@@ -300,10 +301,10 @@ export function inferRecommendedAction(workflow: WorkflowState): string | null {
       return "下一步请先阅读本轮初筛结论；如果你认可通过判断，直接点击“进入出题”，否则补充反馈或继续追问。";
     case "S1":
       return confirmedRound
-        ? `下一步请直接生成第 ${confirmedRound} 轮面试题；如果你还想调整这一轮考察重点，先补充要求后再出题。`
+        ? `下一步请直接生成${formatInterviewRoundLabel(confirmedRound)}的面试题；如果你还想调整这一轮考察重点，先补充要求后再出题。`
         : suggestedNextRound
-          ? `下一步建议继续第 ${suggestedNextRound} 轮；请确认轮次后再直接生成对应轮次的面试题。`
-          : "下一步请先选择当前是第几轮面试；确认轮次后再直接生成对应轮次的面试题。";
+          ? `下一步建议继续${formatInterviewRoundLabel(suggestedNextRound)}；请确认轮次后再直接生成对应轮次的面试题。`
+          : "下一步请先选择当前要生成哪一轮角色面试；确认轮次后再直接生成对应轮次的面试题。";
     case "S2": {
       const hasAssessmentDocument = Boolean(
         workflow.documents.S2?.content || workflow.documents.S2?.filePath,
@@ -314,9 +315,9 @@ export function inferRecommendedAction(workflow: WorkflowState): string | null {
       if (isRejectedAssessmentWorkflow(workflow)) {
         return "本轮结论为 B/C 不推荐、淘汰或不合格，不会继续下一轮出题。下一步请补充面试官反馈并完成当前候选人的流程。";
       }
-      if (availableNextStages.includes("S1")) {
-        return suggestedNextRound
-          ? `下一步你可以继续进入第 ${suggestedNextRound} 轮出题；如果当前流程已经足够，也可以直接完成当前候选人的面试流程。`
+        if (availableNextStages.includes("S1")) {
+          return suggestedNextRound
+          ? `下一步你可以继续进入${formatInterviewRoundLabel(suggestedNextRound)}出题；如果当前流程已经足够，也可以直接完成当前候选人的面试流程。`
           : "下一步你可以继续进入下一轮出题；如果当前流程已经足够，也可以直接完成当前候选人的面试流程。";
       }
       return "下一步请确认当前流程是否结束；如无后续轮次，直接完成当前候选人的面试流程。";
@@ -342,7 +343,7 @@ export function buildWorkflowArtifacts(workflow: WorkflowState): WorkflowArtifac
       return {
         id: `${workflow.id}:${stage}`,
         stage,
-        title: stage === "S1" && round ? `第 ${round} 轮面试题` : `${stageDisplayName(stage)}文档`,
+        title: stage === "S1" && round ? `${getInterviewRoundRoleLabel(round) ?? `第 ${round} 轮`}面试题` : `${stageDisplayName(stage)}文档`,
         type: "markdown",
         fileResourceId: null,
         fileName: document?.filePath?.split("/").pop() || defaultStageFileName(stage),
@@ -399,6 +400,19 @@ export function shouldPersistWorkflowArtifact(input: {
   workflowAction: "advance-stage" | "complete-workflow" | null;
   content: string;
 }): boolean {
+  if (input.stage === "S0") {
+    if (input.workflowAction === "advance-stage") {
+      return true;
+    }
+
+    const normalized = input.content.trim();
+    if (!normalized) {
+      return false;
+    }
+
+    return /初筛报告|筛选结论|待核验项|六维度评分|通过初筛|进入面试环节|建议：进入面试/.test(normalized);
+  }
+
   if (input.stage === "S1") {
     return input.confirmedRound !== null;
   }
@@ -419,7 +433,7 @@ export function shouldPersistWorkflowArtifact(input: {
 
     const hasScoreSignals = /评分|总分|推荐职级|面试评价|面试评估|评分概览/.test(normalized);
     const hasStructuredSections = /##\s+一、分析结论|##\s+二、题目对照评分/.test(normalized);
-    const hasWechatCopySignals = /(^|\n)面试轮次：第\d+轮[\s\S]*推荐职级：/.test(normalized);
+    const hasWechatCopySignals = /(^|\n)面试轮次：[^\n]+[\s\S]*推荐职级：/.test(normalized);
     return hasScoreSignals || hasStructuredSections || hasWechatCopySignals;
   }
 
@@ -959,7 +973,7 @@ export async function executeWorkflowAgent(
         if (existingContent) {
           return createStaticAssistantStreamResponse(
             conversationId,
-            `${existingContent}\n\n已复用当前候选人的第 ${confirmedRound} 轮面试题。`,
+            `${existingContent}\n\n已复用当前候选人的${formatInterviewRoundLabel(confirmedRound)}面试题。`,
           );
         }
       }

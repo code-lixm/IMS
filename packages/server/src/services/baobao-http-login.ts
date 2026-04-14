@@ -17,7 +17,6 @@
  */
 
 import { desc, eq } from "drizzle-orm";
-import type { BaobaoLoginResponse } from "../baobao-types";
 import { db } from "../db";
 import { remoteUsers } from "../schema";
 
@@ -217,6 +216,24 @@ async function httpPost<T>(
   }
 }
 
+async function warmupQrSession(cookieJar: CookieJar): Promise<void> {
+  const response = await fetch(`${BASE_URL}/`, {
+    method: "GET",
+    headers: {
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "zh-CN,zh;q=0.9",
+      "Referer": `${BASE_URL}/`,
+      "User-Agent": BROWSER_UA,
+    },
+  });
+
+  mergeSetCookieIntoJar(response, cookieJar);
+  logImportant("qr-session:warmup", {
+    status: response.status,
+    cookieCount: Object.keys(cookieJar).length,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Token persistence (reuse existing DB schema)
 // ---------------------------------------------------------------------------
@@ -334,10 +351,6 @@ function getSetCookieLines(response: Response): string[] {
   return [single];
 }
 
-function sanitizeCookies(cookies: PersistedCookie[]): PersistedCookie[] {
-  return cookies.filter((c) => c.name && c.value && c.domain && c.path);
-}
-
 // ---------------------------------------------------------------------------
 // Core login flow
 // ---------------------------------------------------------------------------
@@ -345,10 +358,11 @@ function sanitizeCookies(cookies: PersistedCookie[]): PersistedCookie[] {
 /**
  * Step 1: Get a new QR code UUID
  */
-export async function fetchQrUuid(): Promise<string> {
+export async function fetchQrUuid(cookieJar?: CookieJar | null): Promise<string> {
   const { data } = await httpPost<BaobaoUuidResponse>(
     "/mainpart/qr_code/getUuid",
     {},
+    { cookieJar: cookieJar ?? null },
   );
 
   if (data.errno !== 0 || !data.data?.uuid) {
@@ -358,6 +372,31 @@ export async function fetchQrUuid(): Promise<string> {
   const uuid = data.data.uuid;
   log(`Got UUID: ${uuid}`);
   return uuid;
+}
+
+async function fetchQrCodeStatusOnce(
+  uuid: string,
+  cookieJar: CookieJar,
+): Promise<QrCodeResult> {
+  const { data, mToken } = await httpPost<BaobaoQrStatusResponse>(
+    "/mainpart/qr_code/getQrCodeStatus",
+    { uuid },
+    { cookieJar },
+  );
+
+  if (data.errno !== 0) {
+    throw new Error(`Failed to get QR status: ${data.errmsg}`);
+  }
+
+  const status = data.data.status;
+  return {
+    uuid,
+    status,
+    portrait: data.data.portrait ?? null,
+    mToken: mToken ?? null,
+    scannedAt: status === "is_scanned" ? Date.now() : null,
+    confirmedAt: status === "confirm_logined" ? Date.now() : null,
+  };
 }
 
 /**
@@ -635,18 +674,45 @@ export async function startHttpQrLogin(): Promise<{
   portrait: string | null;
   status: QrStatus;
 }> {
-  const uuid = await fetchQrUuid();
+  const runtimeCookies: CookieJar = FORCED_SESSION_COOKIE_VALUE
+    ? { session: FORCED_SESSION_COOKIE_VALUE }
+    : {};
+
+  try {
+    await warmupQrSession(runtimeCookies);
+  } catch (error) {
+    logImportant("qr-session:warmup:failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const uuid = await fetchQrUuid(runtimeCookies);
+
+  const initialStatus = await fetchQrCodeStatusOnce(uuid, runtimeCookies).catch((error) => {
+    logImportant("qr-session:initial-status-failed", {
+      uuid,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      uuid,
+      status: "no_scanned" as const,
+      portrait: null,
+      mToken: null,
+      scannedAt: null,
+      confirmedAt: null,
+    };
+  });
 
   setQrSession({
     uuid,
-    portrait: null,
-    mToken: null,
-    status: "no_scanned",
+    portrait: initialStatus.portrait,
+    mToken: initialStatus.mToken,
+    status: initialStatus.status,
     createdAt: Date.now(),
-    confirmedAt: null,
+    confirmedAt: initialStatus.confirmedAt,
     ghrToken: null,
     userInfo: null,
-    cookies: FORCED_SESSION_COOKIE_VALUE ? { session: FORCED_SESSION_COOKIE_VALUE } : {},
+    cookies: runtimeCookies,
     tokenExchangeAttempts: 0,
     tokenExchangeLastAttemptAt: null,
     lastError: null,
@@ -656,8 +722,14 @@ export async function startHttpQrLogin(): Promise<{
   logImportant("qr-session:created", {
     uuid,
     hasForcedSessionCookie: Boolean(FORCED_SESSION_COOKIE_VALUE),
+    initialStatus: initialStatus.status,
+    hasPortrait: Boolean(initialStatus.portrait),
   });
-  return { uuid, portrait: null, status: "no_scanned" };
+  return {
+    uuid,
+    portrait: initialStatus.portrait,
+    status: initialStatus.status,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -765,6 +837,16 @@ export async function checkHttpLoginStatus(): Promise<{
         to: newStatus,
         hasPortrait: Boolean(newPortrait),
         hasMToken: Boolean(newMToken),
+      });
+    }
+
+    if (newStatus === "no_scanned") {
+      logImportant("qr-status:still-no-scanned", {
+        uuid,
+        ageMs: Date.now() - qrSession.createdAt,
+        hasPortrait: Boolean(newPortrait),
+        hasMToken: Boolean(newMToken),
+        cookieKeys: Object.keys(qrSession.cookies),
       });
     }
 

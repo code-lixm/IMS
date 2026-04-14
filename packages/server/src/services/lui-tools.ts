@@ -30,6 +30,19 @@ export interface ToolContext {
   workflowId?: string;
 }
 
+function decodePossibleEncodedPath(inputPath: string): string {
+  const normalized = String(inputPath ?? "").trim();
+  if (!normalized) {
+    return normalized;
+  }
+
+  try {
+    return decodeURIComponent(normalized);
+  } catch {
+    return normalized;
+  }
+}
+
 // ============================================================================
 // Vercel AI SDK Tool Definitions (with Zod schemas)
 // ============================================================================
@@ -499,9 +512,10 @@ export async function executeScanPdf(
   args: { pdfPath: string; profile?: string; strictQualityGate?: boolean },
   context: ToolContext
 ): Promise<string> {
-  const resolvedPdfPath = path.isAbsolute(args.pdfPath)
-    ? args.pdfPath
-    : path.join(context.directory, args.pdfPath);
+  const normalizedPdfPath = decodePossibleEncodedPath(args.pdfPath);
+  const resolvedPdfPath = path.isAbsolute(normalizedPdfPath)
+    ? normalizedPdfPath
+    : path.join(context.directory, normalizedPdfPath);
 
   try {
     // Check if file exists
@@ -640,9 +654,10 @@ export async function executeBatchScreenResumes(
   try {
     // Phase 1: Discover and extract PDFs from input paths
     for (const inputPath of args.inputPaths) {
-      const resolvedPath = path.isAbsolute(inputPath)
-        ? inputPath
-        : path.join(context.directory, inputPath);
+      const normalizedInputPath = decodePossibleEncodedPath(inputPath);
+      const resolvedPath = path.isAbsolute(normalizedInputPath)
+        ? normalizedInputPath
+        : path.join(context.directory, normalizedInputPath);
 
       try {
         const stats = await stat(resolvedPath);
@@ -765,9 +780,12 @@ export async function executeBatchScreenResumes(
 
     // Phase 3: Generate summary markdown
     const summaryPath = args.outputSummaryPath
-      ? (path.isAbsolute(args.outputSummaryPath)
-          ? args.outputSummaryPath
-          : path.join(context.directory, args.outputSummaryPath))
+      ? (() => {
+          const normalizedOutputPath = decodePossibleEncodedPath(args.outputSummaryPath!);
+          return path.isAbsolute(normalizedOutputPath)
+            ? normalizedOutputPath
+            : path.join(context.directory, normalizedOutputPath);
+        })()
       : path.join(context.directory, "interviews", todayDate(), "batch_筛选汇总.md");
 
     // Ensure parent directory exists

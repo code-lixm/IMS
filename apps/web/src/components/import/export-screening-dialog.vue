@@ -35,7 +35,7 @@
         <DialogFooter>
           <Button variant="outline" @click="emit('update:open', false)">取消</Button>
           <Button :disabled="exporting || !hasCheckedFields" @click="handleExport">
-            <Download v-if="!exporting" class="h-4 w-4 mr-2" />
+            <Upload v-if="!exporting" class="h-4 w-4 mr-2" />
             <Loader2 v-else class="h-4 w-4 mr-2 animate-spin" />
             {{ exporting ? "导出中..." : "导出 Excel" }}
           </Button>
@@ -47,7 +47,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Download, Loader2 } from "lucide-vue-next";
+import { Loader2, Upload } from "lucide-vue-next";
 import { importApi } from "@/api/import";
 import Button from "@/components/ui/button.vue";
 import Dialog from "@/components/ui/dialog.vue";
