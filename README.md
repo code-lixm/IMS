@@ -176,8 +176,8 @@ pnpm --filter @ims/desktop tauri signer generate --ci -p "YOUR_STRONG_PASSWORD" 
 发布方式：
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 触发后会自动构建并发布 Windows + macOS 安装包，并生成 updater 所需元数据（`latest.json`）。

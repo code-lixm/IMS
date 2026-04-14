@@ -17,21 +17,14 @@ jobs:
           - os: macos-latest
             args: "--target aarch64-apple-darwin"
             rust_targets: "aarch64-apple-darwin"
-            allow_failure: false
           - os: macos-latest
             args: "--target x86_64-apple-darwin"
             rust_targets: "x86_64-apple-darwin"
-            allow_failure: false
           - os: windows-latest
             args: "--target x86_64-pc-windows-msvc"
             rust_targets: "x86_64-pc-windows-msvc"
-            allow_failure: false
-          - os: windows-latest
-            args: "--target i686-pc-windows-msvc"
-            rust_targets: "i686-pc-windows-msvc"
-            allow_failure: true
+            
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.allow_failure }}
 
     steps:
       - name: Checkout
