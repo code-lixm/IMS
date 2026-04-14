@@ -22,7 +22,12 @@ fn start_server<R: Runtime>(
 
     // Get the server executable path from bundled resources
     let resource_dir = app.path().resource_dir()?;
-    let server_path = resource_dir.join("dist/server");
+    let server_relative = if cfg!(target_os = "windows") {
+        "dist/server.exe"
+    } else {
+        "dist/server"
+    };
+    let server_path = resource_dir.join(server_relative);
     let node_modules_path = resource_dir.join("node_modules");
     println!("[tauri] starting server at: {:?}", server_path);
 
