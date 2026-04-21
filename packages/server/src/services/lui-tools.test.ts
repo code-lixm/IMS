@@ -1,8 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { executeScanPdf, executeTool } from "./lui-tools";
+
+vi.mock("../db", () => ({ db: {} }));
+
+let executeScanPdf: typeof import("./lui-tools").executeScanPdf;
+let executeTool: typeof import("./lui-tools").executeTool;
+
+beforeAll(async () => {
+  ({ executeScanPdf, executeTool } = await import("./lui-tools"));
+});
 
 describe("lui-tools aliases", () => {
   test("bridges interview_resolveRound to IMS round resolver", async () => {

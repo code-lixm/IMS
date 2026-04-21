@@ -7,6 +7,7 @@ PROJECT_ROOT_LOWER="$(printf '%s' "${PROJECT_ROOT}" | tr '[:upper:]' '[:lower:]'
 RUNTIME_DIR="${IMS_WEB_RUNTIME_DIR:-${PROJECT_ROOT}/packages/server/runtime}"
 PORT=9092
 OPEN_RESET_URL=0
+START_DEV=0
 RESET_URL="${IMS_WEB_RESET_URL:-http://127.0.0.1:9091/?ims-reset-state=1}"
 
 log() {
@@ -19,8 +20,9 @@ usage() {
   bash ./scripts/reset-web-state.sh [选项]
 
 选项:
-  --open      重置后自动打开 Web 重置链接（会清理 localStorage）
-  --help      显示帮助
+  --open       重置后自动打开 Web 重置链接（会清理 localStorage）
+  --start-dev  重置完成后自动启动完整 Web 链路（server + ui）
+  --help       显示帮助
 
 说明:
   该脚本用于 Web 模式初始化测试：
@@ -35,6 +37,10 @@ parse_args() {
     case "$1" in
       --open)
         OPEN_RESET_URL=1
+        shift
+        ;;
+      --start-dev)
+        START_DEV=1
         shift
         ;;
       --help|-h)
@@ -139,9 +145,20 @@ main() {
   open_reset_url_if_needed
 
   log "重置完成"
+
+  if [[ "${START_DEV}" -eq 1 ]]; then
+    log "准备启动完整 Web 链路: pnpm dev:web"
+    (
+      cd "${PROJECT_ROOT}"
+      exec pnpm dev:web
+    )
+  fi
+
   log "下一步可执行:"
   log "  pnpm dev:server"
-  log "  pnpm dev"
+  log "  pnpm dev:ui"
+  log "  pnpm dev:web"
+  log "  pnpm dev:reset-web-file"
   log "  open \"${RESET_URL}\""
 }
 

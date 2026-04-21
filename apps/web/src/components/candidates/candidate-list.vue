@@ -38,11 +38,13 @@
       v-else-if="!items.length"
       :scenario="emptyScenario"
       class="flex-1 min-h-0 w-full"
-      :action-text="'新建候选人'"
-      :action-icon="Plus"
-      :action-handler="() => emit('create')"
-      :secondary-action-text="'导入文件'"
-      :secondary-action-handler="() => emit('import')"
+      :title="'暂无候选人'"
+      :description="'还没有候选人数据，可以先做简历初筛，或导入已有的面试人信息。'"
+      :action-text="'简历初筛'"
+      :action-icon="Download"
+      :action-handler="() => emit('import')"
+      :secondary-action-text="'导入面试信息'"
+      :secondary-action-handler="() => emit('import-imr')"
     />
 
       <Card
@@ -202,36 +204,28 @@
 
               <TableCell class="py-2.5 align-middle">
                 <div class="min-w-0 space-y-1">
-                  <a
-                    v-if="meetingJoinHref(candidate)"
-                    :href="meetingJoinHref(candidate) ?? undefined"
-                    class="inline-flex max-w-full items-center gap-1 truncate text-[13px] font-medium leading-5 text-primary dark:text-sky-400 hover:underline"
-                    :title="meetingLinkTitle(candidate)"
-                    @click.stop
-                  >
-                    {{ formatInterviewTime(candidate.interviewTime) }}
-                  </a>
                   <p
-                    v-else
                     class="truncate text-[13px] font-medium leading-5 text-foreground dark:text-neutral-200"
                   >
                     {{ formatInterviewTime(candidate.interviewTime) }}
                   </p>
-                  <a
-                    v-if="meetingJoinHref(candidate)"
-                    :href="meetingJoinHref(candidate) ?? undefined"
-                    class="block truncate text-[11px] leading-4 text-primary/80 dark:text-sky-400/80 hover:text-primary dark:hover:text-sky-300 hover:underline"
-                    :title="meetingLinkTitle(candidate)"
-                    @click.stop
-                  >
-                    {{ compactInterviewLocationText(candidate) }}
-                  </a>
                   <p
-                    v-else
                     class="truncate text-[11px] leading-4 text-muted-foreground dark:text-neutral-400"
                   >
                     {{ compactInterviewLocationText(candidate) }}
                   </p>
+                  <a
+                    v-if="meetingJoinHref(candidate)"
+                    :href="meetingJoinHref(candidate) ?? undefined"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex w-fit items-center gap-1 text-[10px] font-medium text-sky-600 underline-offset-2 transition-colors hover:text-sky-500 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
+                    :title="meetingLinkTitle(candidate)"
+                    @click.stop
+                  >
+                    <ExternalLink class="h-3 w-3" />
+                    打开会议
+                  </a>
                 </div>
               </TableCell>
 
@@ -395,7 +389,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Plus, Share2 } from "lucide-vue-next";
+import { Download, ExternalLink, Share2 } from "lucide-vue-next";
 import {
   applicationStatusClasses,
   type CandidateListData,
@@ -469,8 +463,8 @@ function openInLui(candidate: CandidateListData["items"][number]) {
 }
 
 const emit = defineEmits<{
-  (e: "create"): void;
   (e: "import"): void;
+  (e: "import-imr"): void;
   (e: "select", candidateId: string): void;
   (e: "open-workspace", candidateId: string): void;
   (e: "export", candidateId: string): void;

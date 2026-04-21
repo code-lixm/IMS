@@ -6,12 +6,13 @@
       <div class="flex items-center gap-2 shrink-0">
         <Button
           variant="outline"
-          class="gap-2"
+          class="gap-2 border-primary/25 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary disabled:border-border disabled:bg-transparent disabled:text-muted-foreground"
           data-onboarding="export-screening"
+          :disabled="exportableBatchCount === 0"
           @click="exportDialogOpen = true"
         >
           <Upload class="h-4 w-4" />
-          导出 AI
+          导出报告
         </Button>
         <div class="relative">
           <Button
@@ -20,13 +21,13 @@
             data-onboarding="new-import"
             @click="startImport"
           >
-            <Plus class="h-4 w-4" />
+            <Download class="h-4 w-4" />
             新建导入
           </Button>
           <Badge
             v-if="importBatches.activeBatchCount.value > 0"
             variant="default"
-            class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full px-1.5 py-0"
+            class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full bg-sky-600 px-1.5 py-0 text-white hover:bg-sky-600"
           >
             {{ importBatches.activeBatchCount.value }}
           </Badge>
@@ -52,7 +53,7 @@
               >
             </div>
             <p class="text-sm text-muted-foreground">
-              支持 PDF、图片、ZIP 批量导入。开启 AI
+              支持上传单个 PDF，或上传仅包含 PDF 的压缩包（ZIP、RAR、TAR、7Z 等）。开启 AI
               初筛后，会在文本解析完成后追加 Agent 风格结论，并持续刷新状态。
             </p>
           </div>
@@ -111,13 +112,13 @@
         </Card>
         <Card class="p-4 space-y-1.5">
           <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            已完成文件
+            分析进度
           </p>
           <p class="text-2xl font-semibold">
-            {{ completedFiles }}/{{ totalFiles }}
+            {{ analysisCompletedFiles }}/{{ analysisTotalFiles }}
           </p>
           <p class="text-xs text-muted-foreground">
-            成功 {{ successFiles }} · 失败 {{ failedFiles }}
+            待分析 {{ analysisPendingFiles }} · 分析中 {{ analysisRunningFiles }}
           </p>
         </Card>
       </div>
@@ -138,7 +139,7 @@
 
       <div v-else class="space-y-4">
         <Card
-          v-for="b in batches"
+          v-for="b in safeBatches"
           :key="b.id"
           :class="[
             'overflow-hidden border-border/70 shadow-sm',
@@ -153,8 +154,8 @@
             >
               <div class="space-y-2 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <Badge :variant="statusVariant(b.status)">{{
-                    statusLabel(b.status)
+                  <Badge :variant="batchPrimaryStatusVariant(b)">{{
+                    batchPrimaryStatusLabel(b)
                   }}</Badge>
                   <Badge
                     v-if="b.status === 'processing'"
@@ -173,9 +174,11 @@
                 <div
                   class="flex items-center gap-2 flex-wrap text-xs text-muted-foreground"
                 >
-                  <span>批次 {{ b.id.slice(-8) }}</span>
-                  <span>·</span>
-                  <span>当前阶段：{{ importStageLabel(b.currentStage) }}</span>
+                  <span>{{ formatImportBatchDisplayName(b) }}</span>
+                  <template v-if="b.status === 'processing' || b.status === 'queued'">
+                    <span>·</span>
+                    <span>当前阶段：{{ importStageLabel(b.currentStage) }}</span>
+                  </template>
                 </div>
               </div>
 
@@ -209,10 +212,11 @@
                   variant="ghost"
                   size="sm"
                   class="h-8 gap-1.5 text-xs"
+                  :disabled="isBatchScreeningPending(b.id)"
                   @click="rerunBatchScreening(b.id)"
                 >
                   <RefreshCw class="h-3.5 w-3.5" />
-                  重跑 AI 初筛
+                  {{ batchScreeningActionLabel(b) }}
                 </Button>
                 <Button
                   v-if="b.status === 'processing'"
@@ -241,35 +245,35 @@
               class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
             >
               <div class="space-y-2">
-                <Progress
-                  :model-value="batchProgress(b.processedFiles, b.totalFiles)"
-                  :indicator-class="progressIndicatorClass(b.status)"
-                />
+                  <Progress
+                    :model-value="batchProgressValue(b)"
+                    :indicator-class="progressIndicatorClass(b.status)"
+                  />
                 <div
                   class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
                 >
-                  <span>已处理 {{ b.processedFiles }}/{{ b.totalFiles }}</span>
+                  <span>{{ batchProgressCountText(b) }}</span>
                   <span
-                    >成功
-                    <span class="font-medium text-green-600">{{
-                      b.successFiles
+                    >{{ batchSecondaryMetricLabel() }}
+                    <span class="font-medium text-foreground">{{
+                      batchSecondaryMetricCount(b)
                     }}</span></span
                   >
                   <span
-                    >失败
-                    <span class="font-medium text-destructive">{{
-                      b.failedFiles
+                    >{{ batchTertiaryMetricLabel(b) }}
+                    <span class="font-medium text-amber-600 dark:text-amber-400">{{
+                      batchTertiaryMetricCount(b)
                     }}</span></span
                   >
                 </div>
               </div>
               <div class="text-right">
                 <p class="text-2xl font-semibold tabular-nums">
-                  {{ batchProgress(b.processedFiles, b.totalFiles) }}%
+                  {{ batchProgressValue(b) }}%
                 </p>
                 <p class="text-xs text-muted-foreground">
                   {{
-                    b.status === "processing" ? "后台持续处理中" : "批次已收口"
+                    batchStatusText(b)
                   }}
                 </p>
               </div>
@@ -410,11 +414,7 @@
                           : '重新分析'
                       "
                       class="inline-flex items-center gap-1.5 text-sm text-red-500 hover:text-red-400 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                      @click.stop="
-                        screeningResult(f)?.screeningStatus === 'running'
-                          ? null
-                          : importBatches.rerunFileScreening(f.id, f.batchId)
-                      "
+                        @click.stop="screeningResult(f)?.screeningStatus === 'running' ? null : requestRunFileScreening(f.id, f.batchId)"
                     >
                       <RefreshCw class="h-3.5 w-3.5" />
                       {{
@@ -438,30 +438,90 @@
           </div>
         </Card>
       </div>
-      <ExportScreeningDialog v-model:open="exportDialogOpen" />
+      <ExportScreeningDialog v-model:open="exportDialogOpen" :batches="batches" />
     </AppPageContent>
 
-    <ConflictMergeDialog
-      :open="conflictDialog.open"
-      :conflict-data="conflictDialog.data"
-      @update:open="fileImport.setConflictDialogOpen"
-      @resolve="fileImport.resolveConflict"
+    <GatewayEndpointDialog
+      :open="gatewaySetupDialogOpen"
+      title="先配置模型厂商"
+      description="开启 AI 初筛前，需要先添加至少一个 AI Gateway 端点。"
+      :preset-providers="presetProviders"
+      :model-options="gatewayModelOptions"
+      :initial-provider-id="presetProviders[0]?.id ?? ''"
+      :initial-model-id="luiStore.selectedModelId || ''"
+      :saving="isSavingGatewaySetup"
+      :show-test-button="false"
+      save-button-text="保存并继续"
+      @update:open="handleGatewaySetupDialogOpenChange"
+      @save="saveGatewaySetupFromDialog"
     />
+
+    <Dialog
+      :open="modelSelectionDialogOpen"
+      @update:open="handleModelSelectionDialogOpenChange"
+    >
+      <template #content>
+        <DialogHeader>
+          <DialogTitle>选择模型</DialogTitle>
+          <DialogDescription>
+            AI 初筛需要先选择一个模型，选择后会自动继续当前导入。
+          </DialogDescription>
+        </DialogHeader>
+
+        <Separator class="my-4" />
+
+        <div v-if="availableModelProviders.length === 0" class="text-sm text-muted-foreground">
+          当前没有可用模型，请先检查厂商 API Key 是否可用，或到设置页完善端点配置。
+        </div>
+
+        <div v-else class="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+          <div
+            v-for="provider in availableModelProviders"
+            :key="provider.id"
+            class="space-y-2"
+          >
+            <p class="text-xs font-medium text-muted-foreground">{{ provider.name }}</p>
+            <div class="grid gap-2">
+              <Button
+                v-for="model in provider.models"
+                :key="`${provider.id}:${model.id}`"
+                variant="outline"
+                class="h-auto justify-start px-3 py-2 text-left"
+                @click="selectImportModel(model.id)"
+              >
+                <span class="truncate text-sm">{{ model.displayName }}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter class="mt-6 gap-2">
+          <Button variant="secondary" @click="modelSelectionDialogOpen = false">
+            取消
+          </Button>
+        </DialogFooter>
+      </template>
+    </Dialog>
 
     <AiScreeningDetailDialog
       :open="screeningDialogOpen"
       :screening-data="selectedScreeningData"
       :file="selectedFile"
+      :has-prev="Boolean(previousScreeningFile)"
+      :has-next="Boolean(nextScreeningFile)"
       @update:open="screeningDialogOpen = $event"
       @run-screening="handleRunFileScreening"
+      @navigate-prev="showAdjacentScreeningDetail(-1)"
+      @navigate-next="showAdjacentScreeningDetail(1)"
     />
   </AppPageShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import {
   Upload,
+  Download,
   FileSearch,
   Plus,
   ChevronDown,
@@ -472,17 +532,18 @@ import {
 import AppUserActions from "@/components/app-user-actions.vue";
 import AiScreeningDetailDialog from "@/components/import/ai-screening-detail-dialog.vue";
 import ExportScreeningDialog from "@/components/import/export-screening-dialog.vue";
-import ConflictMergeDialog from "@/components/conflict-merge-dialog.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
+import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue";
 import { useImportBatches } from "@/composables/import/use-import-batches";
 import { useImportFileSelection } from "@/composables/import/use-import-file-selection";
 import { useImportPreferences } from "@/composables/import/use-import-preferences";
 import {
   fileStatusLabel,
   fileStatusVariant,
+  formatImportBatchDisplayName,
   formatImportTimestamp,
   importStageLabel,
   parseImportTaskResult,
@@ -499,13 +560,36 @@ import Progress from "@/components/ui/progress.vue";
 import Skeleton from "@/components/ui/skeleton.vue";
 import { Switch } from "@/components/ui/switch";
 import EmptyState from "@/components/ui/empty-state.vue";
-import type { ImportFileTask } from "@ims/shared";
+import Dialog from "@/components/ui/dialog.vue";
+import DialogDescription from "@/components/ui/dialog-description.vue";
+import DialogFooter from "@/components/ui/dialog-footer.vue";
+import DialogHeader from "@/components/ui/dialog-header.vue";
+import DialogTitle from "@/components/ui/dialog-title.vue";
+import Separator from "@/components/ui/separator.vue";
+import { ApiError } from "@/api/client";
+import { luiApi } from "@/api/lui";
+import { useAppNotifications } from "@/composables/use-app-notifications";
+import { PRESET_PROVIDER_BASE_URLS, type GatewayEndpoint } from "@/lib/ai-gateway-config";
+import { reportAppError } from "@/lib/errors/normalize";
+import { useLuiStore } from "@/stores/lui";
+import type { ModelProvider } from "@/stores/lui";
+import type { ImportBatchListItem, ImportFileTask } from "@ims/shared";
+
+interface PresetProvider {
+  id: string;
+  name: string;
+  icon: string;
+  baseURL: string;
+}
+
 const importBatches = useImportBatches();
+const luiStore = useLuiStore();
 const { autoScreen, setAutoScreen } = useImportPreferences();
+const { notifyError, notifySuccess, notifyInfo } = useAppNotifications();
 const fileImport = useImportFileSelection({
   onImportFinished: importBatches.refresh,
 });
-const { conflictDialog, isImporting } = fileImport;
+const { isImporting } = fileImport;
 
 const {
   batches,
@@ -523,25 +607,313 @@ const {
 const hasActiveImports = computed(
   () => importBatches.activeBatchCount.value > 0,
 );
-const totalFiles = computed(() =>
-  batches.value.reduce((sum, batch) => sum + batch.totalFiles, 0),
+const exportableBatchCount = computed(
+  () => batches.value.filter((batch) => batch.status === "completed" || batch.status === "partial_success").length,
 );
-const completedFiles = computed(() =>
-  batches.value.reduce((sum, batch) => sum + batch.processedFiles, 0),
+
+type ImportBatchView = ImportBatchListItem;
+
+function analysisMetric(value: number | null | undefined): number {
+  return Number.isFinite(value) ? Number(value) : 0;
+}
+
+function batchAnalysisTotalFiles(batch: ImportBatchView) {
+  return analysisMetric(batch.analysisTotalFiles);
+}
+
+function batchAnalysisCompletedFiles(batch: ImportBatchView) {
+  return analysisMetric(batch.analysisCompletedFiles);
+}
+
+function batchAnalysisPendingFiles(batch: ImportBatchView) {
+  return analysisMetric(batch.analysisPendingFiles);
+}
+
+function batchAnalysisRunningFiles(batch: ImportBatchView) {
+  return analysisMetric(batch.analysisRunningFiles);
+}
+
+function normalizeImportBatch(batch: (typeof batches.value)[number]): ImportBatchView {
+  return {
+    id: batch?.id ?? "unknown-batch",
+    displayName: batch?.displayName ?? null,
+    status: batch?.status ?? "queued",
+    sourceType: batch?.sourceType ?? null,
+    currentStage: batch?.currentStage ?? null,
+    totalFiles: batch?.totalFiles ?? 0,
+    processedFiles: batch?.processedFiles ?? 0,
+    successFiles: batch?.successFiles ?? 0,
+    failedFiles: batch?.failedFiles ?? 0,
+    autoScreen: batch?.autoScreen ?? false,
+    createdAt: batch?.createdAt ?? 0,
+    startedAt: batch?.startedAt ?? null,
+    completedAt: batch?.completedAt ?? null,
+    analysisTotalFiles: batch?.analysisTotalFiles ?? 0,
+    analysisCompletedFiles: batch?.analysisCompletedFiles ?? 0,
+    analysisPendingFiles: batch?.analysisPendingFiles ?? 0,
+    analysisRunningFiles: batch?.analysisRunningFiles ?? 0,
+  };
+}
+
+const safeBatches = computed<ImportBatchView[]>(() =>
+  batches.value.map((batch) => normalizeImportBatch(batch)),
 );
-const successFiles = computed(() =>
-  batches.value.reduce((sum, batch) => sum + batch.successFiles, 0),
+
+const analysisTotalFiles = computed(() =>
+  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisTotalFiles(batch), 0),
 );
-const failedFiles = computed(() =>
-  batches.value.reduce((sum, batch) => sum + batch.failedFiles, 0),
+const analysisCompletedFiles = computed(() =>
+  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisCompletedFiles(batch), 0),
 );
+const analysisPendingFiles = computed(() =>
+  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisPendingFiles(batch), 0),
+);
+const analysisRunningFiles = computed(() =>
+  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisRunningFiles(batch), 0),
+);
+
+const gatewaySetupDialogOpen = ref(false);
+const isSavingGatewaySetup = ref(false);
+const modelSelectionDialogOpen = ref(false);
+const pendingImportRequest = ref(false);
+const pendingBatchScreeningRuns = ref(new Set<string>());
+const presetProviders = ref<PresetProvider[]>([]);
+
+const hasSelectedModel = computed(() =>
+  Boolean(luiStore.selectedModelId && luiStore.selectedModelProvider),
+);
+
+const availableModelProviders = computed<ModelProvider[]>(() =>
+  luiStore.providers.filter((provider) => provider.models.length > 0),
+);
+
+const hasAvailableModels = computed(() => availableModelProviders.value.length > 0);
+
+const gatewayModelOptions = computed(() =>
+  availableModelProviders.value.flatMap((provider) =>
+    provider.models.map((model) => ({
+      id: model.id,
+      providerId: provider.id,
+      label: `${provider.name} / ${model.displayName || model.name || model.id}`,
+    })),
+  ),
+);
+
+function buildFallbackPresetProviders(): PresetProvider[] {
+  return [
+    { id: "openai", name: "OpenAI", icon: "OpenAI", baseURL: PRESET_PROVIDER_BASE_URLS.openai ?? "" },
+    { id: "anthropic", name: "Anthropic", icon: "Anthropic", baseURL: PRESET_PROVIDER_BASE_URLS.anthropic ?? "" },
+    { id: "minimax", name: "MiniMax", icon: "MiniMax", baseURL: PRESET_PROVIDER_BASE_URLS.minimax ?? "" },
+    { id: "moonshot", name: "Moonshot", icon: "Moonshot", baseURL: PRESET_PROVIDER_BASE_URLS.moonshot ?? "" },
+    { id: "deepseek", name: "DeepSeek", icon: "DeepSeek", baseURL: PRESET_PROVIDER_BASE_URLS.deepseek ?? "" },
+    { id: "gemini", name: "Gemini", icon: "Gemini", baseURL: PRESET_PROVIDER_BASE_URLS.gemini ?? "" },
+    { id: "siliconflow", name: "SiliconFlow", icon: "SiliconFlow", baseURL: PRESET_PROVIDER_BASE_URLS.siliconflow ?? "" },
+    { id: "openrouter", name: "OpenRouter", icon: "OpenRouter", baseURL: PRESET_PROVIDER_BASE_URLS.openrouter ?? "" },
+    { id: "grok", name: "Grok", icon: "Grok", baseURL: PRESET_PROVIDER_BASE_URLS.grok ?? "" },
+  ];
+}
+
+async function loadPresetProviders() {
+  try {
+    const data = await luiApi.listPresetProviders();
+    presetProviders.value = data.providers.map((provider) => ({
+      ...provider,
+      baseURL: PRESET_PROVIDER_BASE_URLS[provider.id] ?? "",
+    }));
+  } catch (error) {
+    reportAppError("import/load-preset-providers", error, {
+      title: "加载预设模型厂商失败",
+      fallbackMessage: "将使用内置厂商列表",
+    });
+    presetProviders.value = buildFallbackPresetProviders();
+  }
+}
+
+function openGatewaySetupDialog() {
+  if (presetProviders.value.length === 0) {
+    presetProviders.value = buildFallbackPresetProviders();
+  }
+  gatewaySetupDialogOpen.value = true;
+}
+
+function handleGatewaySetupDialogOpenChange(open: boolean) {
+  if (!open && isSavingGatewaySetup.value) {
+    return;
+  }
+  gatewaySetupDialogOpen.value = open;
+  if (!open) {
+    pendingImportRequest.value = false;
+  }
+}
+
+function handleModelSelectionDialogOpenChange(open: boolean) {
+  modelSelectionDialogOpen.value = open;
+  if (!open) {
+    pendingImportRequest.value = false;
+  }
+}
+
+async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
+  const provider = presetProviders.value.find((item) => item.id === payload.providerId);
+  if (!provider) {
+    notifyError("请选择模型厂商");
+    return;
+  }
+
+  const apiKey = payload.apiKey.trim();
+  const modelId = payload.modelId.trim();
+  if (!apiKey) {
+    notifyError("请输入 API Key");
+    return;
+  }
+
+  const selectedModelOption = modelId
+    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === payload.providerId)
+    : null;
+
+  isSavingGatewaySetup.value = true;
+  try {
+    const endpoint: GatewayEndpoint = {
+      id: provider.id,
+      name: provider.name,
+      provider: provider.id,
+      baseURL: provider.baseURL,
+      providerId: provider.id,
+      apiKey,
+      ...(modelId ? { modelId } : {}),
+      ...(selectedModelOption?.label ? { modelDisplayName: selectedModelOption.label } : {}),
+    };
+    await luiStore.registerCustomEndpoint(endpoint);
+
+    if (!hasAvailableModels.value) {
+      notifyError("未检测到可用模型，请检查 API Key、厂商配置或网络后重试");
+      gatewaySetupDialogOpen.value = true;
+      setAutoScreen(false);
+      return;
+    }
+
+    if (modelId) {
+      luiStore.selectModel(modelId);
+    }
+
+    notifySuccess("模型厂商已保存");
+    gatewaySetupDialogOpen.value = false;
+
+    if (!hasSelectedModel.value) {
+      modelSelectionDialogOpen.value = true;
+      return;
+    }
+
+    setAutoScreen(true);
+
+    if (pendingImportRequest.value) {
+      proceedImport();
+    }
+  } catch (error) {
+    notifyError(
+      reportAppError("import/save-gateway-from-dialog", error, {
+        title: "保存模型厂商配置失败",
+        fallbackMessage: "请检查 API Key 或稍后重试",
+      }),
+    );
+  } finally {
+    isSavingGatewaySetup.value = false;
+  }
+}
+
+function selectImportModel(modelId: string) {
+  luiStore.selectModel(modelId);
+  modelSelectionDialogOpen.value = false;
+  setAutoScreen(true);
+  notifySuccess("模型已选择");
+
+  if (pendingImportRequest.value) {
+    proceedImport();
+  }
+}
+
+async function ensureAutoScreeningReady() {
+  await Promise.all([
+    luiStore.loadModels(),
+    loadPresetProviders(),
+  ]);
+
+  if (luiStore.customEndpoints.length === 0) {
+    openGatewaySetupDialog();
+    notifyError(
+      reportAppError("import/provider-required", new Error("请先配置模型厂商"), {
+        title: "无法开始导入",
+        fallbackMessage: "已开启 AI 初筛，请先配置模型厂商",
+      }),
+    );
+    return false;
+  }
+
+  if (!hasAvailableModels.value) {
+    openGatewaySetupDialog();
+    notifyError(
+      reportAppError("import/model-unavailable", new Error("未检测到可用模型"), {
+        title: "无法开启 AI 初筛",
+        fallbackMessage: "请先在端点配置里完成模型检测并确认可用",
+      }),
+    );
+    return false;
+  }
+
+  if (!hasSelectedModel.value) {
+    modelSelectionDialogOpen.value = true;
+    notifyError(
+      reportAppError("import/model-required", new Error("请先选择模型"), {
+        title: "无法开始导入",
+        fallbackMessage: "已开启 AI 初筛，请先选择模型",
+      }),
+    );
+    return false;
+  }
+
+  return true;
+}
+
+function proceedImport() {
+  pendingImportRequest.value = false;
+  void fileImport.triggerImport({ autoScreen: autoScreen.value });
+}
 
 onMounted(() => {
   void importBatches.initialize();
+  void Promise.all([luiStore.loadModels(), loadPresetProviders()]).then(() => {
+    syncAutoScreenAvailability();
+  });
+});
+
+watch([
+  () => luiStore.customEndpoints.length,
+  hasAvailableModels,
+  hasSelectedModel,
+], () => {
+  syncAutoScreenAvailability();
 });
 
 function startImport() {
-  void fileImport.triggerImport({ autoScreen: autoScreen.value });
+  if (!autoScreen.value) {
+    proceedImport();
+    return;
+  }
+
+  pendingImportRequest.value = true;
+  void ensureAutoScreeningReady().then((ready) => {
+    if (ready) {
+      proceedImport();
+    }
+  }).catch((error) => {
+    pendingImportRequest.value = false;
+    notifyError(
+      reportAppError("import/ensure-auto-screening-ready", error, {
+        title: "AI 初筛准备失败",
+        fallbackMessage: "请稍后重试，或先到设置页检查模型配置",
+      }),
+    );
+  });
 }
 
 function screeningResult(file: ImportFileTask) {
@@ -553,12 +925,228 @@ function batchProgress(processed: number, total: number) {
   return Math.round((processed / total) * 100);
 }
 
+function screenableFiles(batchId: string) {
+  return (batchFiles.value[batchId] ?? []).filter((file) => {
+    const result = screeningResult(file);
+    return Boolean(result?.parsedResume);
+  });
+}
+
+function batchScreeningProgress(batch: (typeof batches.value)[number]) {
+  return batchProgress(batchAnalysisCompletedFiles(batch), batchAnalysableCount(batch));
+}
+
+function batchPrimaryStatusLabel(batch: ImportBatchView) {
+  if (batchAnalysisRunningFiles(batch) > 0) {
+    return "分析中";
+  }
+
+  if (batchAnalysisTotalFiles(batch) > 0 && batchAnalysisCompletedFiles(batch) >= batchAnalysisTotalFiles(batch)) {
+    return "分析完成";
+  }
+
+  if (!batch.autoScreen && batch.status === "completed") {
+    return "待初筛";
+  }
+
+  if (!batch.autoScreen && batch.status === "partial_success") {
+    return "部分待初筛";
+  }
+
+  return statusLabel(batch.status);
+}
+
+function batchPrimaryStatusVariant(batch: ImportBatchView) {
+  if (batchAnalysisRunningFiles(batch) > 0 || (batchAnalysisTotalFiles(batch) > 0 && batchAnalysisCompletedFiles(batch) >= batchAnalysisTotalFiles(batch))) {
+    return "default";
+  }
+
+  if (!batch.autoScreen && batch.status === "completed") {
+    return "outline";
+  }
+
+  return statusVariant(batch.status);
+}
+
+function batchScreeningActionLabel(batch: ImportBatchView) {
+  if (isBatchScreeningPending(batch.id)) {
+    return "启动中";
+  }
+
+  return batch.autoScreen ? "重跑 AI 初筛" : "开始 AI 初筛";
+}
+
+function batchProgressValue(batch: ImportBatchView) {
+  if (batchAnalysisTotalFiles(batch) > 0) {
+    return batchProgress(batchAnalysisCompletedFiles(batch), batchAnalysisTotalFiles(batch));
+  }
+
+  if (!batch.autoScreen && (batch.status === "completed" || batch.status === "partial_success")) {
+    return 0;
+  }
+
+  return batchScreeningProgress(batch);
+}
+
+function batchProgressCountText(batch: ImportBatchView) {
+  const completed = batchCompletedAnalysisCount(batch);
+  const analysable = batchAnalysableCount(batch);
+
+  if (analysable <= 0) {
+    return batch.autoScreen ? "待分析" : "待分析";
+  }
+
+  if (!batch.autoScreen) {
+    return `待分析 ${completed}/${analysable}`;
+  }
+
+  return `已分析 ${completed}/${analysable}`;
+}
+
+function batchAnalysableCount(batch: ImportBatchView) {
+  return Math.max(batchAnalysisTotalFiles(batch), batch.totalFiles, 0);
+}
+
+function batchCompletedAnalysisCount(batch: ImportBatchView) {
+  if (batchAnalysisTotalFiles(batch) > 0 || batchAnalysisCompletedFiles(batch) > 0) {
+    return batchAnalysisCompletedFiles(batch);
+  }
+
+  const files = screenableFiles(batch.id);
+  if (files.length > 0) {
+    return files.filter((file) => screeningResult(file)?.screeningStatus === "completed").length;
+  }
+
+  return 0;
+}
+
+function batchPendingAnalysisCount(batch: ImportBatchView) {
+  if (batchAnalysisTotalFiles(batch) > 0 || batchAnalysisPendingFiles(batch) > 0) {
+    return batchAnalysisPendingFiles(batch);
+  }
+
+  return Math.max(batchAnalysableCount(batch) - batchCompletedAnalysisCount(batch), 0);
+}
+
+function batchSecondaryMetricLabel() {
+  return "已分析";
+}
+
+function batchSecondaryMetricCount(batch: ImportBatchView) {
+  return batchCompletedAnalysisCount(batch);
+}
+
+function batchTertiaryMetricLabel(batch: ImportBatchView) {
+  return batchAnalysisRunningFiles(batch) > 0 ? "分析中" : "待分析";
+}
+
+function batchTertiaryMetricCount(batch: ImportBatchView) {
+  return batchAnalysisRunningFiles(batch) > 0 ? batchAnalysisRunningFiles(batch) : batchPendingAnalysisCount(batch);
+}
+
+function batchStatusText(batch: ImportBatchView) {
+  if (batchAnalysisRunningFiles(batch) > 0) {
+    return "AI 初筛处理中";
+  }
+
+  if (batchAnalysisTotalFiles(batch) > 0) {
+    if (batchAnalysisCompletedFiles(batch) >= batchAnalysisTotalFiles(batch)) {
+      return "AI 初筛已完成";
+    }
+
+    if (batchAnalysisCompletedFiles(batch) > 0) {
+      return `已分析 ${batchAnalysisCompletedFiles(batch)}/${batchAnalysisTotalFiles(batch)}`;
+    }
+
+    return "待开始 AI 初筛";
+  }
+
+  if (!batch.autoScreen) {
+    if (batch.status === "queued") return "等待开始导入";
+    if (batch.status === "processing") return "后台持续导入中";
+    if (batch.status === "completed") return "导入成功，待开始 AI 初筛";
+    if (batch.status === "partial_success") return `导入已结束，失败 ${batch.failedFiles} 个`;
+    if (batch.status === "failed") return "批次导入失败";
+    if (batch.status === "cancelled") return "批次已取消";
+    return importStageLabel(batch.currentStage);
+  }
+
+  if (batch.status === "queued") {
+    return "等待开始处理";
+  }
+
+  if (batch.status === "processing") {
+    return batch.currentStage === "ai_screening" ? "AI 初筛处理中" : "后台持续处理中";
+  }
+
+  if (batch.status === "completed") {
+    return "导入与初筛已完成";
+  }
+
+  if (batch.status === "partial_success") {
+    return `批次已收口，失败 ${batch.failedFiles} 个`;
+  }
+
+  if (batch.status === "failed") {
+    return "批次处理失败";
+  }
+
+  if (batch.status === "cancelled") {
+    return "批次已取消";
+  }
+
+  const files = screenableFiles(batch.id);
+  if (files.length === 0) {
+    return "待分析";
+  }
+
+  const running = files.some((file) => screeningResult(file)?.screeningStatus === "running");
+  if (running) {
+    return "AI 初筛进行中";
+  }
+
+  const completed = files.filter((file) => screeningResult(file)?.screeningStatus === "completed").length;
+  if (completed === 0) {
+    return "待分析";
+  }
+  if (completed < files.length) {
+    return `已分析 ${completed}/${files.length}`;
+  }
+  return "已完成分析";
+}
+
 function fileNameOf(originalPath: string) {
   return originalPath.split("#").pop()?.split("/").pop() ?? originalPath;
 }
 
+function syncAutoScreenAvailability() {
+  if (!isAutoScreeningReadyForEnable() && autoScreen.value) {
+    setAutoScreen(false);
+  }
+}
+
+function isAutoScreeningReadyForEnable() {
+  return luiStore.customEndpoints.length > 0 && hasAvailableModels.value && hasSelectedModel.value;
+}
+
 function onAutoScreenChange(value: boolean | string) {
-  setAutoScreen(Boolean(value));
+  const nextValue = Boolean(value);
+  if (!nextValue) {
+    setAutoScreen(false);
+    return;
+  }
+
+  void ensureAutoScreeningReady().then((ready) => {
+    setAutoScreen(ready);
+  }).catch((error) => {
+    setAutoScreen(false);
+    notifyError(
+      reportAppError("import/enable-auto-screen", error, {
+        title: "AI 初筛暂时无法开启",
+        fallbackMessage: "请先完成端点与模型配置",
+      }),
+    );
+  });
 }
 
 async function removeBatch(batchId: string) {
@@ -575,6 +1163,30 @@ const selectedScreeningData =
   ref<ReturnType<typeof parseImportTaskResult>>(null);
 const selectedFile = ref<ImportFileTask | null>(null);
 
+const currentScreeningFiles = computed(() => {
+  const batchId = selectedFile.value?.batchId;
+  if (!batchId) return [] as ImportFileTask[];
+  return (batchFiles.value[batchId] ?? []).filter(
+    (file) => Boolean(parseImportTaskResult(file.resultJson)?.parsedResume),
+  );
+});
+
+const currentScreeningFileIndex = computed(() => {
+  const currentId = selectedFile.value?.id;
+  if (!currentId) return -1;
+  return currentScreeningFiles.value.findIndex((file) => file.id === currentId);
+});
+
+const previousScreeningFile = computed(() => {
+  const index = currentScreeningFileIndex.value;
+  return index > 0 ? currentScreeningFiles.value[index - 1] ?? null : null;
+});
+
+const nextScreeningFile = computed(() => {
+  const index = currentScreeningFileIndex.value;
+  return index >= 0 ? currentScreeningFiles.value[index + 1] ?? null : null;
+});
+
 function showScreeningDetail(file: ImportFileTask) {
   const result = parseImportTaskResult(file.resultJson);
   if (result?.parsedResume) {
@@ -584,7 +1196,17 @@ function showScreeningDetail(file: ImportFileTask) {
   }
 }
 
+function showAdjacentScreeningDetail(direction: -1 | 1) {
+  const target = direction < 0 ? previousScreeningFile.value : nextScreeningFile.value;
+  if (!target) return;
+  showScreeningDetail(target);
+}
+
 async function handleRunFileScreening(taskId: string) {
+  if (!(await ensureAutoScreeningReady())) {
+    return;
+  }
+
   // Find the batchId for this file
   for (const [batchId, files] of Object.entries(batchFiles.value)) {
     const file = files.find((f) => f.id === taskId);
@@ -596,15 +1218,77 @@ async function handleRunFileScreening(taskId: string) {
   }
 }
 
-function canRerunBatchScreening(batch: (typeof batches.value)[number]) {
+async function requestRunFileScreening(taskId: string, batchId: string) {
+  if (!(await ensureAutoScreeningReady())) {
+    return;
+  }
+
+  await importBatches.rerunFileScreening(taskId, batchId);
+}
+
+function canRerunBatchScreening(batch: ImportBatchView) {
   return (
     batch.status !== "processing" &&
     batch.status !== "queued" &&
-    batch.status !== "cancelled"
+    batch.status !== "cancelled" &&
+    batch.successFiles > 0
   );
 }
 
+function isBatchScreeningPending(batchId: string) {
+  return pendingBatchScreeningRuns.value.has(batchId);
+}
+
+function markBatchScreeningPending(batchId: string, pending: boolean) {
+  const next = new Set(pendingBatchScreeningRuns.value);
+  if (pending) {
+    next.add(batchId);
+  } else {
+    next.delete(batchId);
+  }
+  pendingBatchScreeningRuns.value = next;
+}
+
 async function rerunBatchScreening(batchId: string) {
-  await rerunScreening(batchId);
+  if (isBatchScreeningPending(batchId)) {
+    return;
+  }
+
+  if (!(await ensureAutoScreeningReady())) {
+    return;
+  }
+
+  markBatchScreeningPending(batchId, true);
+
+  try {
+    const result = await rerunScreening(batchId);
+    if (result.status === "processing") {
+      notifySuccess(`已开始 AI 初筛，本批次共 ${result.retriedCount} 个文件`, {
+        title: "任务已启动",
+      });
+      return;
+    }
+
+    notifyInfo("当前批次没有可重跑的分析任务", {
+      title: "无需重跑",
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "BATCH_ACTIVE") {
+      await importBatches.refresh();
+      notifyInfo("AI 初筛已在处理中，请等待状态刷新", {
+        title: "任务已在运行",
+      });
+      return;
+    }
+
+    notifyError(
+      reportAppError("import/rerun-batch-screening", error, {
+        title: "启动 AI 初筛失败",
+        fallbackMessage: "请稍后重试",
+      }),
+    );
+  } finally {
+    markBatchScreeningPending(batchId, false);
+  }
 }
 </script>

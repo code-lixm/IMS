@@ -1,5 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { buildWorkflowMetaPayload } from "./workflow-meta";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+
+vi.mock("../db", () => ({ db: {} }));
+
+let buildWorkflowMetaPayload: typeof import("./workflow-meta").buildWorkflowMetaPayload;
+
+beforeAll(async () => {
+  ({ buildWorkflowMetaPayload } = await import("./workflow-meta"));
+});
 
 describe("workflow-meta", () => {
   test("builds S1 round metadata and feedback loop payload", () => {

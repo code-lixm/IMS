@@ -156,11 +156,12 @@ export function useImportBatches() {
   }
 
   async function rerunScreening(batchId: string) {
-    await importApi.rerunScreening(batchId);
+    const result = await importApi.rerunScreening(batchId);
     await Promise.all([
       refresh(),
       expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
     ]);
+    return result;
   }
 
   async function rerunFileScreening(taskId: string, batchId: string) {

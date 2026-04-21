@@ -27,9 +27,29 @@
             </TabsList>
           </div>
 
+          <div class="relative mt-4 flex-1 min-h-0 overflow-hidden">
+            <button
+              type="button"
+              class="absolute -left-5 inset-y-2 z-10 inline-flex w-14 items-center justify-center bg-gradient-to-r from-transparent via-background/5 to-transparent text-foreground/15 transition hover:from-muted/20 hover:via-muted/35 hover:to-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-10"
+              :disabled="!hasPrev"
+              aria-label="查看上一份报告"
+              @click="emit('navigate-prev')"
+            >
+              <ChevronLeft class="h-11 w-11" />
+            </button>
+            <button
+              type="button"
+              class="absolute -right-5 inset-y-2 z-10 inline-flex w-14 items-center justify-center bg-gradient-to-l from-transparent via-background/5 to-transparent text-foreground/15 transition hover:from-muted/20 hover:via-muted/35 hover:to-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-10"
+              :disabled="!hasNext"
+              aria-label="查看下一份报告"
+              @click="emit('navigate-next')"
+            >
+              <ChevronRight class="h-11 w-11" />
+            </button>
+
           <!-- AI Screening Tab -->
-          <TabsContent value="screening" class="flex-1 overflow-hidden flex flex-col mt-4">
-            <div class="flex-1 overflow-y-auto space-y-4 py-2">
+          <TabsContent value="screening" class="flex h-full overflow-hidden flex-col">
+            <div class="flex-1 overflow-y-auto space-y-4 py-2 px-4">
               <!-- 未初筛空态 -->
               <div v-if="!hasScreeningConclusion && !isScreeningRunning" class="flex flex-col items-center justify-center h-full gap-4 py-12">
                 <div class="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
@@ -80,6 +100,28 @@
                   <Badge variant="outline" class="text-xs">
                     {{ screeningSourceLabel(screeningData.screeningSource) }}
                   </Badge>
+                </div>
+
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div class="rounded-lg border bg-muted/30 px-3 py-2 space-y-1.5">
+                    <div class="text-xs font-medium text-muted-foreground">结果来源</div>
+                    <div class="text-sm font-medium text-foreground">
+                      {{ screeningSourceLabel(screeningData.screeningSource) || "未标记" }}
+                    </div>
+                    <p class="text-xs text-muted-foreground leading-5">
+                      {{ screeningSourceHint }}
+                    </p>
+                  </div>
+
+                  <div class="rounded-lg border bg-muted/30 px-3 py-2 space-y-1.5">
+                    <div class="text-xs font-medium text-muted-foreground">提取置信度</div>
+                    <div class="text-sm font-medium text-foreground">
+                      {{ extractionConfidenceText }}
+                    </div>
+                    <p class="text-xs text-muted-foreground leading-5">
+                      {{ extractionConfidenceHint }}
+                    </p>
+                  </div>
                 </div>
 
                 <!-- Summary -->
@@ -144,8 +186,8 @@
           </TabsContent>
 
           <!-- Preview Tab -->
-          <TabsContent value="preview" class="flex-1 overflow-hidden flex flex-col mt-4">
-            <div class="flex-1 rounded-md border bg-muted/20 min-h-0">
+          <TabsContent value="preview" class="flex h-full overflow-hidden flex-col">
+            <div class="flex-1 rounded-md border bg-muted/20 min-h-0 mx-4">
               <!-- Loading -->
               <div v-if="previewLoading" class="flex h-full items-center justify-center text-sm text-muted-foreground py-12">
                 <Loader2 class="h-5 w-5 mr-2 animate-spin" />
@@ -182,6 +224,7 @@
               </div>
             </div>
           </TabsContent>
+          </div>
         </Tabs>
 
         <div class="flex justify-end pt-2 border-t">
@@ -199,7 +242,7 @@ import { ref, watch, onBeforeUnmount, computed } from "vue";
 import type { ImportTaskResultData } from "@ims/shared/src/api-types";
 import type { ImportFileTask } from "@ims/shared";
 import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates";
-import { AlertCircle, Check, X, Loader2, FileText, ClipboardList, Sparkles } from "lucide-vue-next";
+import { AlertCircle, Check, ChevronLeft, ChevronRight, X, Loader2, FileText, ClipboardList, Sparkles } from "lucide-vue-next";
 import Button from "@/components/ui/button.vue";
 import Badge from "@/components/ui/badge.vue";
 import Dialog from "@/components/ui/dialog.vue";
@@ -209,15 +252,23 @@ import TabsTrigger from "@/components/ui/tabs-trigger.vue";
 import TabsContent from "@/components/ui/tabs-content.vue";
 import { screeningSourceLabel, screeningScoreClass } from "@/composables/import/formatters";
 
+type ImportTaskResultWithConfidence = ImportTaskResultData & {
+  extractionConfidence?: number | null;
+};
+
 const props = defineProps<{
   open: boolean;
-  screeningData: ImportTaskResultData | null;
+  screeningData: ImportTaskResultWithConfidence | null;
   file: ImportFileTask | null;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "update:open", value: boolean): void;
   (e: "run-screening", taskId: string): void;
+  (e: "navigate-prev"): void;
+  (e: "navigate-next"): void;
 }>();
 
 // Tabs state
@@ -238,6 +289,40 @@ const hasScreeningConclusion = computed(() => {
 
 const isScreeningRunning = computed(() => {
   return props.file?.stage === "ai_screening";
+});
+
+const extractionConfidenceValue = computed(() => {
+  const raw = props.screeningData?.extractionConfidence;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+});
+
+const extractionConfidenceText = computed(() => {
+  const value = extractionConfidenceValue.value;
+  return value === null ? "未记录" : `${Math.round(value)} / 100`;
+});
+
+const extractionConfidenceHint = computed(() => {
+  const value = extractionConfidenceValue.value;
+  if (value === null) {
+    return "旧数据可能没有记录该值；系统会在重跑时尝试回查或估算。";
+  }
+  if (value >= 85) {
+    return "文本提取质量较高，本次初筛可更多参考模型或规则输出。";
+  }
+  if (value >= 60) {
+    return "文本提取质量中等，建议结合原件预览做人工复核。";
+  }
+  return "文本提取质量偏弱，当前初筛结论需要谨慎参考。";
+});
+
+const screeningSourceHint = computed(() => {
+  if (props.screeningData?.screeningSource === "ai") {
+    return "本次结论来自模型分析；如果模型失败，系统才会回退到规则评分。";
+  }
+  if (props.screeningData?.screeningSource === "heuristic") {
+    return "本次结论来自规则回退，通常说明模型请求失败或不可用。";
+  }
+  return "当前结果没有明确来源标记。";
 });
 
 const dialogTitle = computed(() => {

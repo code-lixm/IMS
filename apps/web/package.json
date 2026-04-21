@@ -8,11 +8,11 @@
     "dev:mock": "vite --mode mock",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "bun test",
-    "test:unit": "bun test",
+    "test": "pnpm exec vitest --run --config vitest.config.ts",
+    "test:unit": "pnpm exec vitest --run --config vitest.config.ts",
     "typecheck": "vue-tsc --noEmit",
     "check:governance": "node ./scripts/check-frontend-governance.mjs",
-    "check": "vue-tsc --noEmit && bun test && node ./scripts/check-frontend-governance.mjs"
+    "check": "vue-tsc --noEmit && node ./scripts/check-frontend-governance.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.47",

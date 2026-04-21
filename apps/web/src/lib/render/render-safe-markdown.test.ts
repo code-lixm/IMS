@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { renderSafeMarkdown } from "./render-safe-markdown";
 
 describe("renderSafeMarkdown", () => {

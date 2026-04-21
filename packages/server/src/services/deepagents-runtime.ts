@@ -37,13 +37,41 @@ function stripThinkingForArtifact(content: string): string {
   return content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
+function isLikelyScreeningArtifactContent(content: string): boolean {
+  if (/初筛报告|筛选结论|待核验项|六维度评分|通过初筛|进入面试环节|建议：进入面试/.test(content)) {
+    return true;
+  }
+
+  const headingMatches = Array.from(content.matchAll(/^##\s+(.+)$/gm)).map((match) => match[1].trim());
+  const screeningHeadings = new Set([
+    "分析结论",
+    "红线风险核查",
+    "维度评分明细",
+    "加减分项",
+    "待核验项",
+    "面试建议考察维度",
+  ]);
+  const headingHitCount = headingMatches.filter((heading) => screeningHeadings.has(heading)).length;
+  if (headingHitCount >= 3) {
+    return true;
+  }
+
+  const signalPatterns = [
+    /红线风险/,
+    /待核验项/,
+    /考察维度/,
+    /筛选结论|初筛结论/,
+    /匹配度|岗位核心能力/,
+    /通过|待定|淘汰/,
+    /亮点|风险点|业务价值/,
+  ];
+  const signalHitCount = signalPatterns.filter((pattern) => pattern.test(content)).length;
+  return signalHitCount >= 3;
+}
+
 const STAGE_SYSTEM_PROMPTS: Record<WorkflowStage, string> = {
   S0: `You are an Interview Screening Agent (S0 Stage).
 Your task is to screen candidates by analyzing their resumes and initial information.
-
-Available tools:
-- scan_resume: Extract and analyze resume PDF content
-- screen_resumes: Process multiple resumes concurrently
 
 Workflow:
 1. Analyze candidate resume and basic information
@@ -228,7 +256,7 @@ function createDeepAgentResponse(
                 : stage === "S2"
                   ? workflowAction === "advance-stage" || workflowAction === "complete-workflow"
                   : workflowAction === "advance-stage"
-                    || /初筛报告|筛选结论|待核验项|六维度评分|通过初筛|进入面试环节|建议：进入面试/.test(strippedArtifactContent);
+                    || isLikelyScreeningArtifactContent(strippedArtifactContent);
               if (!shouldPersist) {
                 return;
               }

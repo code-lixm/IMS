@@ -34,7 +34,7 @@ export const shareApi = {
     });
   },
   batchSend(candidateIds: string[], target: { ip: string; port: number; deviceId?: string; name: string }) {
-    return api("/api/share/batch-send", {
+    return api("/api/share/send", {
       method: "POST",
       json: { candidateIds, target },
     });
@@ -43,12 +43,6 @@ export const shareApi = {
     return api<ShareImportResult>("/api/share/import", {
       method: "POST",
       json: { filePath },
-    });
-  },
-  resolve(candidateId: string, strategy: "local" | "import") {
-    return api("/api/share/resolve", {
-      method: "POST",
-      json: { candidateId, strategy },
     });
   },
   records() { return api<ShareRecordListData>("/api/share/records"); },

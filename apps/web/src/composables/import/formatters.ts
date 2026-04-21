@@ -1,4 +1,4 @@
-import type { ParsedResume } from "@ims/shared";
+import type { ImportBatch, ParsedResume } from "@ims/shared";
 
 type ImportScreeningVerdict = "pass" | "review" | "reject";
 type ImportScreeningStatus = "not_requested" | "running" | "completed";
@@ -8,14 +8,23 @@ interface ImportScreeningConclusion {
   verdict: ImportScreeningVerdict;
   label: string;
   score: number;
+  candidateName?: string | null;
+  candidatePosition?: string | null;
+  candidateYearsOfExperience?: number | null;
+  screeningBaseUrl?: string | null;
   summary: string;
   strengths: string[];
   concerns: string[];
   recommendedAction: string;
+  wechatConclusion?: string;
+  wechatReason?: string;
+  wechatAction?: string;
+  wechatCopyText: string;
 }
 
 interface ImportTaskResultData {
   parsedResume: ParsedResume;
+  extractionConfidence?: number | null;
   screeningStatus?: ImportScreeningStatus;
   screeningSource?: ImportScreeningSource | null;
   screeningError?: string | null;
@@ -100,6 +109,7 @@ export function fileStatusLabel(status: string) {
 
 export function importStageLabel(stage: string | null | undefined) {
   const map: Record<string, string> = {
+    processing: "处理中",
     queued: "等待处理",
     extracting: "识别文件中",
     text_extracting: "提取 PDF 文本中",
@@ -109,6 +119,8 @@ export function importStageLabel(stage: string | null | undefined) {
     saving: "保存候选人与简历中",
     ai_screening: "AI 初筛中",
     completed: "已完成",
+    failed: "失败",
+    partial_success: "部分成功",
     cancelled: "已取消",
   };
   return stage ? (map[stage] ?? stage) : "处理中";
@@ -172,4 +184,26 @@ export function formatImportTimestamp(timestamp: number) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatImportBatchTimeLabel(timestamp: number) {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfToday - startOfTarget) / 86400000);
+  const period = date.getHours() < 12 ? "上午" : "下午";
+
+  if (diffDays === 0) return `今天${period}`;
+  if (diffDays === 1) return `昨天${period}`;
+  if (diffDays === 2) return `前天${period}`;
+  return `${String(date.getMonth() + 1).padStart(2, "0")}月${String(date.getDate()).padStart(2, "0")}日${period}`;
+}
+
+export function formatImportBatchDisplayName(batch: Pick<ImportBatch, "displayName" | "createdAt" | "totalFiles" | "id">) {
+  if (batch.displayName?.trim()) {
+    return batch.displayName;
+  }
+
+  return `${formatImportBatchTimeLabel(batch.createdAt)}-${batch.totalFiles}个-【批次${batch.id.slice(-8)}】`;
 }

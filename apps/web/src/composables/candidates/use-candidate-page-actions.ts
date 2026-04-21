@@ -8,6 +8,7 @@ import { pickFiles } from "@/composables/use-file-picker";
 import type { CandidateActionFeedback } from "./types";
 
 const IMPORT_ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.zip";
+const IMR_IMPORT_ACCEPT = ".imr";
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "未知错误";
@@ -62,6 +63,42 @@ export function useCandidatePageActions() {
         tone: "error",
         message: `导入失败：${getErrorMessage(error)}`,
       });
+    } finally {
+      isImporting.value = false;
+    }
+  }
+
+  async function triggerImrImport() {
+    if (isImporting.value) {
+      return null;
+    }
+
+    const files = await pickFiles({ accept: IMR_IMPORT_ACCEPT, multiple: false, requireAbsolutePath: true });
+    const picked = files[0];
+    if (!picked) {
+      return null;
+    }
+
+    isImporting.value = true;
+    try {
+      const result = await shareApi.import(picked.path);
+      if (result.result === "failed") {
+        throw new Error(result.error ?? "导入面试信息失败");
+      }
+
+      setFeedback({
+        tone: "success",
+        message: result.result === "created"
+          ? "面试信息导入成功，已创建候选人档案。"
+          : "面试信息导入成功，已覆盖更新候选人档案。",
+      });
+      return result;
+    } catch (error: unknown) {
+      setFeedback({
+        tone: "error",
+        message: `导入面试信息失败：${getErrorMessage(error)}`,
+      });
+      return null;
     } finally {
       isImporting.value = false;
     }
@@ -141,6 +178,7 @@ export function useCandidatePageActions() {
     goToCandidateDetail,
     goToImportPage,
     triggerImport,
+    triggerImrImport,
     openWorkspace,
     exportCandidate,
     deleteCandidate,

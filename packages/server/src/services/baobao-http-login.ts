@@ -275,6 +275,56 @@ async function loadPersistedAuth(): Promise<{
   return { token: row.token ?? null, cookies };
 }
 
+export async function restorePersistedHttpAuth(): Promise<{
+  token: string;
+  tokenExpAt: number | null;
+  cookies: PersistedCookie[];
+  user: {
+    id: string;
+    name: string;
+    username: string;
+    email: string | null;
+  };
+} | null> {
+  const persistedAuth = await loadPersistedAuth();
+  if (!persistedAuth?.cookies.length) {
+    return null;
+  }
+
+  const runtimeCookieJar: CookieJar = {};
+  const user = await verifyLoginWithGetLoginInfo(persistedAuth.cookies, runtimeCookieJar);
+  if (!user) {
+    return null;
+  }
+
+  const recoveredToken = await exchangeMTokenForGhrToken(null, persistedAuth.cookies, runtimeCookieJar);
+  const token = recoveredToken ?? persistedAuth.token;
+  if (!token) {
+    return null;
+  }
+
+  const mergedCookies = mergeCookieHeaders(
+    buildCookieHeader(persistedAuth.cookies),
+    buildCookieHeaderFromJar(runtimeCookieJar),
+  );
+
+  return {
+    token,
+    tokenExpAt: parseJwtPayload(token)?.exp ? parseJwtPayload(token)!.exp * 1000 : null,
+    cookies: Object.entries(parseCookieHeaderToJar(mergedCookies)).map(([name, value]) => ({
+      name,
+      value,
+      domain: ".getui.com",
+      path: "/",
+      expires: 0,
+      httpOnly: false,
+      secure: true,
+      sameSite: "None",
+    })),
+    user,
+  };
+}
+
 function buildCookieHeader(cookies: PersistedCookie[]): string {
   return cookies
     .filter((c) => c.name && c.value)

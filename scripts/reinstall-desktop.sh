@@ -21,7 +21,7 @@ fi
 log "开始构建桌面安装包（app bundle）"
 (
   cd "${PROJECT_ROOT}"
-  pnpm build
+  pnpm build:web
   pnpm --filter @ims/desktop tauri build --config tauri.local.conf.json --no-sign --bundles app
 )
 

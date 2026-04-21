@@ -80,7 +80,7 @@ export default defineConfig({
           timeout: 120_000,
         },
         {
-          command: "pnpm dev",
+          command: "pnpm dev:ui",
           url: baseURL,
           reuseExistingServer: !isCI,
           timeout: 120_000,

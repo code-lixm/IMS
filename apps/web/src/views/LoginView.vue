@@ -321,6 +321,33 @@ async function loadQrCode(options?: { silent?: boolean }) {
 
   try {
     const result = await authApi.baobaoQr();
+    if (result.authenticated && result.user) {
+      qrState.loginDetected = true;
+      qrState.redirecting = true;
+      qrState.loadError = "";
+      qrState.statusError = "";
+
+      authStore.status = "valid";
+      authStore.user = {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+      };
+      authStore.initialized = true;
+
+      console.log("[login-view] loadQrCode:already-authenticated", {
+        redirect: redirectTarget(),
+        userId: result.user.id,
+      });
+
+      await router.replace(redirectTarget());
+      if (router.currentRoute.value.path === "/login") {
+        window.location.assign(redirectTarget());
+      }
+      void authStore.checkStatus({ force: true });
+      return;
+    }
+
     const resolvedQr = await resolveQrRender(result);
     console.log("[login-view] loadQrCode:success", {
       silent,

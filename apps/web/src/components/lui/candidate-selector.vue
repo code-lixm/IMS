@@ -59,56 +59,60 @@
 
             <ul v-else class="space-y-1 p-1">
               <li v-for="candidate in candidates" :key="candidate.id">
-                <button
-                  type="button"
-                  class="flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent"
-                  :class="selectedId === candidate.id ? 'bg-accent' : ''"
-                  @click="handleSelect(candidate)"
+                <div
+                  class="rounded-md px-2 py-2 transition-colors"
+                  :class="selectedId === candidate.id ? 'bg-accent/70' : 'hover:bg-accent/50'"
                 >
-                  <div class="flex min-w-0 flex-1 flex-col">
-                    <span class="truncate font-medium">{{
-                      candidate.name
-                    }}</span>
-                    <span
-                      v-if="candidate.applyPositionName ?? candidate.position"
-                      class="text-xs text-muted-foreground"
-                    >
-                      {{ candidate.applyPositionName ?? candidate.position }}
-                    </span>
-                    <div class="mt-1 space-y-1 text-[11px] leading-4">
-                      <p
-                        v-if="candidate.interviewTime"
-                        class="text-muted-foreground"
-                      >
-                        {{ formatInterviewTime(candidate.interviewTime) }} 开始
-                      </p>
-                      <a
-                        v-if="meetingJoinHref(candidate)"
-                        :href="meetingJoinHref(candidate) ?? undefined"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="block truncate text-primary/80 hover:text-primary hover:underline"
-                        :title="meetingLinkTitle(candidate)"
-                        @click.stop
-                      >
-                        {{ compactInterviewLocationText(candidate) }}
-                      </a>
-                      <p
-                        v-else-if="compactInterviewLocationText(candidate)"
-                        class="truncate text-muted-foreground"
-                      >
-                        {{ compactInterviewLocationText(candidate) }}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge
-                    v-if="candidate.tags?.length"
-                    variant="secondary"
-                    class="text-xs"
+                  <button
+                    type="button"
+                    class="flex w-full items-start gap-3 rounded-md px-1 py-0.5 text-left text-sm"
+                    @click="handleSelect(candidate)"
                   >
-                    {{ candidate.tags[0] }}
-                  </Badge>
-                </button>
+                    <div class="flex min-w-0 flex-1 flex-col">
+                      <span class="truncate font-medium">{{ candidate.name }}</span>
+                      <span
+                        v-if="candidate.applyPositionName ?? candidate.position"
+                        class="text-xs text-muted-foreground"
+                      >
+                        {{ candidate.applyPositionName ?? candidate.position }}
+                      </span>
+                      <div class="mt-1 space-y-1 text-[11px] leading-4">
+                        <p
+                          v-if="candidate.interviewTime"
+                          class="text-muted-foreground"
+                        >
+                          {{ formatInterviewTime(candidate.interviewTime) }} 开始
+                        </p>
+                        <p
+                          v-if="compactInterviewLocationText(candidate)"
+                          class="truncate text-muted-foreground"
+                          :title="compactInterviewLocationText(candidate)"
+                        >
+                          {{ compactInterviewLocationText(candidate) }}
+                        </p>
+                        <a
+                          v-if="meetingJoinHref(candidate)"
+                          :href="meetingJoinHref(candidate) ?? undefined"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex w-fit items-center gap-1 text-[10px] font-medium text-sky-600 underline-offset-2 transition-colors hover:text-sky-500 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
+                          :title="meetingLinkTitle(candidate)"
+                          @click.stop
+                        >
+                          <ExternalLink class="h-3 w-3" />
+                          打开会议
+                        </a>
+                      </div>
+                    </div>
+                    <Badge
+                      v-if="candidate.tags?.length"
+                      variant="secondary"
+                      class="text-xs"
+                    >
+                      {{ candidate.tags[0] }}
+                    </Badge>
+                  </button>
+                </div>
               </li>
             </ul>
           </ScrollArea>
@@ -125,7 +129,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { ChevronsUpDown, Loader2, Search, User } from "lucide-vue-next";
+import { ChevronsUpDown, ExternalLink, Loader2, Search, User } from "lucide-vue-next";
 import { candidatesApi } from "@/api/candidates";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";

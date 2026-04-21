@@ -41,13 +41,23 @@ ims/
 bun install
 ```
 
-2. 启动本地服务
+2. 启动完整 Web 开发链路
 
 ```bash
-bun run dev
+pnpm dev:web
 ```
 
-默认地址：`http://127.0.0.1:3000`
+如需分别启动，也可以使用：
+
+```bash
+pnpm dev:server
+pnpm dev:ui
+```
+
+默认地址：
+
+- Web：`http://127.0.0.1:9091`
+- API：`http://127.0.0.1:9092`
 
 ## E2E 测试
 
@@ -138,10 +148,10 @@ pnpm run test:e2e:debug
 3. 启动桌面端（Tauri）
 
 ```bash
-bun run desktop:dev
+pnpm dev:desktop
 ```
 
-桌面窗口会加载 `http://127.0.0.1:3000`。
+桌面窗口会加载 `http://127.0.0.1:9091`。
 
 ## 环境要求
 

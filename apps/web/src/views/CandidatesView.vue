@@ -27,8 +27,8 @@
           :sync-enabled="syncStore.status.enabled"
           :reset-sync-loading="syncStore.resetLoading"
           @search="scheduleSearch"
-          @create="setCreateDialogOpen(true)"
           @import="triggerImport"
+          @import-imr="handleImportImr"
           @goto-import="goToImportPage"
           @sync="runSyncNow"
           @reset-sync="runResetSyncNow"
@@ -55,8 +55,8 @@
             :is-indeterminate-on-page="pageSelectionState.isIndeterminate"
             :share-loading="isBatchSharing"
             :is-selected="batchSelection.isSelected"
-            @create="setCreateDialogOpen(true)"
             @import="triggerImport"
+            @import-imr="handleImportImr"
             @select="goToCandidateDetail"
             @open-workspace="openWorkspace"
             @export="exportCandidate"
@@ -71,15 +71,6 @@
         </div>
       </AppPageContent>
 
-      <CandidateCreateDialog
-        :open="createDialogOpen"
-        :model-value="createForm"
-        :is-submitting="isCreating"
-        @update:open="setCreateDialogOpen"
-        @update:model-value="updateCreateForm"
-        @submit="submitCreate"
-      />
-
       <DeviceSelectDialog
         :open="deviceSelectDialogOpen"
         :selected-count="batchSelection.selectedCount.value"
@@ -92,7 +83,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import CandidateCreateDialog from "@/components/candidates/candidate-create-dialog.vue";
 import CandidateFeedbackBanner from "@/components/candidates/candidate-feedback-banner.vue";
 import CandidateList from "@/components/candidates/candidate-list.vue";
 import CandidatePageHeader from "@/components/candidates/candidate-page-header.vue";
@@ -101,13 +91,11 @@ import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
 import Card from "@/components/ui/card.vue";
 import Spinner from "@/components/ui/spinner/Spinner.vue";
-import { useCandidateCreateDialog } from "@/composables/candidates/use-candidate-create-dialog";
 import { useCandidatePageActions } from "@/composables/candidates/use-candidate-page-actions";
 import { useCandidateSearch } from "@/composables/candidates/use-candidate-search";
 import { useCandidateBatchSelection } from "@/composables/candidates/use-candidate-batch-selection";
 import { useImportBatches } from "@/composables/import/use-import-batches";
 import { shareApi } from "@/api/share";
-import type { CandidateCreateFormValue } from "@/composables/candidates/types";
 import { useCandidatesStore } from "@/stores/candidates";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { useSyncStore } from "@/stores/sync";
@@ -126,21 +114,15 @@ const {
   exportLoadingId,
   deleteLoadingId,
   clearFeedback,
-  goToCandidateDetail,
-  goToImportPage,
-  triggerImport,
-  openWorkspace,
-  exportCandidate,
-  deleteCandidate,
-  setFeedback,
-} = useCandidatePageActions();
-const {
-  open: createDialogOpen,
-  form: createForm,
-  isSubmitting: isCreating,
-  setOpen: setCreateDialogOpen,
-  submit,
-} = useCandidateCreateDialog(store);
+    goToCandidateDetail,
+    goToImportPage,
+    triggerImport,
+    triggerImrImport,
+    openWorkspace,
+    exportCandidate,
+    deleteCandidate,
+    setFeedback,
+  } = useCandidatePageActions();
 
 const deviceSelectDialogOpen = ref(false);
 const isBatchSharing = ref(false);
@@ -185,20 +167,16 @@ onMounted(async () => {
   }
 });
 
-function updateCreateForm(value: CandidateCreateFormValue) {
-  createForm.value = value;
-}
-
-async function submitCreate() {
-  const created = await submit();
-  if (created) {
-    clearFeedback();
-  }
-}
-
 async function handleDelete(candidateId: string) {
   await deleteCandidate(candidateId);
   await store.refreshCurrentPage();
+}
+
+async function handleImportImr() {
+  const result = await triggerImrImport();
+  if (result?.result === "created" || result?.result === "merged") {
+    await store.refreshCurrentPage();
+  }
 }
 
 async function runSyncNow() {

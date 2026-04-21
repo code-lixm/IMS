@@ -8,6 +8,7 @@ import {
   getQrSession,
   isGhrTokenExpired,
   parseJwtPayload,
+  restorePersistedHttpAuth,
   startHttpQrLogin,
 } from "./baobao-http-login";
 
@@ -61,6 +62,33 @@ export interface BaobaoLoginSessionSnapshot {
 
 function sanitizeCookies(cookies: PersistedCookie[]) {
   return cookies.filter((cookie) => cookie.name && cookie.value && cookie.domain && cookie.path);
+}
+
+function mergePersistedCookies(
+  persistedCookies: PersistedCookie[],
+  runtimeCookies: Record<string, string> | null | undefined,
+) {
+  const merged = new Map<string, PersistedCookie>();
+
+  for (const cookie of persistedCookies) {
+    merged.set(cookie.name, cookie);
+  }
+
+  for (const [name, value] of Object.entries(runtimeCookies ?? {})) {
+    if (!name || !value) continue;
+    merged.set(name, {
+      name,
+      value,
+      domain: ".getui.com",
+      path: "/",
+      expires: 0,
+      httpOnly: false,
+      secure: true,
+      sameSite: "None",
+    });
+  }
+
+  return sanitizeCookies(Array.from(merged.values()));
 }
 
 async function loadPersistedRemoteAuth() {
@@ -159,6 +187,15 @@ export async function fetchBaobaoLoginQrCode(): Promise<BaobaoLoginSessionSnapsh
     );
   }
 
+  const restoredSession = await restorePersistedHttpAuth();
+  if (restoredSession) {
+    return toAuthenticatedSnapshot(
+      restoredSession.token,
+      restoredSession.cookies,
+      restoredSession.user,
+    );
+  }
+
   const existingSession = getQrSession();
   if (existingSession && !existingSession.ghrToken) {
     const aliveWindowMs = 5 * 60 * 1000;
@@ -237,6 +274,16 @@ export async function getBaobaoLoginSessionStatus(): Promise<BaobaoLoginSessionS
     );
   }
 
+  const restoredSession = await restorePersistedHttpAuth();
+  if (restoredSession) {
+    logBaobaoLogin("status:persisted-cookies-restored", { hasToken: true }, true);
+    return toAuthenticatedSnapshot(
+      restoredSession.token,
+      restoredSession.cookies,
+      restoredSession.user,
+    );
+  }
+
   try {
     const result = await checkHttpLoginStatus();
     logBaobaoLogin("status:http-check", {
@@ -248,9 +295,14 @@ export async function getBaobaoLoginSessionStatus(): Promise<BaobaoLoginSessionS
 
     if (result.authenticated && result.ghrToken) {
       const payload = parseJwtPayload(result.ghrToken);
+      const runtimeSession = getQrSession();
+      const cookies = mergePersistedCookies(
+        persistedAuth?.cookies ?? [],
+        runtimeSession?.cookies,
+      );
       return toAuthenticatedSnapshot(
         result.ghrToken,
-        [],
+        cookies,
         result.user ?? {
           id: payload?.username ?? "",
           name: payload?.username ?? "",

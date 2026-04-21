@@ -1,6 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { WorkspaceAgentDefinition } from "@ims/shared";
-import { DEFAULT_INTERVIEW_AGENT_ID, resolveWorkspaceExecutionEngine } from "./lui-agents";
+
+vi.mock("../db", () => ({ db: {} }));
+
+let DEFAULT_INTERVIEW_AGENT_ID: string;
+let resolveWorkspaceExecutionEngine: (definition: WorkspaceAgentDefinition) => "builtin" | "deepagents";
+
+beforeAll(async () => {
+  ({ DEFAULT_INTERVIEW_AGENT_ID, resolveWorkspaceExecutionEngine } = await import("./lui-agents"));
+});
 
 function createWorkspaceAgentDefinition(
   overrides: Partial<WorkspaceAgentDefinition> = {},

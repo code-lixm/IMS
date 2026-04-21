@@ -36,13 +36,9 @@
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="w-48">
-          <DropdownMenuItem @click="emit('create')">
-            <Plus class="mr-2 h-4 w-4" />
-            新建候选人
-          </DropdownMenuItem>
           <DropdownMenuItem :disabled="isImporting" @click="emit('import')">
             <Download class="mr-2 h-4 w-4" />
-            导入文件
+            简历初筛
             <Badge
               v-if="(importActivityCount ?? 0) > 0"
               variant="secondary"
@@ -53,67 +49,70 @@
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem @click="emit('goto-import')">
-            <FileClock class="mr-2 h-4 w-4" />
-            导入任务
+            <Download class="mr-2 h-4 w-4" />
+            初筛列表
+          </DropdownMenuItem>
+          <DropdownMenuItem :disabled="isImporting" @click="emit('import-imr')">
+            <Download class="mr-2 h-4 w-4" />
+            导入面试信息
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button
-        variant="default"
-        class="hidden md:flex gap-2"
-        @click="emit('create')"
+      <div
+        class="hidden md:flex items-center gap-1 rounded-lg border border-border/60 bg-muted/35 p-1"
       >
-        <Plus class="h-4 w-4" />
-        <span class="hidden lg:inline">新建</span>
-      </Button>
-      <div class="relative hidden md:block">
         <Button
-          variant="outline"
+          variant="ghost"
+          size="sm"
+          class="gap-1.5"
+          @click="emit('goto-import')"
+        >
+          <span class="hidden lg:inline">初筛列表</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           class="gap-2"
           :disabled="isImporting"
           @click="emit('import')"
         >
           <Download class="h-4 w-4" />
-          <span class="hidden lg:inline">导入</span>
+          <span class="hidden lg:inline">简历初筛</span>
+          <Badge
+            v-if="(importActivityCount ?? 0) > 0"
+            variant="default"
+            class="ml-1 min-w-5 justify-center rounded-full px-1.5 py-0 text-[11px]"
+          >
+            {{ importActivityCount }}
+          </Badge>
         </Button>
-        <Badge
-          v-if="(importActivityCount ?? 0) > 0"
-          variant="default"
-          class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full px-1.5 py-0 lg:hidden"
-        >
-          {{ importActivityCount }}
-        </Badge>
-      </div>
-
-      <div
-        class="hidden h-9 items-center gap-1 border-l border-border pl-3 ml-1 md:flex"
-      >
         <Button
-          variant="secondary"
+          variant="ghost"
           size="sm"
           class="gap-1.5"
-          @click="emit('goto-import')"
+          :disabled="isImporting"
+          @click="emit('import-imr')"
         >
-          <FileClock class="h-4 w-4" />
-          <span class="hidden lg:inline">任务</span>
+          <Download class="h-4 w-4" />
+          <span class="hidden lg:inline">导入面试信息</span>
         </Button>
       </div>
 
       <div
-        class="hidden h-9 items-center gap-2 border-l border-border pl-3 ml-1 lg:flex"
+        class="hidden h-9 items-center gap-2 border-l border-border/60 pl-3 ml-1 lg:flex"
       >
         <span
           v-if="props.syncEnabled"
-          class="flex items-center gap-1.5 text-xs text-green-600"
+          class="flex items-center gap-1.5 text-xs text-muted-foreground"
         >
-          <span class="h-1.5 w-1.5 rounded-full bg-green-500" />
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           自动同步中
         </span>
         <Button
-          :variant="props.syncError ? 'destructive' : 'secondary'"
+          :variant="props.syncError ? 'destructive' : 'outline'"
           size="sm"
-          class="gap-1.5"
+          class="gap-1.5 shadow-none"
           :disabled="props.syncLoading || props.resetSyncLoading"
           @click="emit('sync')"
         >
@@ -121,24 +120,22 @@
             class="h-4 w-4"
             :class="props.syncLoading ? 'animate-spin' : ''"
           />
-          <span class="hidden lg:inline">同步</span>
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          class="gap-1.5"
-          :disabled="props.syncLoading || props.resetSyncLoading"
-          @click="openResetDialog"
-        >
-          <AlertTriangle class="h-4 w-4" />
-          <span class="hidden xl:inline">重新导入</span>
+          <span class="hidden lg:inline">同步简历</span>
         </Button>
       </div>
 
-      <AppUserActions />
+      <AppUserActions
+        danger-action-label="重新导入"
+        :danger-action-disabled="props.syncLoading || props.resetSyncLoading"
+        @danger-action="openResetDialog"
+      />
     </div>
 
-    <Dialog :open="resetDialogOpen" content-class="sm:max-w-md" @update:open="handleResetDialogOpenChange">
+    <Dialog
+      :open="resetDialogOpen"
+      content-class="sm:max-w-md"
+      @update:open="handleResetDialogOpenChange"
+    >
       <template #content>
         <DialogHeader>
           <DialogTitle class="flex items-center gap-2 text-destructive">
@@ -146,16 +143,21 @@
             高风险操作：删除全部记录并重新导入
           </DialogTitle>
           <DialogDescription class="pt-2 text-sm leading-6">
-            该操作会删除当前所有候选人、面试、简历、AI 产物、全部会话记录、会话记忆、工作区与分享记录，然后立即从远端重新同步，且不可撤销。
+            该操作会删除当前所有候选人、面试、简历、AI
+            产物、全部会话记录、会话记忆、工作区与分享记录，然后立即从远端重新同步，且不可撤销。
           </DialogDescription>
         </DialogHeader>
 
-        <div class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+        <div
+          class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+        >
           请确认你已经知晓：当前页面看到的候选人记录会被全部清空，只有远端还能重新同步回来的数据才会恢复；如果远端同步失败，本地会暂时保持为空。
         </div>
 
         <div class="space-y-2">
-          <p class="text-sm font-medium">请输入 <span class="text-destructive">重新导入</span> 以继续：</p>
+          <p class="text-sm font-medium">
+            请输入 <span class="text-destructive">重新导入</span> 以继续：
+          </p>
           <Input
             :model-value="resetConfirmationText"
             placeholder="重新导入"
@@ -165,7 +167,11 @@
         </div>
 
         <DialogFooter class="mt-2 gap-2">
-          <Button variant="outline" :disabled="props.resetSyncLoading" @click="resetDialogOpen = false">
+          <Button
+            variant="outline"
+            :disabled="props.resetSyncLoading"
+            @click="resetDialogOpen = false"
+          >
             取消
           </Button>
           <Button
@@ -185,9 +191,7 @@
 import { computed, ref } from "vue";
 import {
   AlertTriangle,
-  FileClock,
   MoreHorizontal,
-  Plus,
   RefreshCw,
   Search,
   Download,
@@ -225,8 +229,8 @@ const props = defineProps<CandidatePageHeaderProps>();
 const emit = defineEmits<{
   (e: "update:search", value: string): void;
   (e: "search"): void;
-  (e: "create"): void;
   (e: "import"): void;
+  (e: "import-imr"): void;
   (e: "goto-import"): void;
   (e: "sync"): void;
   (e: "reset-sync"): void;
@@ -235,7 +239,9 @@ const emit = defineEmits<{
 const RESET_CONFIRMATION_TEXT = "重新导入";
 const resetDialogOpen = ref(false);
 const resetConfirmationText = ref("");
-const canConfirmReset = computed(() => resetConfirmationText.value.trim() === RESET_CONFIRMATION_TEXT);
+const canConfirmReset = computed(
+  () => resetConfirmationText.value.trim() === RESET_CONFIRMATION_TEXT,
+);
 
 function handleSearchUpdate(value: string | number) {
   emit("update:search", String(value));

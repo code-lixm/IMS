@@ -175,6 +175,7 @@ export interface CandidateWorkspace {
 
 export interface ImportBatch {
   id: string;
+  displayName: string | null;
   status: BatchStatus;
   sourceType: string | null;
   currentStage: string | null;

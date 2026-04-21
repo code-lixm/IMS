@@ -1,4 +1,5 @@
 import { computed, type ComputedRef, type Ref } from "vue";
+import { ApiError } from "@/api/client";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
@@ -153,6 +154,21 @@ export function createLuiConversationModule(options: LuiConversationModuleOption
       fileResources.value[id] = data.files.map(convertFileResource);
       workflows.value[id] = data.workflow ? convertWorkflow(data.workflow) : null;
     } catch (err) {
+      if (err instanceof ApiError && (err.status === 404 || err.code === "NOT_FOUND")) {
+        conversations.value = conversations.value.filter((conversation) => conversation.id !== id);
+        delete messages.value[id];
+        delete fileResources.value[id];
+        delete workflows.value[id];
+
+        if (selectedId.value === id) {
+          selectedId.value = null;
+          applyConversationConfig(undefined);
+        }
+
+        error.value = null;
+        return;
+      }
+
       error.value = err instanceof Error ? err.message : "Failed to load conversation";
       notifyError(reportAppError("lui/load-conversation", err, {
         title: "加载会话详情失败",

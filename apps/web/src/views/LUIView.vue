@@ -572,7 +572,9 @@
       title="先配置模型厂商"
       description="发送消息前需要先添加至少一个 AI Gateway 端点。保存后会自动设为默认端点。"
       :preset-providers="presetProviders"
+      :model-options="gatewayModelOptions"
       :initial-provider-id="presetProviders[0]?.id ?? ''"
+      :initial-model-id="store.selectedModelId || ''"
       :saving="isSavingGatewaySetup"
       :show-test-button="false"
       save-button-text="保存并继续"
@@ -678,6 +680,7 @@ import {
   candidatesApi,
   resolveResumePreviewContentType,
 } from "@/api/candidates";
+import { ApiError } from "@/api/client";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
@@ -743,7 +746,7 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const candidatesStore = useCandidatesStore();
-const { notifyError, notifySuccess } = useAppNotifications();
+const { notifyError, notifySuccess, notifyWarning } = useAppNotifications();
 
 const LUI_LEFT_PANEL_WIDTH_STORAGE_KEY = "lui-left-panel-width";
 const LUI_LEFT_TOP_PANE_SIZE_STORAGE_KEY = "lui-left-top-pane-size";
@@ -1019,6 +1022,16 @@ const isManualModel = computed(() => {
 const hasSelectedModel = computed(() => {
   return Boolean(store.selectedModelId && store.selectedModelProvider);
 });
+
+const gatewayModelOptions = computed(() =>
+  store.providers.flatMap((provider) =>
+    provider.models.map((model) => ({
+      id: model.id,
+      providerId: provider.id,
+      label: `${provider.name} / ${model.displayName || model.name || model.id}`,
+    })),
+  ),
+);
 
 const hasReadyManualModelName = computed(() => {
   return !isManualModel.value || store.customModelName.trim().length > 0;
@@ -1393,7 +1406,7 @@ function handleGatewaySetupDialogOpenChange(open: boolean) {
   gatewaySetupDialogOpen.value = open;
 }
 
-async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey: string }) {
+async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
   const provider = presetProviders.value.find((item) => item.id === payload.providerId);
   if (!provider) {
     notifyError("请选择模型厂商");
@@ -1401,10 +1414,15 @@ async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey:
   }
 
   const apiKey = payload.apiKey.trim();
+  const modelId = payload.modelId.trim();
   if (!apiKey) {
     notifyError("请输入 API Key");
     return;
   }
+
+  const selectedModelOption = modelId
+    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === payload.providerId)
+    : null;
 
   isSavingGatewaySetup.value = true;
   try {
@@ -1415,8 +1433,15 @@ async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey:
       baseURL: provider.baseURL,
       providerId: provider.id,
       apiKey,
+      ...(modelId ? { modelId } : {}),
+      ...(selectedModelOption?.label ? { modelDisplayName: selectedModelOption.label } : {}),
     };
     await store.registerCustomEndpoint(endpoint);
+
+    if (modelId) {
+      store.selectModel(modelId);
+    }
+
     notifySuccess("模型厂商已保存");
     gatewaySetupDialogOpen.value = false;
     if (!store.selectedModelId || !store.selectedModelProvider) {
@@ -1565,6 +1590,31 @@ async function replaceConversationRoute(conversation: { id: string; candidateId:
     delete nextQuery.conversationId;
   }
   await router.replace({ path: "/lui", query: nextQuery });
+}
+
+async function recoverFromMissingRouteConversation(candidateId: string | undefined) {
+  notifyWarning("指定会话不存在，已为你切换到可用工作区。", {
+    title: "会话已失效",
+    durationMs: 5000,
+  });
+
+  if (candidateId) {
+    await interviewScene.ensureWorkspace(candidateId);
+    await replaceConversationRoute(store.selectedConversation ?? null);
+    return;
+  }
+
+  const firstGenericConversation = store.conversations.find(
+    (conversation) => conversation.candidateId === null,
+  ) ?? null;
+
+  if (firstGenericConversation) {
+    await store.selectConversation(firstGenericConversation.id);
+    await replaceConversationRoute(firstGenericConversation);
+    return;
+  }
+
+  await replaceConversationRoute(null);
 }
 
 function formatResumeSize(size: number) {
@@ -1885,7 +1935,17 @@ onMounted(async () => {
   await store.initialize({ skipAutoSelect: true });
 
   if (explicitRouteConversationId.value) {
-    await store.selectConversation(explicitRouteConversationId.value);
+    try {
+      await store.selectConversation(explicitRouteConversationId.value);
+    } catch (error) {
+      if (!(error instanceof ApiError) || (error.status !== 404 && error.code !== "NOT_FOUND")) {
+        throw error;
+      }
+    }
+
+    if (store.selectedId !== explicitRouteConversationId.value) {
+      await recoverFromMissingRouteConversation(candidateId);
+    }
   }
 
   if (!candidateId) {

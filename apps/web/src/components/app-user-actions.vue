@@ -54,6 +54,16 @@
         <DropdownMenuItem @click="handleRestartOnboarding">
           新手引导
         </DropdownMenuItem>
+        <template v-if="props.dangerActionLabel">
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            class="text-destructive focus:bg-destructive/10 focus:text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive"
+            :disabled="props.dangerActionDisabled"
+            @click="handleDangerAction"
+          >
+            {{ props.dangerActionLabel }}
+          </DropdownMenuItem>
+        </template>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           class="mt-1 bg-destructive text-destructive-foreground focus:bg-destructive/90 focus:text-destructive-foreground data-[highlighted]:bg-destructive/90 data-[highlighted]:text-destructive-foreground"
@@ -88,6 +98,18 @@ const { isDark, toggleTheme } = useTheme();
 const { notifyError } = useAppNotifications();
 const menuOpen = ref(false);
 
+const props = withDefaults(defineProps<{
+  dangerActionLabel?: string;
+  dangerActionDisabled?: boolean;
+}>(), {
+  dangerActionLabel: undefined,
+  dangerActionDisabled: false,
+});
+
+const emit = defineEmits<{
+  (e: "danger-action"): void;
+}>();
+
 onMounted(() => {
   void authStore.checkStatus();
 });
@@ -105,6 +127,14 @@ const userAvatarUrl = computed<string | null>(() => null);
 function handleRestartOnboarding() {
   menuOpen.value = false;
   onboardingStore.requestStart({ force: true });
+}
+
+function handleDangerAction() {
+  if (props.dangerActionDisabled) {
+    return;
+  }
+  menuOpen.value = false;
+  emit("danger-action");
 }
 
 async function handleLogout() {

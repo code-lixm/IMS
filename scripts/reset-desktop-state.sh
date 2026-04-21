@@ -17,6 +17,7 @@ PORT=9092
 DO_BUILD=0
 DO_INSTALL=0
 DO_OPEN_LOGS=0
+START_DEV=0
 
 log() {
   printf '[reset-desktop-state] %s\n' "$*"
@@ -28,9 +29,10 @@ usage() {
   bash ./scripts/reset-desktop-state.sh [选项]
 
 选项:
-  --with-build    重置后自动构建桌面包（pnpm build:desktop:local）
+  --with-build    重置后自动构建桌面包（build:web + tauri local bundle）
   --with-install  重置后自动安装到 /Applications/IMS.app（隐含 --with-build）
   --open-logs     重置后打开日志目录
+  --start-dev     重置完成后自动启动桌面开发链路（pnpm dev:desktop）
   --full          等价于 --with-build --with-install --open-logs
   --help          显示帮助
 EOF
@@ -49,6 +51,10 @@ parse_args() {
         ;;
       --open-logs)
         DO_OPEN_LOGS=1
+        shift
+        ;;
+      --start-dev)
+        START_DEV=1
         shift
         ;;
       --full)
@@ -172,7 +178,7 @@ build_desktop_bundle() {
   log "开始构建桌面安装包（app bundle）"
   (
     cd "${PROJECT_ROOT}"
-    pnpm build
+    pnpm build:web
     pnpm --filter @ims/desktop tauri build --config tauri.local.conf.json --no-sign --bundles app
   )
   log "构建完成: ${BUILD_APP_PATH}"
@@ -220,9 +226,17 @@ main() {
   fi
 
   log "重置完成"
+  if [[ "${START_DEV}" -eq 1 ]]; then
+    log "准备启动桌面开发链路: pnpm dev:desktop"
+    (
+      cd "${PROJECT_ROOT}"
+      exec pnpm dev:desktop
+    )
+  fi
+
   log "常用命令:"
-  log "  pnpm reset:desktop-state"
-  log "  pnpm reset:desktop-full"
+  log "  pnpm reset-desktop-file"
+  log "  pnpm dev:reset-desktop-file"
   log "  pnpm desktop:logs:open"
 }
 

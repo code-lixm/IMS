@@ -72,6 +72,8 @@ export const ErrorCodes = {
   IMPORT_TEXT_EXTRACT_FAILED: "IMPORT_TEXT_EXTRACT_FAILED",
   IMPORT_SAVE_FAILED: "IMPORT_SAVE_FAILED",
   IMPORT_INDEX_FAILED: "IMPORT_INDEX_FAILED",
+  IMPORT_EXPORT_EMPTY: "IMPORT_EXPORT_EMPTY",
+  IMPORT_EXPORT_BATCH_NOT_READY: "IMPORT_EXPORT_BATCH_NOT_READY",
   WORKSPACE_CREATE_FAILED: "WORKSPACE_CREATE_FAILED",
   SHARE_EXPORT_FAILED: "SHARE_EXPORT_FAILED",
   SHARE_DEVICE_OFFLINE: "SHARE_DEVICE_OFFLINE",
@@ -445,7 +447,14 @@ export interface ArtifactFeedbackData {
 // ---------------------------------------------------------------------------
 
 export interface ImportBatchListData {
-  items: ImportBatch[];
+  items: ImportBatchListItem[];
+}
+
+export interface ImportBatchListItem extends ImportBatch {
+  analysisTotalFiles: number;
+  analysisCompletedFiles: number;
+  analysisPendingFiles: number;
+  analysisRunningFiles: number;
 }
 
 export interface CreateImportBatchInput {
@@ -453,7 +462,7 @@ export interface CreateImportBatchInput {
   autoScreen?: boolean;
 }
 
-export interface ImportBatchData extends ImportBatch {}
+export interface ImportBatchData extends ImportBatchListItem {}
 
 export interface ImportFileListData {
   items: ImportFileTask[];
@@ -469,10 +478,18 @@ export interface ImportScreeningConclusion {
   verdict: ImportScreeningVerdict;
   label: string;
   score: number;
+  candidateName?: string | null;
+  candidatePosition?: string | null;
+  candidateYearsOfExperience?: number | null;
+  screeningBaseUrl?: string | null;
   summary: string;
   strengths: string[];
   concerns: string[];
   recommendedAction: string;
+  wechatConclusion?: string;
+  wechatReason?: string;
+  wechatAction?: string;
+  wechatCopyText: string;
 }
 
 export interface ImportTaskResultData {
@@ -489,6 +506,17 @@ export interface CreateImportBatchData {
   totalFiles: number;
   autoScreen: boolean;
   createdAt: number;
+}
+
+export type ImportScreeningExportMode = "custom_bundle" | "wechat_text";
+
+export interface ImportScreeningExportRequest {
+  mode: ImportScreeningExportMode;
+  batchIds: string[];
+  selectedTaskIds?: string[];
+  scoreMin?: number | null;
+  scoreMax?: number | null;
+  includeReports?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -512,21 +540,10 @@ export interface ShareSendData {
   transferredAt: number | null;
 }
 
-export interface ConflictField {
-  name: string;
-  label: string;
-  localValue: string | number | null;
-  importValue: string | number | null;
-}
-
 export interface ShareImportResult {
-  result: "created" | "merged" | "conflict" | "failed";
+  result: "created" | "merged" | "failed";
   candidateId?: string;
   mergedFields?: string[];
-  candidateName?: string;
-  phone?: string | null;
-  email?: string | null;
-  conflicts?: ConflictField[];
   error?: string;
 }
 
@@ -750,6 +767,8 @@ export interface LuiGatewayEndpointData {
   baseURL: string;
   apiKey?: string;
   provider: string;
+  modelId?: string;
+  modelDisplayName?: string;
   /**
    * 预设提供商 ID。当提供此字段时，系统会自动从预设配置中填充
    * id、name、baseURL、provider 等字段，只需提供 apiKey 即可。

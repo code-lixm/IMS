@@ -17,7 +17,7 @@
         <div class="hidden sm:flex items-center gap-2 shrink-0">
           <Button variant="outline" class="gap-2" @click="$router.push('/import')">
             <Upload class="h-4 w-4" />
-            任务
+            初筛列表
           </Button>
           <AppUserActions />
         </div>
@@ -157,16 +157,17 @@
                     </div>
                     <p class="text-xs text-muted-foreground mt-0.5">
                       {{ fmtTime(i.scheduledAt) }}
-                      <span v-if="i.meetingLink"> · </span>
-                      <a
-                        v-if="i.meetingLink"
-                        :href="i.meetingLink"
-                        target="_blank"
-                        class="text-primary hover:underline"
-                      >
-                        会议链接
-                      </a>
                     </p>
+                    <a
+                      v-if="i.meetingLink"
+                      :href="i.meetingLink"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="mt-1 inline-flex w-fit items-center gap-1 text-[10px] font-medium text-sky-600 underline-offset-2 transition-colors hover:text-sky-500 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
+                    >
+                      <ExternalLink class="h-3 w-3" />
+                      打开会议
+                    </a>
                   </div>
                 </div>
               </div>
@@ -305,6 +306,7 @@ import {
   Briefcase,
   Clock,
   Download,
+  ExternalLink,
   FileSearch,
   FileText,
   MessageSquare,

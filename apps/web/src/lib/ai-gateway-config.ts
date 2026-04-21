@@ -32,6 +32,8 @@ function normalizeEndpoint(value: unknown): GatewayEndpoint | null {
 
   const providerId = sanitizeString(value.providerId);
   const apiKey = sanitizeString(value.apiKey);
+  const modelId = sanitizeString(value.modelId);
+  const modelDisplayName = sanitizeString(value.modelDisplayName);
 
   // 如果提供了 providerId，使用简化配置模式
   if (providerId) {
@@ -42,6 +44,8 @@ function normalizeEndpoint(value: unknown): GatewayEndpoint | null {
       provider: providerId,
       providerId,
       ...(apiKey ? { apiKey } : {}),
+      ...(modelId ? { modelId } : {}),
+      ...(modelDisplayName ? { modelDisplayName } : {}),
     };
   }
 
@@ -61,6 +65,8 @@ function normalizeEndpoint(value: unknown): GatewayEndpoint | null {
     baseURL,
     provider,
     ...(apiKey ? { apiKey } : {}),
+    ...(modelId ? { modelId } : {}),
+    ...(modelDisplayName ? { modelDisplayName } : {}),
   };
 }
 

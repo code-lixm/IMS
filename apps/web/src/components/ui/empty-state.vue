@@ -87,12 +87,12 @@ const scenarioConfig: Record<
   candidates: {
     icon: Users,
     title: "暂无候选人",
-    description: "还没有候选人数据，点击下方按钮添加第一位候选人",
+    description: "还没有候选人数据，可以先做简历初筛，或导入已有的面试人信息",
   },
   import: {
     icon: FolderOpen,
     title: "暂无导入记录",
-    description: "还没有任何导入记录，点击下方按钮开始导入 IMR 文件",
+    description: "还没有任何导入记录，点击下方按钮开始导入面试人信息",
   },
   search: {
     icon: Search,

@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS candidate_workspaces (
 
 CREATE TABLE IF NOT EXISTS import_batches (
   id TEXT PRIMARY KEY,
+  display_name TEXT,
   status TEXT NOT NULL DEFAULT 'queued',
   source_type TEXT,
   current_stage TEXT,
@@ -348,6 +349,7 @@ ensureColumn("memories", "importance", "INTEGER NOT NULL DEFAULT 5");
 ensureColumn("session_memories", "metadata", "TEXT");
 ensureColumn("session_memories", "importance", "INTEGER NOT NULL DEFAULT 5");
 ensureColumn("session_memories", "expires_at", "INTEGER");
+ensureColumn("import_batches", "display_name", "TEXT");
 ensureColumn("agents", "source_type", "TEXT NOT NULL DEFAULT 'custom'");
 ensureColumn("agents", "is_mutable", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("agents", "scene_affinity", "TEXT NOT NULL DEFAULT 'general'");

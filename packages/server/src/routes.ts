@@ -1,16 +1,19 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   APPLICATION_STATUS_LABELS,
+  ErrorCodes,
   formatInterviewRoundLabel,
   INTERVIEW_TYPE_LABELS,
   lookupLabelOrDefault,
   resolveApplicationStatusCode,
+  type ImportTaskResultData,
+  type ImportScreeningExportRequest,
 } from "@ims/shared";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { syncManager } from "./services/sync-manager";
 import { resetCandidateRecords } from "./services/sync-reset";
-import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, exportScreeningResults } from "./services/import/pipeline";
+import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, exportScreeningResults, ImportScreeningExportError, ImportValidationError, startRerunImportBatchScreening } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
@@ -121,6 +124,71 @@ function decodeStoredFileName(fileName: string | null | undefined): string {
   } catch {
     return normalized;
   }
+}
+
+function parseStoredImportTaskResult(resultJson: string | null | undefined): ImportTaskResultData | null {
+  if (!resultJson) return null;
+
+  try {
+    const parsed = JSON.parse(resultJson) as ImportTaskResultData;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function summarizeImportBatchAnalysis(
+  batch: typeof importBatches.$inferSelect,
+  tasks: Array<typeof importFileTasks.$inferSelect>,
+) {
+  let analysisCompletedFiles = 0;
+  let analysisRunningFiles = 0;
+
+  for (const task of tasks) {
+    const result = parseStoredImportTaskResult(task.resultJson);
+
+    if (result?.screeningStatus === "completed") {
+      analysisCompletedFiles += 1;
+      continue;
+    }
+
+    if (result?.screeningStatus === "running") {
+      analysisRunningFiles += 1;
+      continue;
+    }
+
+  }
+
+  const analysisTotalFiles = Math.max(batch.totalFiles ?? tasks.length, 0);
+  const analysisPendingFiles = Math.max(
+    analysisTotalFiles - analysisCompletedFiles - analysisRunningFiles,
+    0,
+  );
+
+  return {
+    analysisTotalFiles,
+    analysisCompletedFiles,
+    analysisPendingFiles,
+    analysisRunningFiles,
+  };
+}
+
+function attachImportBatchAnalysisSummary(
+  batches: Array<typeof importBatches.$inferSelect>,
+  tasks: Array<typeof importFileTasks.$inferSelect>,
+) {
+  const taskMap = new Map<string, Array<typeof importFileTasks.$inferSelect>>();
+  for (const task of tasks) {
+    const list = taskMap.get(task.batchId) ?? [];
+    list.push(task);
+    taskMap.set(task.batchId, list);
+  }
+
+  return batches.map((batch) => ({
+    ...batch,
+    autoScreen: batch.autoScreen ?? false,
+    ...summarizeImportBatchAnalysis(batch, taskMap.get(batch.id) ?? []),
+  }));
 }
 
 function createStaticLuiStreamResponse(content: string): Response {
@@ -269,6 +337,45 @@ function runImportBatchSerially(tasks: Array<{ taskId: string; filePath: string;
   });
 }
 
+function getImportBatchTimeLabel(timestamp: number) {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfToday - startOfTarget) / 86400000);
+  const period = date.getHours() < 12 ? "上午" : "下午";
+
+  if (diffDays === 0) return `今天${period}`;
+  if (diffDays === 1) return `昨天${period}`;
+  if (diffDays === 2) return `前天${period}`;
+  return `${String(date.getMonth() + 1).padStart(2, "0")}月${String(date.getDate()).padStart(2, "0")}日${period}`;
+}
+
+function inferImportBatchSourceName(paths: string[]) {
+  if (paths.length === 0) return "未命名导入";
+  const normalized = paths.map((value) => value.replace(/\\/g, "/").replace(/\/+$/, ""));
+  const dirCounts = new Map<string, number>();
+
+  for (const filePath of normalized) {
+    const segments = filePath.split("/").filter(Boolean);
+    const parentName = segments.length >= 2 ? segments[segments.length - 2] : null;
+    if (!parentName || /^batch_[0-9a-f-]+$/i.test(parentName)) continue;
+    dirCounts.set(parentName, (dirCounts.get(parentName) ?? 0) + 1);
+  }
+
+  const topDir = [...dirCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (topDir) return topDir;
+
+  const fileName = normalized[0].split("/").pop() ?? "未命名导入";
+  return fileName.replace(/\.[^.]+$/, "") || fileName;
+}
+
+function buildImportBatchDisplayName(paths: string[], totalFiles: number, createdAt: number) {
+  const timeLabel = getImportBatchTimeLabel(createdAt);
+  const sourceName = inferImportBatchSourceName(paths);
+  return `${timeLabel}-${totalFiles}个-【${sourceName}】`;
+}
+
 type LuiSupportedModel = {
   id: string;
   provider: string;
@@ -287,6 +394,8 @@ type LuiGatewayEndpoint = {
   baseURL: string;
   apiKey?: string;
   provider: string;
+  modelId?: string;
+  modelDisplayName?: string;
   /**
    * 预设提供商 ID。当提供此字段时，系统会自动从预设配置中填充
    * id、name、baseURL、provider 等字段。
@@ -927,6 +1036,8 @@ function normalizeGatewayEndpoint(value: unknown): LuiGatewayEndpoint | null {
 
   const providerId = sanitizeString(value.providerId);
   const apiKey = sanitizeString(value.apiKey);
+  const modelId = sanitizeString(value.modelId);
+  const modelDisplayName = sanitizeString(value.modelDisplayName);
 
   // 如果提供了 providerId，从预设配置自动填充
   if (providerId) {
@@ -939,6 +1050,8 @@ function normalizeGatewayEndpoint(value: unknown): LuiGatewayEndpoint | null {
         provider: preset.id,
         providerId: preset.id,
         ...(apiKey ? { apiKey } : {}),
+        ...(modelId ? { modelId } : {}),
+        ...(modelDisplayName ? { modelDisplayName } : {}),
       };
     }
   }
@@ -961,6 +1074,8 @@ function normalizeGatewayEndpoint(value: unknown): LuiGatewayEndpoint | null {
     provider,
     ...(fallbackProviderId ? { providerId: fallbackProviderId } : {}),
     ...(apiKey ? { apiKey } : {}),
+    ...(modelId ? { modelId } : {}),
+    ...(modelDisplayName ? { modelDisplayName } : {}),
   };
 }
 
@@ -1110,6 +1225,7 @@ function isBaobaoAuthExpiredError(error: unknown) {
 
 async function markBaobaoAuthExpired() {
   const now = Date.now();
+  console.warn("[auth] mark baobao auth expired", { now });
   await db.update(users).set({ tokenStatus: "expired", lastSyncAt: now });
   await db.update(remoteUsers)
     .set({ tokenExpAt: now, updatedAt: now })
@@ -1124,6 +1240,10 @@ async function resolveBaobaoAuthStatus() {
   const localUser = row[0] ?? null;
 
   if (!remote.length) {
+    console.log("[auth/status] no remote auth row", {
+      localTokenStatus: localUser?.tokenStatus ?? null,
+      localUserId: localUser?.id ?? null,
+    });
     if (localUser && localUser.tokenStatus !== "unauthenticated") {
       return {
         status: localUser.tokenStatus as "valid" | "expired" | "unauthenticated",
@@ -1137,9 +1257,31 @@ async function resolveBaobaoAuthStatus() {
 
   const item = remote[0];
   const expired = item.tokenExpAt ? Date.now() > item.tokenExpAt : true;
+  const fallbackUser = {
+    id: item.remoteId ?? item.id,
+    name: item.name,
+    email: item.email,
+    phone: (() => {
+      const ud = item.userDataJson ? JSON.parse(item.userDataJson) : null;
+      return ud?.phone ?? ud?.phoneNumber ?? null;
+    })(),
+  };
+
+  console.log("[auth/status] evaluating remote auth", {
+    remoteUserId: item.remoteId ?? item.id,
+    username: item.username,
+    tokenExpAt: item.tokenExpAt,
+    expired,
+    localTokenStatus: localUser?.tokenStatus ?? null,
+  });
 
   if (expired) {
     const session = await getBaobaoLoginSessionStatus();
+    console.log("[auth/status] remote token expired, session recovery result", {
+      authenticated: Boolean(session.authenticated),
+      status: session.status,
+      error: session.error,
+    });
 
     if (session.authenticated) {
       await persistBaobaoAuth(
@@ -1160,6 +1302,18 @@ async function resolveBaobaoAuthStatus() {
         lastValidatedAt: Date.now(),
       };
     }
+
+    if (localUser && localUser.tokenStatus !== "valid") {
+      await db.update(users)
+        .set({ tokenStatus: "valid", lastSyncAt: Date.now() })
+        .where(eq(users.id, localUser.id));
+    }
+
+    return {
+      status: "valid" as const,
+      user: fallbackUser,
+      lastValidatedAt: item.updatedAt,
+    };
   }
 
   const nextStatus = expired ? "expired" : "valid";
@@ -1172,7 +1326,7 @@ async function resolveBaobaoAuthStatus() {
 
   return {
     status: nextStatus as "valid" | "expired",
-    user: { id: item.remoteId ?? item.id, name: item.name, email: item.email, phone: (() => { const ud = item.userDataJson ? JSON.parse(item.userDataJson) : null; return ud?.phone ?? ud?.phoneNumber ?? null; })() },
+    user: fallbackUser,
     lastValidatedAt: item.updatedAt,
   };
 }
@@ -1455,6 +1609,15 @@ export async function route(request: Request): Promise<Response> {
     try {
       logBaobaoAuth("route:qr:start");
       const qrCode = await fetchBaobaoLoginQrCode();
+      if (!qrCode.authenticated && !qrCode.imageSrc && !qrCode.qrText) {
+        const message = qrCode.error ?? "未获取到可用二维码数据";
+        logBaobaoAuth("route:qr:no-renderable-data", {
+          status: qrCode.status,
+          error: qrCode.error,
+          currentUrl: qrCode.currentUrl,
+        }, true);
+        return fail("QRCODE_UNAVAILABLE", message, 502);
+      }
       if (qrCode.authenticated) {
         logBaobaoAuth("route:qr:authenticated", {
           userId: qrCode.authenticated.user.id,
@@ -1481,6 +1644,8 @@ export async function route(request: Request): Promise<Response> {
         source: qrCode.source,
         refreshed: qrCode.refreshed,
         fetchedAt: Date.now(),
+        authenticated: Boolean(qrCode.authenticated),
+        user: qrCode.authenticated?.user ?? null,
       });
     } catch (err) {
       console.error("[baobao-auth] route:qr:error", err);
@@ -1568,9 +1733,11 @@ export async function route(request: Request): Promise<Response> {
       } catch (err) {
         syncManager.stop();
         if (isBaobaoAuthExpiredError(err)) {
+          console.warn("[sync] toggle detected auth expiry", { message: getErrorMessage(err) });
           await markBaobaoAuthExpired();
           return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
         }
+        console.error("[sync] toggle failed", { message: getErrorMessage(err) });
         return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
       }
     } else {
@@ -1586,9 +1753,11 @@ export async function route(request: Request): Promise<Response> {
     try { const result = await syncManager.runOnce(); return ok({ ...result, syncAt: syncManager.getLastSyncAt() ?? Date.now() }); }
     catch (err) {
       if (isBaobaoAuthExpiredError(err)) {
+        console.warn("[sync] run detected auth expiry", { message: getErrorMessage(err) });
         await markBaobaoAuthExpired();
         return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
       }
+      console.error("[sync] run failed", { message: getErrorMessage(err) });
       return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
     }
   }
@@ -1619,6 +1788,7 @@ export async function route(request: Request): Promise<Response> {
       }
 
       if (isBaobaoAuthExpiredError(err)) {
+        console.warn("[sync] reset-run detected auth expiry", { message: getErrorMessage(err) });
         await markBaobaoAuthExpired();
         const message = hasClearedLocalRecords
           ? `本地记录已清空，但重新同步前登录状态已失效：${getErrorMessage(err)}`
@@ -2143,7 +2313,11 @@ export async function route(request: Request): Promise<Response> {
   // Import batches
   if (path === "/api/import/batches" && request.method === "GET") {
     const rows = await db.select().from(importBatches).orderBy(desc(importBatches.createdAt)).limit(50);
-    return ok({ items: rows.map(b => ({ ...b, autoScreen: b.autoScreen ?? false })) });
+    const batchIds = rows.map((batch) => batch.id);
+    const tasks = batchIds.length > 0
+      ? await db.select().from(importFileTasks).where(inArray(importFileTasks.batchId, batchIds))
+      : [];
+    return ok({ items: attachImportBatchAnalysisSummary(rows, tasks) });
   }
 
   if (path === "/api/import/batches" && request.method === "POST") {
@@ -2167,8 +2341,17 @@ export async function route(request: Request): Promise<Response> {
       sourcePaths = body.paths;
     }
 
-    const preparedTasks = await prepareImportTasks(id, sourcePaths);
-    await db.insert(importBatches).values({ id, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, createdAt: ts, startedAt: ts });
+    let preparedTasks;
+    try {
+      preparedTasks = await prepareImportTasks(id, sourcePaths);
+    } catch (error) {
+      if (error instanceof ImportValidationError) {
+        return fail("VALIDATION_ERROR", error.message, 422);
+      }
+      throw error;
+    }
+    const displayName = buildImportBatchDisplayName(sourcePaths, preparedTasks.length, ts);
+    await db.insert(importBatches).values({ id, displayName, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, createdAt: ts, startedAt: ts });
     const queuedTasks: Array<{ taskId: string; filePath: string; fileType: typeof preparedTasks[number]["fileType"] }> = [];
     for (const task of preparedTasks) {
       const taskId = `task_${crypto.randomUUID()}`;
@@ -2183,7 +2366,7 @@ export async function route(request: Request): Promise<Response> {
     }
     runImportBatchSerially(queuedTasks);
     await refreshBatchProgress(id);
-    return ok({ id, status: "processing", totalFiles: preparedTasks.length, autoScreen, createdAt: ts }, { status: 201 });
+    return ok({ id, displayName, status: "processing", totalFiles: preparedTasks.length, autoScreen, createdAt: ts }, { status: 201 });
   }
 
   const batchMatch = path.match(/^\/api\/import\/batches\/([^/]+)$/);
@@ -2194,7 +2377,8 @@ export async function route(request: Request): Promise<Response> {
   if (batchMatch && request.method === "GET") {
     const [row] = await db.select().from(importBatches).where(eq(importBatches.id, batchMatch[1])).limit(1);
     if (!row) return fail("NOT_FOUND", "batch not found", 404);
-    return ok({ ...row, autoScreen: row.autoScreen ?? false });
+    const tasks = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchMatch[1]));
+    return ok(attachImportBatchAnalysisSummary([row], tasks)[0]);
   }
 
    if (batchMatch && request.method === "DELETE") {
@@ -2229,38 +2413,62 @@ export async function route(request: Request): Promise<Response> {
 
   if (batchRerunScreeningMatch && request.method === "POST") {
     const id = batchRerunScreeningMatch[1];
-    const [row] = await db.select().from(importBatches).where(eq(importBatches.id, id)).limit(1);
-    if (!row) return fail("NOT_FOUND", "batch not found", 404);
-    if (row.status === "processing" || row.status === "queued") {
-      return fail("BATCH_ACTIVE", "cannot rerun screening for active batch", 409);
+    const kickoff = await startRerunImportBatchScreening(id);
+    if (kickoff.notFound) return fail("NOT_FOUND", "batch not found", 404);
+    if (kickoff.alreadyRunning) {
+      return fail("BATCH_ACTIVE", "AI 初筛已在处理中", 409);
     }
-    const result = await rerunImportBatchScreening(id);
-    return ok({ id, retriedCount: result.retriedCount, status: result.retriedCount > 0 ? "processing" : row.status });
+    if (!kickoff.started) {
+      return ok({ id, retriedCount: 0, status: kickoff.status });
+    }
+
+    void rerunImportBatchScreening(id).catch((error) => {
+      console.error("[import] rerun batch screening failed", {
+        batchId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
+    return ok({ id, retriedCount: kickoff.retriedCount, status: "processing" });
   }
 
   if (fileRerunScreeningMatch && request.method === "POST") {
     const taskId = fileRerunScreeningMatch[1];
     const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
     if (!task) return fail("NOT_FOUND", "task not found", 404);
-    const result = await rerunFileScreening(taskId);
-    return ok({ taskId, retried: result.retried, screeningStatus: result.screeningStatus });
+
+    void rerunFileScreening(taskId).catch((error) => {
+      console.error("[import] rerun file screening failed", {
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
+    return ok({ taskId, retried: true, screeningStatus: "running" });
   }
 
   // Screening export
-  if (path === "/api/screening/export" && request.method === "GET") {
-    const url = new URL(request.url);
-    const batchId = url.searchParams.get("batchId") || undefined;
+  if (path === "/api/screening/export" && request.method === "POST") {
     try {
-      const { buffer, fileName } = await exportScreeningResults(batchId);
+      const body = await parseJson<ImportScreeningExportRequest>(request);
+      if (!body?.mode) return fail("VALIDATION_ERROR", "mode is required", 422);
+      if (!Array.isArray(body.batchIds)) return fail("VALIDATION_ERROR", "batchIds is required", 422);
+
+      const { buffer, fileName, contentType } = await exportScreeningResults(body);
+      const asciiFileName = fileName.replace(/[^\x20-\x7E]/g, "_");
       const encodedFileName = encodeURIComponent(fileName);
-      return new Response(new Blob([Uint8Array.from(buffer)]), {
+      return new Response(Uint8Array.from(buffer), {
         status: 200,
         headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="${encodedFileName}"`,
+          "Content-Type": contentType,
+          "Content-Disposition": `attachment; filename="${asciiFileName}"; filename*=UTF-8''${encodedFileName}`,
+          "Content-Length": String(buffer.length),
         },
       });
     } catch (err) {
+      if (err instanceof ImportScreeningExportError) {
+        return fail(err.code, err.message, err.status);
+      }
       return fail("INTERNAL_ERROR", err instanceof Error ? err.message : "export failed", 500);
     }
   }
@@ -2299,7 +2507,7 @@ export async function route(request: Request): Promise<Response> {
       const { buffer, filename } = await exportCandidate(body.candidateId);
       const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
       const encodedFilename = encodeURIComponent(filename);
-      return new Response(new Blob([Uint8Array.from(buffer)]), {
+      return new Response(Uint8Array.from(buffer), {
         status: 200,
         headers: {
           "Content-Type": "application/octet-stream",
@@ -2351,13 +2559,6 @@ export async function route(request: Request): Promise<Response> {
 
     const successCount = results.filter(r => r.status === "success").length;
     return ok({ total: results.length, successCount, results });
-  }
-
-  if (path === "/api/share/resolve" && request.method === "POST") {
-    const body = await parseJson<{ candidateId: string; strategy: "local" | "import" }>(request);
-    if (!body.candidateId || !body.strategy) return fail("VALIDATION_ERROR", "candidateId and strategy are required", 422);
-    // TODO: Apply strategy and complete the import
-    return ok({ status: "resolved", candidateId: body.candidateId, strategy: body.strategy });
   }
 
   if (path === "/api/share/import" && request.method === "POST") {

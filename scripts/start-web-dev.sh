@@ -8,7 +8,7 @@ SERVER_WAIT_SECONDS="${IMS_SERVER_WAIT_SECONDS:-30}"
 SERVER_PID=""
 
 log() {
-  printf '[reset-web] %s\n' "$*"
+  printf '[dev:web] %s\n' "$*"
 }
 
 cleanup() {
@@ -36,10 +36,7 @@ wait_server_health() {
 main() {
   trap cleanup EXIT INT TERM
 
-  log "1/3 清理 Web 初始化状态"
-  bash "${SCRIPT_DIR}/reset-web-state.sh"
-
-  log "2/3 启动 Server (pnpm dev:server)"
+  log "1/2 启动 Server (pnpm dev:server)"
   (
     cd "${PROJECT_ROOT}"
     pnpm dev:server
@@ -52,10 +49,10 @@ main() {
   fi
   log "Server 已就绪"
 
-  log "3/3 启动 Web (pnpm dev)"
+  log "2/2 启动 UI (pnpm dev:ui)"
   (
     cd "${PROJECT_ROOT}"
-    pnpm dev
+    pnpm dev:ui
   )
 }
 

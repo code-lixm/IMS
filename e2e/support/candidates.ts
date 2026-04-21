@@ -29,7 +29,7 @@ export async function mockAuthenticatedCandidatesPage(page: Page) {
     }),
   );
 
-  await page.route("**/api/candidates**", (route) =>
+  await page.route(/\/api\/candidates(?:\?.*)?$/, (route) =>
     fulfill(route, {
       items: [
         {
@@ -66,7 +66,7 @@ export async function mockAuthenticatedCandidatesPage(page: Page) {
     fulfill(route, {
       enabled: false,
       intervalMs: 5000,
-      lastSyncAt: null,
+      lastSyncAt: Date.now(),
       lastError: null,
     }),
   );

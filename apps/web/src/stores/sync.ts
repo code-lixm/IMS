@@ -3,7 +3,6 @@ import { ref } from "vue";
 import { ApiError } from "@/api/client";
 import { syncApi } from "@/api/sync";
 import router from "@/router";
-import { useAuthStore } from "@/stores/auth";
 import type { SyncResetRunData, SyncStatusData } from "@ims/shared";
 
 function isBaobaoAuthExpiredMessage(message: string | null | undefined) {
@@ -20,16 +19,13 @@ function isBaobaoAuthExpiredError(error: unknown) {
 }
 
 async function redirectToLogin() {
-  const authStore = useAuthStore();
-  await authStore.checkStatus();
-
   const redirect = router.currentRoute.value.fullPath || "/candidates";
   if (router.currentRoute.value.path === "/login") return;
 
   try {
-    await router.replace({ path: "/login", query: { redirect } });
+    await router.replace({ path: "/login", query: { redirect, reauth: "1" } });
   } catch (_error) {
-    window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`);
+    window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}&reauth=1`);
   }
 }
 

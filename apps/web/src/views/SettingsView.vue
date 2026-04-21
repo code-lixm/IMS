@@ -9,8 +9,8 @@
           class="gap-2 hidden sm:flex"
           @click="$router.push('/import')"
         >
-          <Upload class="h-4 w-4" />
-          任务
+          <Download class="h-4 w-4" />
+          导入任务
         </Button>
         <AppUserActions />
       </div>
@@ -255,8 +255,10 @@
             :title="gatewayEndpointDialogTitle"
             description="保存后会同步到本地服务，并在 LUI 模型选择器中可用。"
             :preset-providers="presetProviders"
+            :model-options="gatewayModelOptions"
             :initial-provider-id="gatewayEndpointForm.providerId"
             :initial-api-key="gatewayEndpointForm.apiKey"
+            :initial-model-id="gatewayEndpointForm.modelId"
             :saving="isSavingGatewayEndpoint"
             :testing="isTestingGatewayEndpoint"
             :disable-provider-selection="editingGatewayEndpointId !== null"
@@ -315,6 +317,9 @@
                     {{ endpoint.id }} · {{ endpoint.provider }} ·
                     {{ endpoint.baseURL }}
                   </template>
+                </p>
+                <p class="text-xs text-muted-foreground break-all">
+                  默认模型：{{ endpoint.modelDisplayName || endpoint.modelId || "未指定" }}
                 </p>
               </div>
               <div class="flex shrink-0 items-center gap-1">
@@ -741,6 +746,16 @@ const updateError = ref<string | null>(null);
 const gatewayEndpointForm = reactive({
   providerId: "",
   apiKey: "",
+  modelId: "",
+});
+const gatewayModelOptions = computed(() => {
+  return luiStore.providers.flatMap((provider) =>
+    provider.models.map((model) => ({
+      id: model.id,
+      providerId: provider.id,
+      label: `${provider.name} / ${model.displayName || model.name || model.id}`,
+    }))
+  );
 });
 const AGENT_ENGINE_OPTIONS = ["builtin", "deepagents"] as const;
 const AGENT_MODE_OPTIONS = ["chat", "ask", "all", "workflow"] as const;
@@ -866,6 +881,7 @@ onMounted(async () => {
   }
 
   await luiStore.loadAgents();
+  await luiStore.loadModels();
 });
 
 function getTauriInvoker() {
@@ -973,15 +989,21 @@ async function restartDesktopApp() {
 function resetGatewayEndpointForm() {
   gatewayEndpointForm.providerId = "";
   gatewayEndpointForm.apiKey = "";
+  gatewayEndpointForm.modelId = "";
 }
 
-function buildGatewayEndpointFromValues(payload?: { providerId: string; apiKey: string }): GatewayEndpoint {
+function buildGatewayEndpointFromValues(payload?: { providerId: string; apiKey: string; modelId: string }): GatewayEndpoint {
   const providerId = payload?.providerId?.trim() || gatewayEndpointForm.providerId;
   const apiKey = payload?.apiKey?.trim() || gatewayEndpointForm.apiKey.trim();
+  const modelId = payload?.modelId?.trim() || gatewayEndpointForm.modelId.trim();
   const provider = presetProviders.value.find((item) => item.id === providerId);
   if (!provider) {
     throw new Error("请选择提供商");
   }
+
+  const modelDisplayName = modelId
+    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === providerId)?.label
+    : "";
 
   return {
     id: provider.id,
@@ -991,6 +1013,12 @@ function buildGatewayEndpointFromValues(payload?: { providerId: string; apiKey: 
     providerId: provider.id,
     ...(apiKey
       ? { apiKey }
+      : {}),
+    ...(modelId
+      ? { modelId }
+      : {}),
+    ...(modelDisplayName
+      ? { modelDisplayName }
       : {}),
   };
 }
@@ -1029,6 +1057,7 @@ function openEditGatewayEndpointDialog(endpoint: GatewayEndpoint) {
     gatewayEndpointForm.providerId = providerId;
   }
   gatewayEndpointForm.apiKey = endpoint.apiKey ?? "";
+  gatewayEndpointForm.modelId = endpoint.modelId ?? "";
   isGatewayEndpointDialogOpen.value = true;
 }
 
@@ -1185,7 +1214,7 @@ function handleGatewayEndpointDialogOpenChange(open: boolean) {
   }
 }
 
-async function saveGatewayEndpoint(payload: { providerId: string; apiKey: string }) {
+async function saveGatewayEndpoint(payload: { providerId: string; apiKey: string; modelId: string }) {
   const endpoint: GatewayEndpoint = {
     ...buildGatewayEndpointFromValues(payload),
   };
@@ -1253,7 +1282,7 @@ async function testGatewayEndpoint(endpoint: GatewayEndpoint) {
   await runGatewayEndpointTest(endpoint);
 }
 
-async function testGatewayEndpointFromDialog(payload: { providerId: string; apiKey: string }) {
+async function testGatewayEndpointFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
   try {
     const endpoint = buildGatewayEndpointFromValues(payload);
     if (!validateGatewayEndpoint(endpoint, true)) {

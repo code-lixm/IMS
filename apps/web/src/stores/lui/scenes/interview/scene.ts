@@ -2,6 +2,8 @@ import { computed, ref, type ComputedRef } from "vue";
 import { useCandidatesStore } from "@/stores/candidates";
 import { useLuiStore } from "@/stores/lui";
 
+const DEFAULT_INTERVIEW_AGENT_ID = "agent_builtin_interview";
+
 interface InterviewSceneOptions {
   candidateId: ComputedRef<string | null>;
   store: ReturnType<typeof useLuiStore>;
@@ -12,6 +14,19 @@ interface InterviewSceneOptions {
 export function useInterviewScene(options: InterviewSceneOptions) {
   const { candidateId, store, candidatesStore, notifyError } = options;
   const isSyncingCandidateWorkspace = ref(false);
+
+  function resolveInterviewWorkflowAgentId() {
+    const builtinInterviewAgent = store.agents.find(
+      (agent) => agent.id === DEFAULT_INTERVIEW_AGENT_ID,
+    );
+    if (builtinInterviewAgent) {
+      return builtinInterviewAgent.id;
+    }
+
+    return store.agents.find(
+      (agent) => agent.sceneAffinity === "interview" && agent.mode === "workflow",
+    )?.id ?? null;
+  }
 
   const currentCandidate = computed(() => {
     const activeCandidateId = candidateId.value;
@@ -63,15 +78,22 @@ export function useInterviewScene(options: InterviewSceneOptions) {
       const selectedConversation = store.conversations.find(
         (conversation) => conversation.id === targetConversationId,
       );
-      const fallbackAgentId = store.selectedAgentId ?? store.defaultAgent?.id ?? null;
+      const interviewWorkflowAgentId = resolveInterviewWorkflowAgentId();
       const hasModelSelection = Boolean(store.selectedModelId && store.selectedModelProvider);
-      const needsAgentDefault = !selectedConversation?.agentId && Boolean(fallbackAgentId);
+      const resolvedAgentId = selectedConversation?.agentResolution?.resolvedAgentId ?? selectedConversation?.agentId ?? null;
+      const needsInterviewWorkflowAgent = Boolean(
+        interviewWorkflowAgentId && resolvedAgentId !== interviewWorkflowAgentId,
+      );
       const needsModelDefault = hasModelSelection
         && (!selectedConversation?.modelId || !selectedConversation?.modelProvider);
 
-      if (needsAgentDefault || needsModelDefault) {
+      if (interviewWorkflowAgentId && store.selectedAgentId !== interviewWorkflowAgentId) {
+        store.selectedAgentId = interviewWorkflowAgentId;
+      }
+
+      if (needsInterviewWorkflowAgent || needsModelDefault) {
         await store.updateConversationAiConfig({
-          agentId: needsAgentDefault ? fallbackAgentId : undefined,
+          agentId: needsInterviewWorkflowAgent ? interviewWorkflowAgentId : undefined,
           modelProvider: needsModelDefault ? store.selectedModelProvider : undefined,
           modelId: needsModelDefault ? store.selectedModelId : undefined,
         });

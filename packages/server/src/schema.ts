@@ -142,6 +142,7 @@ export const candidateWorkspaces = sqliteTable("candidate_workspaces", {
 // ---------------------------------------------------------------------------
 export const importBatches = sqliteTable("import_batches", {
   id: text("id").primaryKey(),
+  displayName: text("display_name"),
   status: text("status").notNull().default("queued"),
   sourceType: text("source_type"),
   currentStage: text("current_stage"),

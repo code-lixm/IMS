@@ -7,6 +7,7 @@ import { db } from "./db";
 import { remoteUsers } from "./schema";
 import { config } from "./config";
 import { BaobaoClient, setBaobaoClient } from "./services/baobao-client";
+import { restorePersistedHttpAuth } from "./services/baobao-http-login";
 import { getDiscovery } from "./services/share/discovery";
 import { syncManager } from "./services/sync-manager";
 
@@ -27,9 +28,55 @@ const persistedRemote = await db
   .limit(1);
 
 const restoredRemote = persistedRemote[0];
-if (restoredRemote?.token) {
+const canRestoreClient = Boolean(
+  restoredRemote?.token
+  && restoredRemote.tokenExpAt
+  && Date.now() <= restoredRemote.tokenExpAt,
+);
+
+console.log("[auth:start] remote auth snapshot", {
+  found: Boolean(restoredRemote),
+  username: restoredRemote?.username ?? null,
+  hasToken: Boolean(restoredRemote?.token),
+  tokenExpAt: restoredRemote?.tokenExpAt ?? null,
+  tokenExpired: restoredRemote?.tokenExpAt ? Date.now() > restoredRemote.tokenExpAt : null,
+  hasCookies: Boolean(restoredRemote?.cookieJson),
+  canRestoreClient,
+});
+
+let startupRecoveredAuth: {
+  token: string;
+  tokenExpAt: number | null;
+  user: {
+    id: string;
+    name: string;
+    username: string;
+    email: string | null;
+  };
+} | null = null;
+
+if (canRestoreClient && restoredRemote?.token) {
   setBaobaoClient(new BaobaoClient(restoredRemote.token));
   getDiscovery("Interview-Manager", config.port).setLocalUserInfo(restoredRemote.username, restoredRemote.name);
+  console.log("[auth:start] restored BaobaoClient from persisted token", {
+    username: restoredRemote.username,
+    tokenExpAt: restoredRemote.tokenExpAt,
+  });
+} else {
+  startupRecoveredAuth = await restorePersistedHttpAuth();
+  if (startupRecoveredAuth?.token) {
+    setBaobaoClient(new BaobaoClient(startupRecoveredAuth.token));
+    getDiscovery("Interview-Manager", config.port).setLocalUserInfo(
+      startupRecoveredAuth.user.username,
+      startupRecoveredAuth.user.name,
+    );
+    console.log("[auth:start] restored BaobaoClient from persisted cookies", {
+      username: startupRecoveredAuth.user.username,
+      tokenExpAt: startupRecoveredAuth.tokenExpAt,
+    });
+  } else {
+    console.log("[auth:start] no recoverable persisted auth for BaobaoClient");
+  }
 }
 
 const server = Bun.serve({
@@ -48,7 +95,7 @@ const server = Bun.serve({
   },
 });
 
-if (restoredRemote?.token) {
+if ((canRestoreClient && restoredRemote?.token) || startupRecoveredAuth?.token) {
   // Keep health endpoint responsive on startup; remote sync runs in background.
   queueMicrotask(() => {
     void runInitialSync("startup");

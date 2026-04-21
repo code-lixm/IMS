@@ -67,6 +67,30 @@ function normalizeOpenAIBaseURL(baseURL: string | null | undefined): string {
   return `${withoutOperationPath}/v1`;
 }
 
+export function detectRoundFromWorkflowRequest(content: string): number | null {
+  const explicitMatch = content.match(/(?:第\s*([1-4])\s*轮|round\s*([1-4])|^\s*([1-4])\s*$)/i);
+  if (explicitMatch) {
+    return Number(explicitMatch[1] ?? explicitMatch[2] ?? explicitMatch[3]);
+  }
+
+  const previousRoundMatch = content.match(/(?:上一轮|上轮|前一轮)\D*([1-4])\s*轮/i);
+  if (previousRoundMatch) {
+    const nextRound = Number(previousRoundMatch[1]) + 1;
+    return nextRound >= 1 && nextRound <= 4 ? nextRound : null;
+  }
+
+  return null;
+}
+
+export function isQuestionGenerationRequest(content: string): boolean {
+  const normalized = content.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return /(?:出题|面试题|面试问题|生成.{0,12}(?:题|问题)|questions?)/i.test(normalized);
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -410,7 +434,7 @@ export function shouldPersistWorkflowArtifact(input: {
       return false;
     }
 
-    return /初筛报告|筛选结论|待核验项|六维度评分|通过初筛|进入面试环节|建议：进入面试/.test(normalized);
+    return isLikelyScreeningArtifactContent(normalized);
   }
 
   if (input.stage === "S1") {
@@ -439,6 +463,38 @@ export function shouldPersistWorkflowArtifact(input: {
 
   const expectedAction = "advance-stage";
   return input.workflowAction === expectedAction;
+}
+
+function isLikelyScreeningArtifactContent(content: string): boolean {
+  if (/初筛报告|筛选结论|待核验项|六维度评分|通过初筛|进入面试环节|建议：进入面试/.test(content)) {
+    return true;
+  }
+
+  const headingMatches = Array.from(content.matchAll(/^##\s+(.+)$/gm)).map((match) => match[1].trim());
+  const screeningHeadings = new Set([
+    "分析结论",
+    "红线风险核查",
+    "维度评分明细",
+    "加减分项",
+    "待核验项",
+    "面试建议考察维度",
+  ]);
+  const headingHitCount = headingMatches.filter((heading) => screeningHeadings.has(heading)).length;
+  if (headingHitCount >= 3) {
+    return true;
+  }
+
+  const signalPatterns = [
+    /红线风险/, 
+    /待核验项/,
+    /考察维度/,
+    /筛选结论|初筛结论/,
+    /匹配度|岗位核心能力/,
+    /通过|待定|淘汰/,
+    /亮点|风险点|业务价值/,
+  ];
+  const signalHitCount = signalPatterns.filter((pattern) => pattern.test(content)).length;
+  return signalHitCount >= 3;
 }
 
 export async function persistWorkflowStageArtifact(input: {
@@ -786,6 +842,28 @@ async function prepareWorkflowExecutionRequest(
   if (!hasScreeningDocument && workflow.currentStage !== "S0") {
     await updateWorkflow(workflow.id, { currentStage: "S0" });
     workflow.currentStage = "S0";
+  }
+
+  if (
+    workflow.currentStage === "S0"
+    && hasScreeningDocument
+    && isQuestionGenerationRequest(userMessage)
+  ) {
+    const requestedRound = detectRoundFromWorkflowRequest(userMessage);
+    const nextStageData = requestedRound
+      ? {
+          ...workflow.stageData,
+          round: requestedRound,
+          suggestedRound: null,
+        }
+      : workflow.stageData;
+
+    await updateWorkflow(workflow.id, {
+      currentStage: "S1",
+      stageData: nextStageData,
+    });
+    workflow.currentStage = "S1";
+    workflow.stageData = nextStageData;
   }
 
   const workflowDocumentNotes: string[] = [];

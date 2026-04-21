@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { consumeLuiMessageStream } from "./stream";
 
 function createStreamResponse(chunks: string[]): Response {

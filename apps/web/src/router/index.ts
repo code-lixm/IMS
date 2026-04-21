@@ -32,12 +32,13 @@ router.beforeEach(async (to) => {
   const isAuthenticated = authStore.status === "valid";
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
   const guestOnly = to.matched.some((record) => record.meta.guestOnly);
+  const forceReauth = typeof to.query.reauth === "string" && to.query.reauth === "1";
 
   if (requiresAuth && !isAuthenticated) {
-    return { path: "/login", query: { redirect: to.fullPath } };
+    return { path: "/login", query: { redirect: to.fullPath, reauth: "1" } };
   }
 
-  if (guestOnly && isAuthenticated) {
+  if (guestOnly && isAuthenticated && !forceReauth) {
     const redirect = typeof to.query.redirect === "string" ? to.query.redirect : "/candidates";
     return redirect;
   }

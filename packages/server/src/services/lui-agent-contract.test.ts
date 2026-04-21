@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { guardAgentUserMessage, INTERVIEW_WORKFLOW_CONTRACT } from "./lui-agent-contract";
 
 describe("lui-agent-contract S2 guard", () => {

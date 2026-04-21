@@ -8,6 +8,13 @@ export interface BaobaoLoginQrData {
   source: "background-image" | "element-screenshot" | "qr-text";
   refreshed: boolean;
   fetchedAt: number;
+  authenticated?: boolean;
+  user?: {
+    id: string;
+    name: string;
+    username: string;
+    email: string | null;
+  } | null;
 }
 
 export interface BaobaoLoginSessionStatusData {

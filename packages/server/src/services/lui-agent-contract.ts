@@ -320,6 +320,7 @@ function buildAssessmentClarifyReply(): string {
   return [
     `${WORKFLOW_CLARIFY_BASE}当前在评估阶段。`,
     "请直接提供面试纪要或候选人回答记录，格式不限；你记下的要点或零散记录也可以。",
+    "最少补充这三类信息：问了哪些题、候选人怎么回答、你的面试纪要或结论。",
   ].join(" ");
 }
 
@@ -338,6 +339,20 @@ function looksLikeStageDecisionWithoutNotes(text: string): boolean {
   }
 
   return decisionSignals.test(normalized) && normalized.length <= 30;
+}
+
+function looksLikeVagueAssessmentInput(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) {
+    return true;
+  }
+
+  const noteSignals = /纪要|记录|回答|题目|面试|候选人|问|答|notes|interview|feedback|评分|评价|建议|结论/;
+  if (noteSignals.test(normalized)) {
+    return normalized.length <= 8;
+  }
+
+  return normalized.length <= 16;
 }
 
 export function buildAgentContractPromptSegment(contract: AgentContract, stage: AgentWorkflowStage | null): string | null {
@@ -416,7 +431,11 @@ export function guardAgentUserMessage(input: {
     input.workflowStage === "S2"
     && input.contract.hardRules.requireInterviewNotesInS2
     && detectedIntent === "assessment"
-    && (normalizedContent.length === 0 || looksLikeStageDecisionWithoutNotes(normalizedContent))
+    && (
+      normalizedContent.length === 0
+      || looksLikeStageDecisionWithoutNotes(normalizedContent)
+      || looksLikeVagueAssessmentInput(normalizedContent)
+    )
   ) {
     return {
       kind: "clarify",

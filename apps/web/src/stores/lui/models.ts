@@ -49,6 +49,9 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
   }
 
   function normalizeEndpoint(endpoint: GatewayEndpoint): GatewayEndpoint {
+    const modelId = endpoint.modelId?.trim();
+    const modelDisplayName = endpoint.modelDisplayName?.trim();
+
     // 如果提供了 providerId，使用简化配置模式
     if (endpoint.providerId) {
       return {
@@ -58,6 +61,8 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
         provider: endpoint.providerId.trim(),
         providerId: endpoint.providerId.trim(),
         ...(endpoint.apiKey?.trim() ? { apiKey: endpoint.apiKey.trim() } : {}),
+        ...(modelId ? { modelId } : {}),
+        ...(modelDisplayName ? { modelDisplayName } : {}),
       };
     }
 
@@ -68,6 +73,8 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
       baseURL: endpoint.baseURL.trim(),
       provider: endpoint.provider.trim(),
       ...(endpoint.apiKey?.trim() ? { apiKey: endpoint.apiKey.trim() } : {}),
+      ...(modelId ? { modelId } : {}),
+      ...(modelDisplayName ? { modelDisplayName } : {}),
     };
   }
 
@@ -338,9 +345,27 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     const preferredProviderIds = new Set<string>();
 
     if (preferredEndpoint) {
+      const preferredModelId = preferredEndpoint.modelId?.trim();
       const normalizedProviderId = preferredEndpoint.providerId?.trim()
         || preferredEndpoint.provider?.trim()
         || preferredEndpoint.id.trim();
+
+      if (preferredModelId) {
+        const providerMatchedModel = normalizedProviderId
+          ? models.value.find(
+              (model) => model.id === preferredModelId && model.provider === normalizedProviderId,
+            )
+          : undefined;
+        if (providerMatchedModel) {
+          return providerMatchedModel;
+        }
+
+        const idMatchedModel = models.value.find((model) => model.id === preferredModelId);
+        if (idMatchedModel) {
+          return idMatchedModel;
+        }
+      }
+
       if (normalizedProviderId) {
         preferredProviderIds.add(normalizedProviderId);
       }

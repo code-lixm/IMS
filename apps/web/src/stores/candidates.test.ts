@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import type { CandidateListItemSummary } from "@ims/shared";
 import { candidatesApi } from "@/api/candidates";

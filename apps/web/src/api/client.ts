@@ -6,6 +6,9 @@
 import { SERVER_BASE_URL, type ApiMeta, type ApiResponse } from "@ims/shared";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const AUTH_REDIRECT_ERROR_CODES = new Set(["AUTH_EXPIRED", "AUTH_INVALID", "AUTH_REQUIRED"]);
+
+let unauthorizedRedirectInFlight = false;
 
 export class ApiError extends Error {
   constructor(
@@ -102,6 +105,29 @@ function isApiFailure<T>(json: ApiResponse<T>): json is Extract<ApiResponse<T>, 
   return json.success === false;
 }
 
+function redirectToLoginOnUnauthorized(): void {
+  if (typeof window === "undefined" || unauthorizedRedirectInFlight) {
+    return;
+  }
+
+  const { pathname, search, hash } = window.location;
+  if (pathname === "/login") {
+    return;
+  }
+
+  unauthorizedRedirectInFlight = true;
+  const redirect = `${pathname}${search}${hash}` || "/candidates";
+  window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}&reauth=1`);
+}
+
+function shouldRedirectOnUnauthorized(path: string, errorCode?: string): boolean {
+  if (path.startsWith("/api/auth/")) {
+    return false;
+  }
+
+  return Boolean(errorCode && AUTH_REDIRECT_ERROR_CODES.has(errorCode));
+}
+
 async function requestEnvelope<T>(path: string, options: BaseRequestOptions = {}): Promise<T> {
   const { timeoutMs, signal, headers, ...rest } = options;
   const { signal: mergedSignal, cleanup } = mergeSignals(signal, timeoutMs);
@@ -116,6 +142,9 @@ async function requestEnvelope<T>(path: string, options: BaseRequestOptions = {}
     const json = await readJsonResponse<T>(response);
 
     if (isApiFailure(json)) {
+      if (response.status === 401 && shouldRedirectOnUnauthorized(path, json.error.code)) {
+        redirectToLoginOnUnauthorized();
+      }
       throw new ApiError(json.error.code, json.error.message, response.status, json.meta);
     }
 
@@ -141,6 +170,9 @@ export async function requestRaw(path: string, options: BaseRequestOptions = {})
       if (contentType.includes("application/json")) {
         const json = await readJsonResponse<unknown>(response);
         if (isApiFailure(json)) {
+          if (response.status === 401 && shouldRedirectOnUnauthorized(path, json.error.code)) {
+            redirectToLoginOnUnauthorized();
+          }
           throw new ApiError(json.error.code, json.error.message, response.status, json.meta);
         }
       }

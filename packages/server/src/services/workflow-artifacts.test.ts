@@ -1,12 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { buildStageFrontmatter, resolveStageFileName, withStageFrontmatter } from "./workflow-artifacts";
-import {
-  getAvailableNextStages,
-  getSuggestedNextRound,
-  isRejectedAssessmentContent,
-  shouldPersistWorkflowArtifact,
-} from "./lui-workflow";
 import { composeWorkflowSystemPrompt } from "./lui-workflow-runtime";
+
+vi.mock("../db", () => ({ db: {} }));
+
+let getAvailableNextStages: typeof import("./lui-workflow").getAvailableNextStages;
+let getSuggestedNextRound: typeof import("./lui-workflow").getSuggestedNextRound;
+let isRejectedAssessmentContent: typeof import("./lui-workflow").isRejectedAssessmentContent;
+let shouldPersistWorkflowArtifact: typeof import("./lui-workflow").shouldPersistWorkflowArtifact;
+let detectRoundFromWorkflowRequest: typeof import("./lui-workflow").detectRoundFromWorkflowRequest;
+let isQuestionGenerationRequest: typeof import("./lui-workflow").isQuestionGenerationRequest;
+
+beforeAll(async () => {
+  ({
+    getAvailableNextStages,
+    getSuggestedNextRound,
+    isRejectedAssessmentContent,
+    shouldPersistWorkflowArtifact,
+    detectRoundFromWorkflowRequest,
+    isQuestionGenerationRequest,
+  } = await import("./lui-workflow"));
+});
 
 describe("workflow-artifacts", () => {
   test("uses round-aware filename for S1", () => {
@@ -98,6 +112,29 @@ describe("workflow-artifacts", () => {
     })).toBe(false);
   });
 
+  test("persists structured S0 report even without explicit advance marker", () => {
+    expect(shouldPersistWorkflowArtifact({
+      stage: "S0",
+      confirmedRound: null,
+      workflowAction: null,
+      content: [
+        "# 初筛报告",
+        "",
+        "## 分析结论",
+        "- 当前匹配度中高，建议进入后续面试。",
+        "",
+        "## 红线风险核查",
+        "- 未发现明显合规风险。",
+        "",
+        "## 待核验项",
+        "- 需要面试阶段确认项目 ownership。",
+        "",
+        "## 面试建议考察维度",
+        "- 深入验证复杂项目中的业务价值与方案取舍。",
+      ].join("\n"),
+    })).toBe(true);
+  });
+
   test("workflow prompt keeps formal stage documents free of workflow control text", () => {
     const prompt = composeWorkflowSystemPrompt({
       workflowStage: "S1",
@@ -153,6 +190,18 @@ describe("workflow-artifacts", () => {
     expect(prompt).toContain("微信可复制块必须使用严格逐行模板");
     expect(prompt).toContain("若面试评价为 B 或 C");
     expect(prompt).toContain("正文不要写一级标题");
+  });
+
+  test("detects question-generation intent from workflow requests", () => {
+    expect(isQuestionGenerationRequest("请直接生成技术专家面试（第1轮）的面试题")).toBe(true);
+    expect(isQuestionGenerationRequest("帮我出题，先做第2轮")).toBe(true);
+    expect(isQuestionGenerationRequest("我补充一下面试纪要")).toBe(false);
+  });
+
+  test("extracts requested round from workflow requests", () => {
+    expect(detectRoundFromWorkflowRequest("请直接生成技术专家面试（第1轮）的面试题")).toBe(1);
+    expect(detectRoundFromWorkflowRequest("继续 Round 3 的问题")).toBe(3);
+    expect(detectRoundFromWorkflowRequest("请先出题")).toBeNull();
   });
 
   test("non-rejected S2 can loop back to S1 before completion", () => {
