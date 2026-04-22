@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type { AuthStatusData } from "@ims/shared";
+import type { JsonRequestOptions } from "./client";
 
 export interface BaobaoLoginQrData {
   provider: "baobao";
@@ -41,7 +42,7 @@ export const authApi = {
       json: { token, expiresAt, name, email },
     });
   },
-  baobaoQr() { return api<BaobaoLoginQrData>("/api/auth/baobao/qr"); },
-  baobaoLoginStatus() { return api<BaobaoLoginSessionStatusData>("/api/auth/baobao/login-status"); },
+  baobaoQr(options?: JsonRequestOptions) { return api<BaobaoLoginQrData>("/api/auth/baobao/qr", options ?? {}); },
+  baobaoLoginStatus(options?: JsonRequestOptions) { return api<BaobaoLoginSessionStatusData>("/api/auth/baobao/login-status", options ?? {}); },
   logout() { return api("/api/auth/logout", { method: "POST" }); },
 };

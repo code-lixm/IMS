@@ -82,19 +82,34 @@
                 页面停留期间会自动检测过期状态并静默刷新。
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              class="gap-1.5"
-              :disabled="qrState.loading"
-              @click="loadQrCode"
-            >
-              <RefreshCw
-                class="h-3.5 w-3.5"
-                :class="qrState.loading ? 'animate-spin' : ''"
-              />
-              刷新
-            </Button>
+            <div class="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                class="gap-1.5"
+                :disabled="qrState.loading || qrState.resetting"
+                @click="loadQrCode"
+              >
+                <RefreshCw
+                  class="h-3.5 w-3.5"
+                  :class="qrState.loading ? 'animate-spin' : ''"
+                />
+                刷新
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                class="gap-1.5"
+                :disabled="qrState.loading || qrState.resetting"
+                @click="resetLoginSession"
+              >
+                <RefreshCw
+                  class="h-3.5 w-3.5"
+                  :class="qrState.resetting ? 'animate-spin' : ''"
+                />
+                清空并重刷
+              </Button>
+            </div>
           </div>
 
           <div
@@ -202,6 +217,7 @@ const qrState = reactive<{
   loginPolling: boolean;
   loginDetected: boolean;
   redirecting: boolean;
+  resetting: boolean;
 }>({
   loading: false,
   refreshing: false,
@@ -215,12 +231,36 @@ const qrState = reactive<{
   loginPolling: false,
   loginDetected: false,
   redirecting: false,
+  resetting: false,
 });
 
 const AUTO_REFRESH_MS = 20000;
 const STATUS_POLL_MS = 3000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let statusTimer: ReturnType<typeof setInterval> | null = null;
+let requestEpoch = 0;
+let abortCtrl: AbortController | null = null;
+
+function newEpoch(): number {
+  requestEpoch += 1;
+  if (abortCtrl) {
+    abortCtrl.abort();
+  }
+  abortCtrl = new AbortController();
+  return requestEpoch;
+}
+
+function abortEpoch(): void {
+  if (abortCtrl) {
+    abortCtrl.abort();
+    abortCtrl = null;
+  }
+  requestEpoch += 1;
+}
+
+function isEpochValid(epoch: number): boolean {
+  return epoch === requestEpoch && abortCtrl !== null && !abortCtrl.signal.aborted;
+}
 
 function isUpstreamConnectionError(message: string | null | undefined) {
   if (!message) return false;
@@ -284,11 +324,82 @@ function stopPollingTimers() {
     clearInterval(statusTimer);
     statusTimer = null;
   }
+
+  abortEpoch();
 }
 
 async function initializeLoginView() {
   await loadQrCode();
   startPollingTimers();
+}
+
+function resetQrState() {
+  qrState.imageSrc = "";
+  qrState.qrSvgMarkup = "";
+  qrState.loadError = "";
+  qrState.statusError = "";
+  qrState.fetchedAt = null;
+  qrState.source = null;
+  qrState.refreshed = false;
+  qrState.loginPolling = false;
+  qrState.loginDetected = false;
+  qrState.redirecting = false;
+}
+
+function applyAuthenticatedUser(user: { id: string; name: string; email: string | null }) {
+  authStore.status = "valid";
+  authStore.user = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+  };
+  authStore.initialized = true;
+}
+
+async function navigateAfterLogin() {
+  stopPollingTimers();
+
+  try {
+    await router.replace(redirectTarget());
+  } catch (error) {
+    qrState.redirecting = false;
+    qrState.statusError = error instanceof Error ? error.message : "登录成功，但页面跳转失败";
+    throw error;
+  }
+
+  if (router.currentRoute.value.path === "/login") {
+    qrState.redirecting = false;
+    qrState.statusError = "登录成功，但页面仍停留在登录页，请稍后重试。";
+    return;
+  }
+
+  void authStore.checkStatus({ force: true });
+}
+
+async function resetLoginSession() {
+  if (qrState.resetting) {
+    return;
+  }
+
+  qrState.resetting = true;
+  stopPollingTimers();
+  resetQrState();
+
+  try {
+    await authStore.logout();
+    notifySuccess("已清空当前登录信息，正在重新获取二维码", {
+      title: "已重置登录状态",
+    });
+    window.location.reload();
+  } catch (error) {
+    notifyError(reportAppError("login-view/reset-login-session", error, {
+      title: "清空登录信息失败",
+      fallbackMessage: "请稍后重试",
+    }));
+    await initializeLoginView();
+  } finally {
+    qrState.resetting = false;
+  }
 }
 
 function redirectTarget() {
@@ -307,9 +418,13 @@ function formatTime(timestamp: number) {
 
 async function loadQrCode(options?: { silent?: boolean }) {
   const silent = options?.silent ?? false;
+  const epoch = newEpoch();
+  const signal = abortCtrl!.signal;
+
   console.log("[login-view] loadQrCode:start", {
     silent,
     hasRenderedQr: hasRenderedQrCode(),
+    epoch,
   });
 
   if (silent) {
@@ -320,31 +435,27 @@ async function loadQrCode(options?: { silent?: boolean }) {
   }
 
   try {
-    const result = await authApi.baobaoQr();
+    const result = await authApi.baobaoQr({ signal });
+
+    if (!isEpochValid(epoch)) {
+      console.log("[login-view] loadQrCode:epoch-expired", { epoch, currentEpoch: requestEpoch });
+      return;
+    }
+
     if (result.authenticated && result.user) {
       qrState.loginDetected = true;
       qrState.redirecting = true;
       qrState.loadError = "";
       qrState.statusError = "";
 
-      authStore.status = "valid";
-      authStore.user = {
-        id: result.user.id,
-        name: result.user.name,
-        email: result.user.email,
-      };
-      authStore.initialized = true;
+      applyAuthenticatedUser(result.user);
 
       console.log("[login-view] loadQrCode:already-authenticated", {
         redirect: redirectTarget(),
         userId: result.user.id,
       });
 
-      await router.replace(redirectTarget());
-      if (router.currentRoute.value.path === "/login") {
-        window.location.assign(redirectTarget());
-      }
-      void authStore.checkStatus({ force: true });
+      await navigateAfterLogin();
       return;
     }
 
@@ -365,6 +476,16 @@ async function loadQrCode(options?: { silent?: boolean }) {
     qrState.loadError = "";
     qrState.statusError = "";
   } catch (error) {
+    if (!isEpochValid(epoch)) {
+      console.log("[login-view] loadQrCode:epoch-expired-error", { epoch, currentEpoch: requestEpoch });
+      return;
+    }
+
+    if (error instanceof ApiError && error.code === "REQUEST_ABORTED") {
+      console.log("[login-view] loadQrCode:aborted", { epoch });
+      return;
+    }
+
     reportAppError("login-view/load-qr", error, {
       title: "二维码加载失败",
       fallbackMessage: "获取二维码失败",
@@ -433,14 +554,17 @@ async function checkLoginStatus() {
   if (qrState.redirecting || qrState.loading) return;
   if (!hasRenderedQrCode()) return;
 
+  const epoch = newEpoch();
+  const signal = abortCtrl!.signal;
   qrState.loginPolling = true;
   console.log("[login-view] checkLoginStatus:start", {
     redirecting: qrState.redirecting,
     loginDetected: qrState.loginDetected,
+    epoch,
   });
 
   try {
-    const result = await authApi.baobaoLoginStatus();
+    const result = await authApi.baobaoLoginStatus({ signal });
     console.log("[login-view] checkLoginStatus:result", {
       status: result.status,
       authenticated: result.authenticated,
@@ -448,6 +572,11 @@ async function checkLoginStatus() {
       error: result.error,
       userId: result.user?.id ?? null,
     });
+
+    if (!isEpochValid(epoch)) {
+      console.log("[login-view] checkLoginStatus:epoch-expired", { epoch, currentEpoch: requestEpoch });
+      return;
+    }
 
     if (!result.authenticated && result.error) {
       if (result.error === "No QR session active") {
@@ -478,24 +607,22 @@ async function checkLoginStatus() {
         target: redirectTarget(),
       });
 
-      authStore.status = "valid";
-      authStore.user = {
-        id: result.user.id,
-        name: result.user.name,
-        email: result.user.email,
-      };
-      authStore.initialized = true;
+      applyAuthenticatedUser(result.user);
 
       notifySuccess("登录成功，正在进入系统", { title: "欢迎回来" });
-      await router.replace(redirectTarget());
-
-      if (router.currentRoute.value.path === "/login") {
-        window.location.assign(redirectTarget());
-      }
-
-      void authStore.checkStatus({ force: true });
+      await navigateAfterLogin();
     }
   } catch (error) {
+    if (!isEpochValid(epoch)) {
+      console.log("[login-view] checkLoginStatus:epoch-expired-error", { epoch, currentEpoch: requestEpoch });
+      return;
+    }
+
+    if (error instanceof ApiError && error.code === "REQUEST_ABORTED") {
+      console.log("[login-view] checkLoginStatus:aborted", { epoch });
+      return;
+    }
+
     qrState.redirecting = false;
     qrState.statusError = "登录状态检查失败，稍后自动重试";
     notifyError(reportAppError("login-view/check-login-status", error, {

@@ -27,7 +27,7 @@ interface BaseRequestOptions extends Omit<RequestInit, "signal"> {
   timeoutMs?: number;
 }
 
-interface JsonRequestOptions extends Omit<BaseRequestOptions, "body"> {
+export interface JsonRequestOptions extends Omit<BaseRequestOptions, "body"> {
   json?: unknown;
 }
 

@@ -217,20 +217,27 @@ async function httpPost<T>(
 }
 
 async function warmupQrSession(cookieJar: CookieJar): Promise<void> {
+  const runtimeCookieHeader = buildCookieHeaderFromJar(cookieJar);
+  const requestHeaders: Record<string, string> = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9",
+    "Referer": `${BASE_URL}/`,
+    "User-Agent": BROWSER_UA,
+  };
+  if (runtimeCookieHeader) {
+    requestHeaders.Cookie = runtimeCookieHeader;
+  }
+
   const response = await fetch(`${BASE_URL}/`, {
     method: "GET",
-    headers: {
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "zh-CN,zh;q=0.9",
-      "Referer": `${BASE_URL}/`,
-      "User-Agent": BROWSER_UA,
-    },
+    headers: requestHeaders,
   });
 
   mergeSetCookieIntoJar(response, cookieJar);
   logImportant("qr-session:warmup", {
     status: response.status,
     cookieCount: Object.keys(cookieJar).length,
+    sentCookies: Boolean(runtimeCookieHeader),
   });
 }
 
@@ -291,6 +298,15 @@ export async function restorePersistedHttpAuth(): Promise<{
     return null;
   }
 
+  const persistedToken = persistedAuth.token;
+  const persistedTokenPayload = persistedToken ? parseJwtPayload(persistedToken) : null;
+  const persistedTokenExpAt = persistedTokenPayload?.exp ? persistedTokenPayload.exp * 1000 : null;
+  const persistedTokenUsable = Boolean(
+    persistedToken
+    && persistedTokenExpAt
+    && Date.now() <= persistedTokenExpAt,
+  );
+
   const runtimeCookieJar: CookieJar = {};
   const user = await verifyLoginWithGetLoginInfo(persistedAuth.cookies, runtimeCookieJar);
   if (!user) {
@@ -298,7 +314,7 @@ export async function restorePersistedHttpAuth(): Promise<{
   }
 
   const recoveredToken = await exchangeMTokenForGhrToken(null, persistedAuth.cookies, runtimeCookieJar);
-  const token = recoveredToken ?? persistedAuth.token;
+  const token = recoveredToken ?? (persistedTokenUsable ? persistedToken : null);
   if (!token) {
     return null;
   }
@@ -398,7 +414,10 @@ function getSetCookieLines(response: Response): string[] {
 
   const single = response.headers.get("set-cookie");
   if (!single) return [];
-  return [single];
+  return single
+    .split(/,\s*(?=[^;,=]+=[^;]+)/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -868,6 +887,7 @@ export async function checkHttpLoginStatus(): Promise<{
       qrSession.cookies.session = FORCED_SESSION_COOKIE_VALUE;
     } else if (newMToken) {
       qrSession.cookies.session = newMToken;
+      qrSession.cookies.m_token = newMToken;
     }
 
     qrSession = {
@@ -924,6 +944,16 @@ export async function checkHttpLoginStatus(): Promise<{
         hasPersistedCookies: Boolean((persistedAuth?.cookies ?? []).length),
         runtimeCookieCount: Object.keys(qrSession.cookies).length,
       });
+
+      try {
+        await warmupQrSession(qrSession.cookies);
+      } catch (error) {
+        logImportant("token-exchange:warmup:failed", {
+          uuid,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       qrSession.tokenExchangeLastAttemptAt = Date.now();
       qrSession.tokenExchangeAttempts += 1;
       const preflightUser = await verifyLoginWithGetLoginInfo(

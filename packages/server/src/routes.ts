@@ -1303,14 +1303,14 @@ async function resolveBaobaoAuthStatus() {
       };
     }
 
-    if (localUser && localUser.tokenStatus !== "valid") {
+    if (localUser && localUser.tokenStatus !== "expired") {
       await db.update(users)
-        .set({ tokenStatus: "valid", lastSyncAt: Date.now() })
+        .set({ tokenStatus: "expired", lastSyncAt: Date.now() })
         .where(eq(users.id, localUser.id));
     }
 
     return {
-      status: "valid" as const,
+      status: "expired" as const,
       user: fallbackUser,
       lastValidatedAt: item.updatedAt,
     };
