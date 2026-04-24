@@ -357,3 +357,24 @@ ensureColumn("agents", "engine", "TEXT NOT NULL DEFAULT 'builtin'");
 
 export const db = drizzle(sqlite);
 export const rawDb = sqlite;
+
+let databaseClosed = false;
+
+export function closeDatabase() {
+  if (databaseClosed) {
+    return;
+  }
+  databaseClosed = true;
+
+  try {
+    sqlite.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  } catch (error) {
+    console.error("[db] WAL checkpoint before close failed", error);
+  }
+
+  try {
+    sqlite.close();
+  } catch (error) {
+    console.error("[db] close failed", error);
+  }
+}

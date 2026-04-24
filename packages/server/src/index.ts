@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { desc, eq } from "drizzle-orm";
 import "./db";
 import { route } from "./routes";
-import { db } from "./db";
+import { closeDatabase, db } from "./db";
 import { remoteUsers } from "./schema";
 import { config } from "./config";
 import { BaobaoClient, setBaobaoClient } from "./services/baobao-client";
@@ -105,6 +105,7 @@ if ((canRestoreClient && restoredRemote?.token) || startupRecoveredAuth?.token) 
 const shutdown = async () => {
   syncManager.stop();
   server.stop();
+  closeDatabase();
   process.exit(0);
 };
 

@@ -21,7 +21,7 @@ import { sendToDevice } from "./services/share/transfer";
 import { BaobaoClient, setBaobaoClient, getBaobaoClient } from "./services/baobao-client";
 import { clearBaobaoLoginSession, fetchBaobaoLoginQrCode, getBaobaoLoginSessionStatus } from "./services/baobao-login";
 import { config } from "./config";
-import { db, rawDb } from "./db";
+import { closeDatabase, db, rawDb } from "./db";
 import { corsHeaders, ok, fail } from "./utils/http";
 import {
   users, candidates, resumes, interviews, artifacts, artifactVersions,
@@ -65,6 +65,38 @@ import { emailRoute } from "./routes/email";
 import { interviewAssessmentRoute } from "./routes/interview-assessment";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
+let databaseShutdownScheduled = false;
+
+function getErrorCode(error: unknown): string | null {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = error.code;
+    if (typeof code === "string") {
+      return code;
+    }
+  }
+  return null;
+}
+
+function isFatalSqliteIoError(error: unknown, message: string) {
+  const code = getErrorCode(error);
+  return code === "SQLITE_IOERR_VNODE" || message.includes("SQLITE_IOERR") || message.includes("disk I/O error");
+}
+
+function scheduleDatabaseHealthShutdown(error: unknown, message: string) {
+  if (databaseShutdownScheduled) {
+    return;
+  }
+  databaseShutdownScheduled = true;
+  console.error("[health] fatal database state detected; server will exit so supervisor can restart", error);
+  setTimeout(() => {
+    try {
+      closeDatabase();
+    } finally {
+      console.error(`[health] exiting after database failure: ${message}`);
+      process.exit(1);
+    }
+  }, 50);
+}
 
 function normalizeOpenAIBaseURL(baseURL: string | null | undefined): string {
   const trimmed = baseURL?.trim();
@@ -1516,7 +1548,17 @@ export async function route(request: Request): Promise<Response> {
 
   // Health
   if ((path === "/api/health" || path === "/health") && request.method === "GET") {
-    return ok({ service: "interview-manager", status: "ok" });
+    try {
+      rawDb.query("SELECT COUNT(*) AS count FROM remote_users").get();
+      return ok({ service: "interview-manager", status: "ok", database: "ok" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "database unavailable";
+      console.error("[health] database check failed", error);
+      if (isFatalSqliteIoError(error, message)) {
+        scheduleDatabaseHealthShutdown(error, message);
+      }
+      return fail("DATABASE_UNAVAILABLE", `Database health check failed: ${message}`, 503);
+    }
   }
 
   // Auth
