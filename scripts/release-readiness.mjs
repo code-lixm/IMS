@@ -106,6 +106,39 @@ function checkUpdaterConfig() {
   } else {
     add(PASS, "Updater 产物", "createUpdaterArtifacts=true");
   }
+
+  const frameworks = Array.isArray(bundleCfg?.macOS?.frameworks) ? bundleCfg.macOS.frameworks : [];
+  if (frameworks.includes("Sparkle.framework")) {
+    add(PASS, "Sparkle Framework", "macOS bundle 已包含 Sparkle.framework");
+  } else {
+    add(FAIL, "Sparkle Framework", "apps/desktop/tauri.conf.json 缺少 macOS.frameworks=Sparkle.framework");
+  }
+}
+
+function checkSparkleConfig() {
+  const infoPlistPath = "apps/desktop/Info.plist";
+  if (!fs.existsSync(path.join(cwd, infoPlistPath))) {
+    add(FAIL, "Sparkle Info.plist", `缺少 ${infoPlistPath}`);
+    return;
+  }
+
+  const infoPlist = readText(infoPlistPath);
+  const feedUrlMatch = infoPlist.match(/<key>SUFeedURL<\/key>\s*<string>([^<]+)<\/string>/);
+  const publicKeyMatch = infoPlist.match(/<key>SUPublicEDKey<\/key>\s*<string>([^<]+)<\/string>/);
+  const feedUrl = feedUrlMatch?.[1]?.trim() ?? "";
+  const publicKey = publicKeyMatch?.[1]?.trim() ?? "";
+
+  if (!feedUrl || feedUrl.includes("REPLACE_WITH_SPARKLE_APPCAST_URL")) {
+    add(FAIL, "Sparkle Feed URL", "SUFeedURL 仍为空或是占位符");
+  } else {
+    add(PASS, "Sparkle Feed URL", feedUrl);
+  }
+
+  if (!publicKey || publicKey.includes("REPLACE_WITH_SPARKLE_PUBLIC_ED_KEY")) {
+    add(FAIL, "Sparkle 公钥", "SUPublicEDKey 仍为空或是占位符");
+  } else {
+    add(PASS, "Sparkle 公钥", `SUPublicEDKey 已配置，长度 ${publicKey.length}`);
+  }
 }
 
 function checkWorkflow() {
@@ -116,12 +149,21 @@ function checkWorkflow() {
   }
 
   const content = readText(workflowPath);
-  const required = ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "tauri-apps/tauri-action"];
+  const required = [
+    "TAURI_SIGNING_PRIVATE_KEY",
+    "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+    "SPARKLE_PRIVATE_KEY",
+    "tauri-apps/tauri-action",
+    "actions/deploy-pages@v4",
+    "*_universal.dmg",
+    "Sparkle-2.8.1.tar.xz",
+    "scripts/generate-sparkle-appcast.mjs",
+  ];
   const missing = required.filter((key) => !content.includes(key));
   if (missing.length > 0) {
     add(FAIL, "发布流水线", `workflow 缺少关键项: ${missing.join(", ")}`);
   } else {
-    add(PASS, "发布流水线", "workflow 已包含签名与构建步骤");
+    add(PASS, "发布流水线", "workflow 已包含 Windows updater 与 Sparkle appcast 发布步骤");
   }
 }
 
@@ -173,7 +215,7 @@ function checkGithubSecrets() {
   /** @type {{name: string}[]} */
   const secrets = JSON.parse(output);
   const names = new Set(secrets.map((s) => s.name));
-  const required = ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"];
+  const required = ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "SPARKLE_PRIVATE_KEY"];
   const missing = required.filter((n) => !names.has(n));
   if (missing.length > 0) {
     add(FAIL, "GitHub Secrets", `缺少: ${missing.join(", ")}`);
@@ -199,6 +241,7 @@ function printSummary() {
 function main() {
   const { rootVersion } = checkVersionConsistency();
   checkUpdaterConfig();
+  checkSparkleConfig();
   checkWorkflow();
   checkGitState(rootVersion);
   checkGithubSecrets();

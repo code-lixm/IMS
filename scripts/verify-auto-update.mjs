@@ -54,6 +54,26 @@ function checkUpdaterConfig() {
   return { endpoint: endpoints[0] ?? null };
 }
 
+function checkSparkleConfig() {
+  const infoPlist = readText("apps/desktop/Info.plist");
+  const feedUrlMatch = infoPlist.match(/<key>SUFeedURL<\/key>\s*<string>([^<]+)<\/string>/);
+  const publicKeyMatch = infoPlist.match(/<key>SUPublicEDKey<\/key>\s*<string>([^<]+)<\/string>/);
+  const feedUrl = feedUrlMatch?.[1]?.trim() ?? "";
+  const publicKey = publicKeyMatch?.[1]?.trim() ?? "";
+
+  if (!feedUrl || feedUrl.includes("REPLACE_WITH_SPARKLE_APPCAST_URL")) {
+    add(FAIL, "Sparkle Feed URL", "Info.plist 的 SUFeedURL 未配置完成");
+  } else {
+    add(PASS, "Sparkle Feed URL", feedUrl);
+  }
+
+  if (!publicKey || publicKey.includes("REPLACE_WITH_SPARKLE_PUBLIC_ED_KEY")) {
+    add(FAIL, "Sparkle 公钥", "Info.plist 的 SUPublicEDKey 未配置完成");
+  } else {
+    add(PASS, "Sparkle 公钥", `已配置，长度 ${publicKey.length}`);
+  }
+}
+
 function checkCapabilities() {
   const capability = readJson("apps/desktop/capabilities/default.json");
   const permissions = Array.isArray(capability.permissions) ? capability.permissions : [];
@@ -67,6 +87,7 @@ function checkCapabilities() {
 function checkCommandsWired() {
   const libRs = readText("apps/desktop/src/lib.rs");
   const required = [
+    'tauri_plugin_sparkle_updater::init()',
     "tauri_plugin_updater::Builder::new().build()",
     "check_for_app_update",
     "install_app_update",
@@ -83,6 +104,8 @@ function checkCommandsWired() {
 function checkFrontendTrigger() {
   const settingsView = readText("apps/web/src/views/SettingsView.vue");
   const required = [
+    'checkForSparkleUpdateInformation()',
+    'openSparkleUpdater()',
     'invoke<DesktopUpdateStatus>("check_for_app_update")',
     'invoke<DesktopUpdateStatus>("install_app_update")',
     'invoke("restart_desktop_app")',
@@ -97,10 +120,34 @@ function checkFrontendTrigger() {
 
 function checkLocalBuildMode() {
   const localConfig = readJson("apps/desktop/tauri.local.conf.json");
+  const frameworks = Array.isArray(localConfig?.bundle?.macOS?.frameworks) ? localConfig.bundle.macOS.frameworks : [];
+  if (frameworks.includes("Sparkle.framework")) {
+    add(PASS, "本地 Sparkle Framework", "tauri.local.conf.json 已包含 Sparkle.framework");
+  } else {
+    add(FAIL, "本地 Sparkle Framework", "tauri.local.conf.json 缺少 Sparkle.framework");
+  }
+
   if (localConfig?.bundle?.createUpdaterArtifacts === false) {
     add(WARN, "本地 build 配置", "tauri.local.conf.json 禁用了 updater artifacts；本地验证升级要用正式 tauri.conf.json 或自定义验证配置");
   } else {
     add(PASS, "本地 build 配置", "本地配置也会生成 updater artifacts");
+  }
+}
+
+function checkWorkflowForSparkle() {
+  const workflow = readText(".github/workflows/release-desktop.yml");
+  const required = [
+    "publish-sparkle-appcast",
+    "actions/deploy-pages@v4",
+    "SPARKLE_PRIVATE_KEY",
+    "*_universal.dmg",
+    "generate-sparkle-appcast.mjs",
+  ];
+  const missing = required.filter((token) => !workflow.includes(token));
+  if (missing.length > 0) {
+    add(FAIL, "Sparkle 发布流水线", `缺少: ${missing.join(", ")}`);
+  } else {
+    add(PASS, "Sparkle 发布流水线", "已配置 GitHub Pages appcast 发布链路");
   }
 }
 
@@ -126,6 +173,35 @@ async function checkEndpoint(endpoint) {
     add(PASS, "远端 latest.json", `version=${version}，platforms=${platforms.join(", ") || "<none>"}`);
   } catch (error) {
     add(WARN, "远端 latest.json", error instanceof Error ? error.message : "请求失败");
+  }
+}
+
+async function checkSparkleFeed(feedUrl) {
+  if (!feedUrl || feedUrl.includes("REPLACE_WITH_SPARKLE_APPCAST_URL")) {
+    return;
+  }
+
+  try {
+    const response = await fetch(feedUrl, {
+      headers: {
+        "User-Agent": "IMS-auto-update-verifier",
+      },
+    });
+    if (!response.ok) {
+      add(WARN, "远端 appcast.xml", `请求返回 ${response.status} ${response.statusText}`);
+      return;
+    }
+
+    const content = await response.text();
+    const hasEnclosure = content.includes("<enclosure ");
+    const hasSignature = content.includes("sparkle:edSignature=");
+    if (hasEnclosure && hasSignature) {
+      add(PASS, "远端 appcast.xml", feedUrl);
+    } else {
+      add(WARN, "远端 appcast.xml", "已返回内容，但缺少 enclosure 或 sparkle:edSignature");
+    }
+  } catch (error) {
+    add(WARN, "远端 appcast.xml", error instanceof Error ? error.message : "请求失败");
   }
 }
 
@@ -162,11 +238,16 @@ function printSummary() {
 
 async function main() {
   const config = checkUpdaterConfig();
+  checkSparkleConfig();
   checkCapabilities();
   checkCommandsWired();
   checkFrontendTrigger();
   checkLocalBuildMode();
+  checkWorkflowForSparkle();
   await checkEndpoint(config?.endpoint ?? null);
+  const infoPlist = readText("apps/desktop/Info.plist");
+  const feedUrlMatch = infoPlist.match(/<key>SUFeedURL<\/key>\s*<string>([^<]+)<\/string>/);
+  await checkSparkleFeed(feedUrlMatch?.[1]?.trim() ?? null);
   printSummary();
   printChecklist();
 }

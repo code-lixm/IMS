@@ -20,6 +20,9 @@ jobs:
           - os: macos-latest
             args: "--target x86_64-apple-darwin"
             rust_targets: "x86_64-apple-darwin"
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+            rust_targets: "aarch64-apple-darwin,x86_64-apple-darwin"
           - os: windows-latest
             args: "--target x86_64-pc-windows-msvc"
             rust_targets: "x86_64-pc-windows-msvc"
@@ -59,6 +62,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Download Sparkle framework
+        if: runner.os == 'macOS'
+        run: bash ./apps/desktop/scripts/download-sparkle.sh
+
       - name: Build and release desktop bundles
         uses: tauri-apps/tauri-action@v0
         env:
@@ -73,3 +80,69 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  publish-sparkle-appcast:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-release
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Download Sparkle tools
+        run: |
+          curl -L -o "$RUNNER_TEMP/sparkle.tar.xz" "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz"
+          tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP"
+
+      - name: Download universal macOS release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --pattern "*_universal.dmg" --dir "$RUNNER_TEMP/release-assets"
+
+      - name: Export Sparkle private key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          test -n "$SPARKLE_PRIVATE_KEY"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_private_key.txt"
+
+      - name: Fetch release metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json tagName,name,body,publishedAt > "$RUNNER_TEMP/release.json"
+
+      - name: Generate Sparkle appcast
+        run: |
+          node ./scripts/generate-sparkle-appcast.mjs \
+            --repo "${GITHUB_REPOSITORY}" \
+            --release-json "$RUNNER_TEMP/release.json" \
+            --assets-dir "$RUNNER_TEMP/release-assets" \
+            --output-dir "$RUNNER_TEMP/sparkle-pages" \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+            --sign-update "$RUNNER_TEMP/bin/sign_update" \
+            --ed-key-file "$RUNNER_TEMP/sparkle_private_key.txt" \
+            --minimum-system-version "10.15.0"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/sparkle-pages
+
+      - name: Deploy Sparkle appcast
+        uses: actions/deploy-pages@v4
