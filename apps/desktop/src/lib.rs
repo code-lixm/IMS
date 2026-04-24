@@ -18,12 +18,16 @@ const LOG_FILE_SIZE_LIMIT: u64 = 10 * 1024 * 1024;
 const LOG_FILE_COUNT_LIMIT: usize = 5;
 const LOG_EXPORT_COUNT_LIMIT: usize = 10;
 const DESKTOP_SERVER_HOST: &str = "127.0.0.1";
-const DESKTOP_SERVER_PORT: u16 = 9092;
+const DEFAULT_DESKTOP_SERVER_PORT: u16 = 9092;
+const MAX_DESKTOP_SERVER_PORT: u16 = 9112;
 const SERVER_PORT_RELEASE_WAIT_MS: u64 = 300;
+const SERVER_READY_TIMEOUT_MS: u64 = 30_000;
+const SERVER_READY_POLL_MS: u64 = 250;
 
 // Store the server child process so we can kill it on exit
 struct ServerProcess {
     child: Option<tauri_plugin_shell::process::CommandChild>,
+    port: u16,
 }
 
 struct AppLogger {
@@ -36,6 +40,11 @@ struct AppLogger {
 struct DesktopAppInfo {
     version: String,
     log_dir: String,
+}
+
+struct StartedServer {
+    child: Option<tauri_plugin_shell::process::CommandChild>,
+    port: u16,
 }
 
 impl AppLogger {
@@ -71,7 +80,9 @@ impl AppLogger {
     }
 
     fn rotate_if_needed(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let size = fs::metadata(&self.current_file).map(|value| value.len()).unwrap_or(0);
+        let size = fs::metadata(&self.current_file)
+            .map(|value| value.len())
+            .unwrap_or(0);
         if size < LOG_FILE_SIZE_LIMIT {
             return Ok(());
         }
@@ -190,6 +201,12 @@ fn open_in_file_manager(path: &Path) -> Result<(), String> {
 fn stop_managed_server<R: Runtime>(app: &AppHandle<R>) {
     if let Ok(mut server) = app.state::<Mutex<ServerProcess>>().lock() {
         if let Some(child) = server.child.take() {
+            log_event(
+                app,
+                "INFO",
+                "tauri",
+                format!("stopping managed server on port {}", server.port),
+            );
             let _ = child.kill();
         }
     }
@@ -205,19 +222,50 @@ fn should_kill_stale_server_process(command: &str) -> bool {
 }
 
 #[cfg(unix)]
-fn release_stale_server_on_port<R: Runtime>(app: &AppHandle<R>) -> bool {
+fn terminate_stale_server_process(pid: i32) -> bool {
+    let term_ok = Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+
+    std::thread::sleep(Duration::from_millis(SERVER_PORT_RELEASE_WAIT_MS));
+
+    let still_running = Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+
+    if !still_running {
+        return term_ok;
+    }
+
+    Command::new("kill")
+        .args(["-KILL", &pid.to_string()])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn release_stale_server_on_port<R: Runtime>(
+    app: &AppHandle<R>,
+    _expected_server_path: &Path,
+    port: u16,
+) -> bool {
     let output = match Command::new("lsof")
-        .args([
-            "-nP",
-            &format!("-iTCP:{}", DESKTOP_SERVER_PORT),
-            "-sTCP:LISTEN",
-            "-t",
-        ])
+        .args(["-nP", &format!("-iTCP:{}", port), "-sTCP:LISTEN", "-t"])
         .output()
     {
         Ok(output) => output,
         Err(error) => {
-            log_event(app, "WARN", "tauri", format!("failed to run lsof: {}", error));
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!("failed to run lsof: {}", error),
+            );
             return false;
         }
     };
@@ -248,14 +296,105 @@ fn release_stale_server_on_port<R: Runtime>(app: &AppHandle<R>) -> bool {
                 "tauri",
                 format!(
                     "port {} occupied by non-IMS process pid={} command={}",
-                    DESKTOP_SERVER_PORT, pid, command_text
+                    port, pid, command_text
                 ),
             );
             continue;
         }
 
-        let kill_ok = Command::new("kill")
-            .args(["-9", &pid.to_string()])
+        let kill_ok = terminate_stale_server_process(pid);
+
+        if kill_ok {
+            released = true;
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!(
+                    "terminated stale IMS server process pid={} on port {}",
+                    pid, port
+                ),
+            );
+        }
+    }
+
+    released
+}
+
+#[cfg(windows)]
+fn should_kill_stale_server_process(command: &str, expected_server_path: &Path) -> bool {
+    let lower = command.to_lowercase();
+    let expected = expected_server_path.to_string_lossy().to_lowercase();
+    lower.contains(expected.as_ref())
+}
+
+#[cfg(windows)]
+fn get_windows_process_command(pid: u32) -> String {
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "(Get-CimInstance Win32_Process -Filter \"ProcessId = {}\").CommandLine",
+                pid
+            ),
+        ])
+        .output();
+
+    output
+        .ok()
+        .map(|value| String::from_utf8_lossy(&value.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn release_stale_server_on_port<R: Runtime>(
+    app: &AppHandle<R>,
+    expected_server_path: &Path,
+    port: u16,
+) -> bool {
+    let output = match Command::new("netstat").args(["-ano", "-p", "tcp"]).output() {
+        Ok(output) => output,
+        Err(error) => {
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!("failed to run netstat: {}", error),
+            );
+            return false;
+        }
+    };
+
+    let port_suffix = format!(":{}", port);
+    let pids = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| line.contains(&port_suffix) && line.to_uppercase().contains("LISTEN"))
+        .filter_map(|line| line.split_whitespace().last()?.parse::<u32>().ok())
+        .collect::<Vec<_>>();
+
+    if pids.is_empty() {
+        return false;
+    }
+
+    let mut released = false;
+    for pid in pids {
+        let command_text = get_windows_process_command(pid);
+        if !should_kill_stale_server_process(&command_text, expected_server_path) {
+            log_event(
+                app,
+                "WARN",
+                "tauri",
+                format!(
+                    "port {} occupied by non-IMS process pid={} command={}",
+                    port, pid, command_text
+                ),
+            );
+            continue;
+        }
+
+        let kill_ok = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
             .status()
             .map(|status| status.success())
             .unwrap_or(false);
@@ -266,7 +405,10 @@ fn release_stale_server_on_port<R: Runtime>(app: &AppHandle<R>) -> bool {
                 app,
                 "WARN",
                 "tauri",
-                format!("killed stale IMS server process pid={} on port {}", pid, DESKTOP_SERVER_PORT),
+                format!(
+                    "killed stale IMS server process pid={} on port {}",
+                    pid, port
+                ),
             );
         }
     }
@@ -274,8 +416,12 @@ fn release_stale_server_on_port<R: Runtime>(app: &AppHandle<R>) -> bool {
     released
 }
 
-#[cfg(not(unix))]
-fn release_stale_server_on_port<R: Runtime>(_app: &AppHandle<R>) -> bool {
+#[cfg(all(not(unix), not(windows)))]
+fn release_stale_server_on_port<R: Runtime>(
+    _app: &AppHandle<R>,
+    _expected_server_path: &Path,
+    _port: u16,
+) -> bool {
     false
 }
 
@@ -382,14 +528,14 @@ fn find_bundled_interview_opencode_dir(resource_dir: &Path) -> Option<PathBuf> {
     visit(resource_dir, 0)
 }
 
-fn probe_existing_ims_server() -> Result<Option<String>, String> {
-    let address = (DESKTOP_SERVER_HOST, DESKTOP_SERVER_PORT)
+fn probe_existing_ims_server(port: u16) -> Result<Option<String>, String> {
+    let address = (DESKTOP_SERVER_HOST, port)
         .to_socket_addrs()
         .map_err(|err| err.to_string())?
         .next()
         .ok_or_else(|| "failed to resolve desktop server address".to_string())?;
 
-    let mut stream = match TcpStream::connect_timeout(&address, std::time::Duration::from_millis(400)) {
+    let mut stream = match TcpStream::connect_timeout(&address, std::time::Duration::from_secs(2)) {
         Ok(stream) => stream,
         Err(_) => return Ok(None),
     };
@@ -409,69 +555,200 @@ fn probe_existing_ims_server() -> Result<Option<String>, String> {
         return Ok(None);
     }
 
-    if response.contains("\"service\":\"interview-manager\"") && response.contains("\"status\":\"ok\"") {
+    if response.contains("\"service\":\"interview-manager\"")
+        && response.contains("\"status\":\"ok\"")
+    {
         return Ok(Some("existing ims server is healthy".to_string()));
     }
 
     Err(format!(
         "port {} is already occupied by a non-IMS service or unhealthy process",
-        DESKTOP_SERVER_PORT
+        port
     ))
 }
 
-fn start_server<R: Runtime>(
+fn wait_for_server_ready<R: Runtime>(
     app: &AppHandle<R>,
-) -> Result<Option<tauri_plugin_shell::process::CommandChild>, Box<dyn std::error::Error>> {
-    use tauri_plugin_shell::ShellExt;
+    port: u16,
+    timeout: Duration,
+) -> Result<(), String> {
+    let started = std::time::Instant::now();
+    let mut last_error = "server is not ready yet".to_string();
 
-    match probe_existing_ims_server() {
-        Ok(Some(reason)) => {
-            log_event(
-                app,
-                "WARN",
-                "tauri",
-                format!(
-                    "reusing existing IMS server on {}:{} ({})",
-                    DESKTOP_SERVER_HOST, DESKTOP_SERVER_PORT, reason
-                ),
-            );
-            return Ok(None);
-        }
-        Ok(None) => {}
-        Err(probe_error) => {
-            log_event(
-                app,
-                "WARN",
-                "tauri",
-                format!(
-                    "probe detected occupied or unhealthy port {}: {}",
-                    DESKTOP_SERVER_PORT, probe_error
-                ),
-            );
-
-            if !release_stale_server_on_port(app) {
-                return Err(probe_error.into());
+    while started.elapsed() < timeout {
+        match probe_existing_ims_server(port) {
+            Ok(Some(reason)) => {
+                log_event(
+                    app,
+                    "INFO",
+                    "tauri",
+                    format!(
+                        "server ready on {}:{} ({})",
+                        DESKTOP_SERVER_HOST, port, reason
+                    ),
+                );
+                return Ok(());
             }
+            Ok(None) => {
+                last_error = "server port is not listening yet".to_string();
+            }
+            Err(error) => {
+                last_error = error;
+            }
+        }
 
-            std::thread::sleep(Duration::from_millis(SERVER_PORT_RELEASE_WAIT_MS));
-            if let Some(reason) = probe_existing_ims_server()? {
+        std::thread::sleep(Duration::from_millis(SERVER_READY_POLL_MS));
+    }
+
+    Err(format!(
+        "server did not become ready within {}ms: {}",
+        timeout.as_millis(),
+        last_error
+    ))
+}
+
+fn reveal_main_window<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn desktop_server_base_url(port: u16) -> String {
+    format!("http://{}:{}", DESKTOP_SERVER_HOST, port)
+}
+
+fn configure_frontend_server_base_url<R: Runtime>(app: &AppHandle<R>, port: u16) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+
+    let base_url = desktop_server_base_url(port);
+    let Ok(base_url_json) = serde_json::to_string(&base_url) else {
+        log_event(
+            app,
+            "ERROR",
+            "tauri",
+            "failed to serialize desktop server base url",
+        );
+        return;
+    };
+
+    let script = format!(
+        "const imsServerBaseUrlKey = 'ims:serverBaseUrl'; const previousImsServerBaseUrl = window.localStorage.getItem(imsServerBaseUrlKey); window.__IMS_SERVER_BASE_URL = {base_url}; window.localStorage.setItem(imsServerBaseUrlKey, {base_url}); if ({port} !== {default_port} || (previousImsServerBaseUrl && previousImsServerBaseUrl !== {base_url})) {{ window.location.reload(); }}",
+        base_url = base_url_json,
+        port = port,
+        default_port = DEFAULT_DESKTOP_SERVER_PORT,
+    );
+
+    if let Err(error) = window.eval(&script) {
+        log_event(
+            app,
+            "ERROR",
+            "tauri",
+            format!("failed to configure frontend server base url: {}", error),
+        );
+    }
+}
+
+fn resolve_server_port<R: Runtime>(
+    app: &AppHandle<R>,
+    server_path: &Path,
+) -> Result<(u16, bool), String> {
+    let requested_port = std::env::var("IMS_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_DESKTOP_SERVER_PORT);
+
+    let mut candidate_ports = vec![requested_port];
+    if requested_port == DEFAULT_DESKTOP_SERVER_PORT {
+        candidate_ports.extend((DEFAULT_DESKTOP_SERVER_PORT + 1)..=MAX_DESKTOP_SERVER_PORT);
+    }
+
+    for port in candidate_ports {
+        match probe_existing_ims_server(port) {
+            Ok(Some(reason)) => {
                 log_event(
                     app,
                     "WARN",
                     "tauri",
                     format!(
                         "reusing existing IMS server on {}:{} ({})",
-                        DESKTOP_SERVER_HOST, DESKTOP_SERVER_PORT, reason
+                        DESKTOP_SERVER_HOST, port, reason
                     ),
                 );
-                return Ok(None);
+                return Ok((port, true));
+            }
+            Ok(None) => return Ok((port, false)),
+            Err(probe_error) => {
+                log_event(
+                    app,
+                    "WARN",
+                    "tauri",
+                    format!(
+                        "probe detected occupied or unhealthy port {}: {}",
+                        port, probe_error
+                    ),
+                );
+
+                if release_stale_server_on_port(app, server_path, port) {
+                    std::thread::sleep(Duration::from_millis(SERVER_PORT_RELEASE_WAIT_MS));
+                    match probe_existing_ims_server(port) {
+                        Ok(Some(reason)) => {
+                            log_event(
+                                app,
+                                "WARN",
+                                "tauri",
+                                format!(
+                                    "reusing existing IMS server on {}:{} ({})",
+                                    DESKTOP_SERVER_HOST, port, reason
+                                ),
+                            );
+                            return Ok((port, true));
+                        }
+                        Ok(None) => return Ok((port, false)),
+                        Err(error) => {
+                            log_event(
+                                app,
+                                "WARN",
+                                "tauri",
+                                format!("port {} still unavailable after cleanup: {}", port, error),
+                            );
+                        }
+                    }
+                }
             }
         }
     }
 
+    Err(format!(
+        "no available desktop server port in {}..={}",
+        requested_port,
+        if requested_port == DEFAULT_DESKTOP_SERVER_PORT {
+            MAX_DESKTOP_SERVER_PORT
+        } else {
+            requested_port
+        }
+    ))
+}
+
+fn start_server<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<StartedServer, Box<dyn std::error::Error>> {
+    use tauri_plugin_shell::ShellExt;
+
     let resource_dir = app.path().resource_dir()?;
-    let server_path = find_server_executable(&resource_dir)
-        .ok_or_else(|| format!("server executable not found under {}", resource_dir.display()))?;
+    let server_path = find_server_executable(&resource_dir).ok_or_else(|| {
+        format!(
+            "server executable not found under {}",
+            resource_dir.display()
+        )
+    })?;
+    let (port, reuse_existing_server) = resolve_server_port(app, &server_path)?;
+    if reuse_existing_server {
+        return Ok(StartedServer { child: None, port });
+    }
+
     let app_data_dir = app.path().app_data_dir()?;
     let runtime_dir = app_data_dir.join("runtime");
     let data_dir = runtime_dir.join("data");
@@ -481,8 +758,18 @@ fn start_server<R: Runtime>(
     fs::create_dir_all(&agent_workspaces_dir)?;
     let node_modules_path = resource_dir.join("node_modules");
     let bundled_interview_opencode_dir = find_bundled_interview_opencode_dir(&resource_dir);
-    log_event(app, "INFO", "tauri", format!("starting server at: {:?}", server_path));
-    log_event(app, "INFO", "tauri", format!("server runtime dir: {:?}", runtime_dir));
+    log_event(
+        app,
+        "INFO",
+        "tauri",
+        format!("starting server at: {:?} on port {}", server_path, port),
+    );
+    log_event(
+        app,
+        "INFO",
+        "tauri",
+        format!("server runtime dir: {:?}", runtime_dir),
+    );
 
     let mut cmd = app
         .shell()
@@ -492,8 +779,12 @@ fn start_server<R: Runtime>(
         .env("IMS_RUNTIME_DIR", runtime_dir.to_str().unwrap_or(""))
         .env("IMS_DATA_DIR", data_dir.to_str().unwrap_or(""))
         .env("IMS_FILES_DIR", files_dir.to_str().unwrap_or(""))
-        .env("IMS_AGENT_WORKSPACES_DIR", agent_workspaces_dir.to_str().unwrap_or(""))
-        .env("IMS_DB_PATH", db_path.to_str().unwrap_or(""));
+        .env(
+            "IMS_AGENT_WORKSPACES_DIR",
+            agent_workspaces_dir.to_str().unwrap_or(""),
+        )
+        .env("IMS_DB_PATH", db_path.to_str().unwrap_or(""))
+        .env("IMS_PORT", port.to_string());
 
     if let Some(opencode_dir) = bundled_interview_opencode_dir {
         cmd = cmd.env(
@@ -509,16 +800,31 @@ fn start_server<R: Runtime>(
         while let Some(event) = rx.recv().await {
             match event {
                 tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
-                    log_event(&app_handle, "INFO", "server", String::from_utf8_lossy(&line));
+                    log_event(
+                        &app_handle,
+                        "INFO",
+                        "server",
+                        String::from_utf8_lossy(&line),
+                    );
                 }
                 tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
-                    log_event(&app_handle, "ERROR", "server", String::from_utf8_lossy(&line));
+                    log_event(
+                        &app_handle,
+                        "ERROR",
+                        "server",
+                        String::from_utf8_lossy(&line),
+                    );
                 }
                 tauri_plugin_shell::process::CommandEvent::Error(err) => {
                     log_event(&app_handle, "ERROR", "server", format!("error: {}", err));
                 }
                 tauri_plugin_shell::process::CommandEvent::Terminated(status) => {
-                    log_event(&app_handle, "WARN", "server", format!("terminated with status: {:?}", status));
+                    log_event(
+                        &app_handle,
+                        "WARN",
+                        "server",
+                        format!("terminated with status: {:?}", status),
+                    );
                     // Notify frontend that server has stopped
                     let _ = app_handle.emit("server-stopped", ());
                 }
@@ -527,8 +833,16 @@ fn start_server<R: Runtime>(
         }
     });
 
-    log_event(app, "INFO", "tauri", "server started successfully");
-    Ok(Some(child))
+    log_event(
+        app,
+        "INFO",
+        "tauri",
+        format!("server started successfully on port {}", port),
+    );
+    Ok(StartedServer {
+        child: Some(child),
+        port,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -544,7 +858,17 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let hide_item = MenuItem::with_id(app, "hide", "隐藏窗口", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&version_item, &open_logs_item, &export_logs_item, &show_item, &hide_item, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &version_item,
+            &open_logs_item,
+            &export_logs_item,
+            &show_item,
+            &hide_item,
+            &quit_item,
+        ],
+    )?;
 
     let _tray = TrayIconBuilder::with_id("main-tray")
         .tooltip("IMS")
@@ -556,12 +880,10 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     log_event(app, "ERROR", "logs", err);
                 }
             }
-            "export_logs" => {
-                match export_logs_bundle(app.clone()) {
-                    Ok(path) => log_event(app, "INFO", "logs", format!("logs exported to {}", path)),
-                    Err(err) => log_event(app, "ERROR", "logs", err),
-                }
-            }
+            "export_logs" => match export_logs_bundle(app.clone()) {
+                Ok(path) => log_event(app, "INFO", "logs", format!("logs exported to {}", path)),
+                Err(err) => log_event(app, "ERROR", "logs", err),
+            },
             "show" => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
@@ -851,22 +1173,63 @@ pub fn run() {
             let log_dir = app.path().app_data_dir()?.join("logs");
             let logger = AppLogger::new(log_dir)?;
             app.manage(Mutex::new(logger));
-            log_event(app.handle(), "INFO", "tauri", format!("IMS v{} starting", env!("CARGO_PKG_VERSION")));
+            log_event(
+                app.handle(),
+                "INFO",
+                "tauri",
+                format!("IMS v{} starting", env!("CARGO_PKG_VERSION")),
+            );
+
+            let mut server_port = DEFAULT_DESKTOP_SERVER_PORT;
 
             // Start the backend server
             match start_server(app.handle()) {
-                Ok(child) => {
-                    app.manage(Mutex::new(ServerProcess { child }));
+                Ok(started_server) => {
+                    server_port = started_server.port;
+                    app.manage(Mutex::new(ServerProcess {
+                        child: started_server.child,
+                        port: started_server.port,
+                    }));
                 }
                 Err(e) => {
-                    app.manage(Mutex::new(ServerProcess { child: None }));
-                    log_event(app.handle(), "ERROR", "tauri", format!("failed to start server: {}", e));
+                    app.manage(Mutex::new(ServerProcess {
+                        child: None,
+                        port: server_port,
+                    }));
+                    log_event(
+                        app.handle(),
+                        "ERROR",
+                        "tauri",
+                        format!("failed to start server: {}", e),
+                    );
                 }
             }
 
+            match wait_for_server_ready(
+                app.handle(),
+                server_port,
+                Duration::from_millis(SERVER_READY_TIMEOUT_MS),
+            ) {
+                Ok(()) => log_event(
+                    app.handle(),
+                    "INFO",
+                    "tauri",
+                    "server health check passed before showing window",
+                ),
+                Err(error) => log_event(app.handle(), "ERROR", "tauri", error),
+            }
+
+            configure_frontend_server_base_url(app.handle(), server_port);
+            reveal_main_window(app.handle());
+
             // Setup system tray
             if let Err(e) = setup_tray(app.handle()) {
-                log_event(app.handle(), "ERROR", "tauri", format!("tray setup failed: {}", e));
+                log_event(
+                    app.handle(),
+                    "ERROR",
+                    "tauri",
+                    format!("tray setup failed: {}", e),
+                );
             }
 
             // Listen for .imr deep link / file open events
@@ -882,7 +1245,12 @@ pub fn run() {
                 }
             });
 
-            log_event(app.handle(), "INFO", "tauri", format!("IMS v{} started", env!("CARGO_PKG_VERSION")));
+            log_event(
+                app.handle(),
+                "INFO",
+                "tauri",
+                format!("IMS v{} started", env!("CARGO_PKG_VERSION")),
+            );
             Ok(())
         })
         .on_window_event(|window, event| {
