@@ -164,9 +164,10 @@ pnpm dev:desktop
 当前仓库已接入：
 
 - GitHub Actions 发布流水线：`.github/workflows/release-desktop.yml`
-- Tauri Updater（设置页手动检查与安装，不强制打断用户）
+- Windows 使用官方 Tauri Updater（`latest.json`）
+- macOS 使用 Sparkle（`appcast.xml` + GitHub Pages）
 
-首次启用前请完成 3 步：
+首次启用前请完成 5 步：
 
 1. 生成 updater 签名密钥
 
@@ -183,6 +184,27 @@ pnpm --filter @ims/desktop tauri signer generate --ci -p "YOUR_STRONG_PASSWORD" 
 - `TAURI_SIGNING_PRIVATE_KEY`：私钥文件内容（PEM 文本）
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：生成密钥时设置的密码
 
+4. 生成 Sparkle EdDSA 密钥
+
+```bash
+bash ./apps/desktop/scripts/download-sparkle.sh
+./apps/desktop/sparkle-bin/generate_keys -x ./apps/desktop/sparkle_private_key.txt
+```
+
+- 将生成得到的公钥写入 `apps/desktop/Info.plist` 的 `SUPublicEDKey`
+
+5. 在 GitHub 仓库 Secrets 再配置：
+
+- `SPARKLE_PRIVATE_KEY`：`sparkle_private_key.txt` 文件内容
+
+默认的 Sparkle feed 地址为：
+
+```text
+https://code-lixm.github.io/IMS/appcast.xml
+```
+
+发布 workflow 会额外构建一个 macOS universal DMG，并把 `appcast.xml` 发布到 GitHub Pages。
+
 发布方式：
 
 ```bash
@@ -190,7 +212,10 @@ git tag v1.0.1
 git push origin v1.0.1
 ```
 
-触发后会自动构建并发布 Windows + macOS 安装包，并生成 updater 所需元数据（`latest.json`）。
+触发后会自动构建并发布 Windows + macOS 安装包，同时生成两套更新元数据：
+
+- Windows：`latest.json`
+- macOS：`appcast.xml`
 
 发布前自检：
 
@@ -198,7 +223,7 @@ git push origin v1.0.1
 pnpm release:check
 ```
 
-该命令会检查版本一致性、updater 配置、发布 workflow、Git 状态，并在可用时校验 GitHub secrets 是否存在。
+该命令会检查版本一致性、Windows updater 配置、Sparkle 配置、发布 workflow、Git 状态，并在可用时校验 GitHub secrets 是否存在。
 
 ## 已实现接口（骨架）
 
