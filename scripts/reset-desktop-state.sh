@@ -7,11 +7,13 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 APP_SUPPORT_DIR="${HOME}/Library/Application Support/com.company.interview-manager"
 LOG_DIR="${APP_SUPPORT_DIR}/logs"
 RUNTIME_DIR="${PROJECT_ROOT}/runtime"
+SERVER_RUNTIME_DIR="${PROJECT_ROOT}/packages/server/runtime"
 WEBKIT_STORAGE_DIR="${HOME}/Library/WebKit/com.company.interview-manager"
 WEBKIT_CACHE_DIR="${HOME}/Library/Caches/com.company.interview-manager"
 PREFS_FILE="${HOME}/Library/Preferences/com.company.interview-manager.plist"
 APP_NAME="IMS.app"
 BUILD_APP_PATH="${PROJECT_ROOT}/apps/desktop/target/release/bundle/macos/${APP_NAME}"
+BUILD_BUNDLE_DIR="${PROJECT_ROOT}/apps/desktop/target/release/bundle/macos"
 INSTALL_APP_PATH="/Applications/${APP_NAME}"
 PORT=9092
 DO_BUILD=0
@@ -103,6 +105,15 @@ should_kill_pid() {
   return 1
 }
 
+terminate_pid() {
+  local pid="$1"
+  kill -TERM "${pid}" 2>/dev/null || true
+  sleep 0.5
+  if kill -0 "${pid}" 2>/dev/null; then
+    kill -KILL "${pid}" 2>/dev/null || true
+  fi
+}
+
 release_port_9092() {
   if ! command -v lsof >/dev/null 2>&1; then
     log "未找到 lsof，跳过端口 ${PORT} 进程清理"
@@ -120,7 +131,7 @@ release_port_9092() {
   while IFS= read -r pid; do
     [[ -z "${pid}" ]] && continue
     if should_kill_pid "${pid}"; then
-      kill -9 "${pid}" 2>/dev/null || true
+      terminate_pid "${pid}"
       log "已结束占用 ${PORT} 的 IMS 相关进程 pid=${pid}"
     else
       log "检测到非 IMS 进程占用 ${PORT}，跳过 pid=${pid}"
@@ -129,22 +140,43 @@ release_port_9092() {
 }
 
 clean_repo_runtime() {
-  if [[ ! -d "${RUNTIME_DIR}" ]]; then
-    log "仓库 runtime 目录不存在，跳过"
-    return
+  local cleaned=0
+
+  if [[ -d "${RUNTIME_DIR}" ]]; then
+    rm -rf \
+      "${RUNTIME_DIR}/agent-workspaces" \
+      "${RUNTIME_DIR}/data" \
+      "${RUNTIME_DIR}/files" \
+      "${RUNTIME_DIR}/logs"
+
+    find "${RUNTIME_DIR}" -maxdepth 1 -type f \
+      \( -name '*.db' -o -name '*.db-*' -o -name '*.sqlite' -o -name '*.sqlite-*' -o -name '*.log' \) \
+      -exec rm -f {} +
+    cleaned=1
+    log "仓库根目录 runtime 数据已清理: ${RUNTIME_DIR}"
+  else
+    log "仓库根目录 runtime 不存在，跳过: ${RUNTIME_DIR}"
   fi
 
-  rm -rf \
-    "${RUNTIME_DIR}/agent-workspaces" \
-    "${RUNTIME_DIR}/data" \
-    "${RUNTIME_DIR}/files" \
-    "${RUNTIME_DIR}/logs"
+  if [[ -d "${SERVER_RUNTIME_DIR}" ]]; then
+    rm -rf \
+      "${SERVER_RUNTIME_DIR}/agent-workspaces" \
+      "${SERVER_RUNTIME_DIR}/data" \
+      "${SERVER_RUNTIME_DIR}/files" \
+      "${SERVER_RUNTIME_DIR}/logs"
 
-  find "${RUNTIME_DIR}" -maxdepth 1 -type f \
-    \( -name '*.db' -o -name '*.db-*' -o -name '*.sqlite' -o -name '*.sqlite-*' -o -name '*.log' \) \
-    -exec rm -f {} +
+    find "${SERVER_RUNTIME_DIR}" -maxdepth 1 -type f \
+      \( -name '*.db' -o -name '*.db-*' -o -name '*.sqlite' -o -name '*.sqlite-*' -o -name '*.log' \) \
+      -exec rm -f {} +
+    cleaned=1
+    log "server 开发态 runtime 数据已清理: ${SERVER_RUNTIME_DIR}"
+  else
+    log "server 开发态 runtime 不存在，跳过: ${SERVER_RUNTIME_DIR}"
+  fi
 
-  log "仓库 runtime 数据已清理"
+  if [[ "${cleaned}" -eq 0 ]]; then
+    log "未发现仓库侧 runtime 数据目录"
+  fi
 }
 
 clean_desktop_app_support() {
@@ -167,6 +199,30 @@ clean_test_artifacts() {
     "${PROJECT_ROOT}/playwright-report" \
     "${PROJECT_ROOT}/test-results"
   log "测试产物已清理（playwright-report / test-results）"
+}
+
+clean_desktop_apps() {
+  if [[ -d "${INSTALL_APP_PATH}" ]]; then
+    rm -rf "${INSTALL_APP_PATH}"
+    log "已删除已安装桌面应用: ${INSTALL_APP_PATH}"
+  else
+    log "未发现已安装桌面应用，跳过: ${INSTALL_APP_PATH}"
+  fi
+
+  if [[ -d "${BUILD_APP_PATH}" ]]; then
+    rm -rf "${BUILD_APP_PATH}"
+    log "已删除本地桌面 app bundle: ${BUILD_APP_PATH}"
+  else
+    log "未发现本地桌面 app bundle，跳过: ${BUILD_APP_PATH}"
+  fi
+
+  if [[ -d "${BUILD_BUNDLE_DIR}" ]]; then
+    find "${BUILD_BUNDLE_DIR}" -maxdepth 1 \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name '*.zip' \) \
+      -exec rm -f {} +
+    log "本地桌面安装产物已清理: ${BUILD_BUNDLE_DIR}"
+  else
+    log "未发现本地桌面安装产物目录，跳过: ${BUILD_BUNDLE_DIR}"
+  fi
 }
 
 build_desktop_bundle() {
@@ -212,6 +268,7 @@ main() {
   clean_desktop_app_support
   clean_webview_storage
   clean_test_artifacts
+  clean_desktop_apps
 
   if [[ "${DO_BUILD}" -eq 1 ]]; then
     build_desktop_bundle

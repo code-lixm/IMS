@@ -76,6 +76,15 @@ should_kill_pid() {
   return 1
 }
 
+terminate_pid() {
+  local pid="$1"
+  kill -TERM "${pid}" 2>/dev/null || true
+  sleep 0.5
+  if kill -0 "${pid}" 2>/dev/null; then
+    kill -KILL "${pid}" 2>/dev/null || true
+  fi
+}
+
 release_port_9092() {
   if ! command -v lsof >/dev/null 2>&1; then
     log "未找到 lsof，跳过端口 ${PORT} 清理"
@@ -93,7 +102,7 @@ release_port_9092() {
   while IFS= read -r pid; do
     [[ -z "${pid}" ]] && continue
     if should_kill_pid "${pid}"; then
-      kill -9 "${pid}" 2>/dev/null || true
+      terminate_pid "${pid}"
       log "已结束占用 ${PORT} 的 web/server 进程 pid=${pid}"
     else
       log "检测到非 web/server 进程占用 ${PORT}，跳过 pid=${pid}"

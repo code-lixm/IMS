@@ -3,6 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+APP_SUPPORT_DIR="${HOME}/Library/Application Support/com.company.interview-manager"
+RUNTIME_DIR="${APP_SUPPORT_DIR}/runtime"
+DATA_DIR="${RUNTIME_DIR}/data"
+FILES_DIR="${RUNTIME_DIR}/files"
+AGENT_WORKSPACES_DIR="${RUNTIME_DIR}/agent-workspaces"
+DB_PATH="${RUNTIME_DIR}/interview.db"
 SERVER_PORT="${IMS_PORT:-9092}"
 SERVER_HEALTH_URL="${IMS_SERVER_HEALTH_URL:-}"
 SERVER_WAIT_SECONDS="${IMS_SERVER_WAIT_SECONDS:-30}"
@@ -10,7 +16,7 @@ SERVER_PID=""
 REUSE_EXISTING_SERVER="0"
 
 log() {
-  printf '[dev:web] %s\n' "$*"
+  printf '[dev:desktop] %s\n' "$*"
 }
 
 cleanup() {
@@ -99,36 +105,46 @@ wait_server_health() {
     fi
     sleep 0.5
   done
+
   return 1
 }
 
 main() {
   trap cleanup EXIT INT TERM
+
+  mkdir -p "${DATA_DIR}" "${FILES_DIR}" "${AGENT_WORKSPACES_DIR}"
   choose_server_port
   SERVER_HEALTH_URL="${IMS_SERVER_HEALTH_URL:-$(health_url_for_port "${SERVER_PORT}")}"
 
   if [[ "${REUSE_EXISTING_SERVER}" == "1" ]]; then
-    log "复用已就绪 Server: ${SERVER_HEALTH_URL}"
+    log "复用已就绪 Desktop Server: ${SERVER_HEALTH_URL}"
   else
 
-    log "1/2 启动 Server (pnpm dev:server, port=${SERVER_PORT})"
+    log "1/2 启动 Desktop Server (App Support runtime, port=${SERVER_PORT})"
     (
       cd "${PROJECT_ROOT}"
-      IMS_PORT="${SERVER_PORT}" pnpm dev:server
+      IMS_ROOT_DIR="${APP_SUPPORT_DIR}" \
+      IMS_RUNTIME_DIR="${RUNTIME_DIR}" \
+      IMS_DATA_DIR="${DATA_DIR}" \
+      IMS_FILES_DIR="${FILES_DIR}" \
+      IMS_AGENT_WORKSPACES_DIR="${AGENT_WORKSPACES_DIR}" \
+      IMS_DB_PATH="${DB_PATH}" \
+      IMS_PORT="${SERVER_PORT}" \
+      pnpm --filter @ims/server dev
     ) &
     SERVER_PID="$!"
   fi
 
   if ! wait_server_health; then
-    log "Server 启动失败或健康检查超时: ${SERVER_HEALTH_URL}"
+    log "Desktop Server 启动失败或健康检查超时: ${SERVER_HEALTH_URL}"
     exit 1
   fi
-  log "Server 已就绪"
+  log "Desktop Server 已就绪: ${DB_PATH}"
 
-  log "2/2 启动 UI (pnpm dev:ui)"
+  log "2/2 启动 UI (pnpm --filter @ims/web dev)"
   (
     cd "${PROJECT_ROOT}"
-    IMS_PORT="${SERVER_PORT}" pnpm dev:ui
+    IMS_PORT="${SERVER_PORT}" pnpm --filter @ims/web dev
   )
 }
 
