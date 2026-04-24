@@ -23,3 +23,4 @@ apps/web/dist/
 .serena
 .sisyphus
 .ruff_cache
+apps/desktop/sparkle_private_key.txt
