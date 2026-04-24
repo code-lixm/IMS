@@ -10,8 +10,10 @@ import { mockDevServerPlugin } from "vite-plugin-mock-dev-server";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
   const mockEnabled = env.VITE_MOCK === "true"
+  const apiPort = env.IMS_PORT || process.env.IMS_PORT || "9092"
 
   return {
+    base: "./",
     plugins: [
       vueDevTools({ componentInspector: true }),
       vue(),
@@ -36,10 +38,11 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 9091,
+      strictPort: true,
       host: process.env.VITE_DEV_HOST || true,
       proxy: {
         "/api": {
-          target: "http://127.0.0.1:9092",
+          target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,
         },
       },

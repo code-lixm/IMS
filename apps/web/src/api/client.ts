@@ -7,8 +7,15 @@ import { SERVER_BASE_URL, type ApiMeta, type ApiResponse } from "@ims/shared";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const AUTH_REDIRECT_ERROR_CODES = new Set(["AUTH_EXPIRED", "AUTH_INVALID", "AUTH_REQUIRED"]);
+const DESKTOP_SERVER_BASE_URL_STORAGE_KEY = "ims:serverBaseUrl";
 
 let unauthorizedRedirectInFlight = false;
+
+declare global {
+  interface Window {
+    __IMS_SERVER_BASE_URL?: string;
+  }
+}
 
 export class ApiError extends Error {
   constructor(
@@ -45,8 +52,17 @@ interface StreamRequestOptions extends Omit<BaseRequestOptions, "body"> {
 }
 
 function resolveUrl(path: string): string {
-  const baseUrl = import.meta.env.DEV ? "" : SERVER_BASE_URL;
+  const baseUrl = import.meta.env.DEV ? "" : resolveProductionBaseUrl();
   return path.startsWith("http") ? path : `${baseUrl}${path}`;
+}
+
+function resolveProductionBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return SERVER_BASE_URL;
+  }
+
+  const runtimeBaseUrl = window.__IMS_SERVER_BASE_URL || window.localStorage.getItem(DESKTOP_SERVER_BASE_URL_STORAGE_KEY);
+  return runtimeBaseUrl || SERVER_BASE_URL;
 }
 
 function createHeaders(headers?: HeadersInit): Headers {

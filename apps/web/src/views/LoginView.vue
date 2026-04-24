@@ -390,7 +390,7 @@ async function resetLoginSession() {
     notifySuccess("已清空当前登录信息，正在重新获取二维码", {
       title: "已重置登录状态",
     });
-    window.location.reload();
+    await initializeLoginView();
   } catch (error) {
     notifyError(reportAppError("login-view/reset-login-session", error, {
       title: "清空登录信息失败",
