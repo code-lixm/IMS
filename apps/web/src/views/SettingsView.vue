@@ -687,6 +687,11 @@ import Textarea from "@/components/ui/textarea/Textarea.vue";
 import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
 import { luiApi } from "@/api/lui";
 import type { Agent as LuiAgent } from "@/stores/lui";
+import {
+  checkForUpdateInformation as checkForSparkleUpdateInformation,
+  checkForUpdates as openSparkleUpdater,
+  lastFoundUpdate as getLastSparkleUpdate,
+} from "tauri-plugin-sparkle-updater-api";
 
 interface PresetProvider {
   id: string;
@@ -702,6 +707,12 @@ interface DesktopUpdateStatus {
   notes: string | null;
   checkedAt: number;
   installed: boolean;
+}
+
+interface SparkleUpdateInfo {
+  version: string;
+  dateString?: string;
+  releaseNotes?: string;
 }
 
 const PRESET_PROVIDER_BASE_URLS: Record<string, string> = {
@@ -739,6 +750,7 @@ const isAgentDialogOpen = ref(false);
 const editingAgentId = ref<string | null>(null);
 const isSavingAgent = ref(false);
 const isDesktopRuntime = ref(false);
+const isSparkleDesktopRuntime = ref(false);
 const checkingUpdate = ref(false);
 const installingUpdate = ref(false);
 const updateStatus = ref<DesktopUpdateStatus | null>(null);
@@ -808,6 +820,7 @@ const colorDotStyle: Record<string, string> = {
 onMounted(async () => {
   isDesktopRuntime.value = typeof window !== "undefined"
     && typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+  isSparkleDesktopRuntime.value = isDesktopRuntime.value && /mac/i.test(navigator.userAgent);
 
   await authStore.checkStatus();
   await syncStore.fetchStatus();
@@ -923,6 +936,40 @@ async function runSyncNow() {
 }
 
 async function checkAppUpdate() {
+  if (isSparkleDesktopRuntime.value) {
+    checkingUpdate.value = true;
+    updateError.value = null;
+    try {
+      await checkForSparkleUpdateInformation();
+      const result = await getLastSparkleUpdate() as SparkleUpdateInfo | null;
+      updateStatus.value = result
+        ? {
+            available: true,
+            version: result.version,
+            date: result.dateString ?? null,
+            notes: result.releaseNotes ?? null,
+            checkedAt: Date.now(),
+            installed: false,
+          }
+        : {
+            available: false,
+            version: null,
+            date: null,
+            notes: null,
+            checkedAt: Date.now(),
+            installed: false,
+          };
+      notifySuccess(result ? `检测到新版本 ${result.version}` : "当前已是最新版本");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "检测更新失败";
+      updateError.value = message;
+      notifyError(message);
+    } finally {
+      checkingUpdate.value = false;
+    }
+    return;
+  }
+
   const invoke = getTauriInvoker();
   if (!invoke) {
     notifyWarning("当前环境不支持桌面更新检测");
@@ -949,6 +996,22 @@ async function checkAppUpdate() {
 }
 
 async function installAppUpdate() {
+  if (isSparkleDesktopRuntime.value) {
+    installingUpdate.value = true;
+    updateError.value = null;
+    try {
+      await openSparkleUpdater();
+      notifySuccess("已打开 Sparkle 原生更新窗口");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "安装更新失败";
+      updateError.value = message;
+      notifyError(message);
+    } finally {
+      installingUpdate.value = false;
+    }
+    return;
+  }
+
   const invoke = getTauriInvoker();
   if (!invoke) {
     notifyWarning("当前环境不支持桌面更新安装");
