@@ -829,24 +829,33 @@ fn export_current_logs(app: AppHandle) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // If another instance launches with an .imr file argument, handle it
             for arg in argv.iter() {
                 if arg.ends_with(".imr") {
                     handle_imr_open(app, arg);
                     break;
                 }
             }
-            // Focus existing window
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
-        }))
+        }));
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_plugin_sparkle_updater::init());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    let app = builder
         .setup(|app| {
             let log_dir = app.path().app_data_dir()?.join("logs");
             let logger = AppLogger::new(log_dir)?;
