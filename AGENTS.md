@@ -74,6 +74,13 @@ ims/
 - **采用 changelog 风格** — 记录格式统一为 `scope：description`，例如：`导出：完成 IMR 全量导入导出与 overwrite 覆盖导入`。
 - **只记录已完成事项** — 仅同步已经完成并验证过的任务，不记录进行中或未验证的事项。
 
+## RELEASE / COMMIT LESSONS
+
+- **发版提交前必须同步所有版本文件** — 不要只改 root `package.json` 和 `apps/desktop/package.json`。发布 tag 前必须确认以下文件版本一致：`package.json`、`apps/web/package.json`、`apps/desktop/package.json`、`packages/server/package.json`、`packages/shared/package.json`、`apps/desktop/Cargo.toml`、`apps/desktop/Cargo.lock`、`apps/desktop/tauri.conf.json`、`apps/desktop/tauri.local.conf.json`。否则 GitHub Actions 虽会被 tag 触发，但构建产物版本可能错误，甚至 release 失败。
+- **发版前先跑检查** — tag/push 前至少执行 `pnpm release:check`、`pnpm typecheck`、`cargo fmt --check && cargo check`、`git diff --check`；涉及 Web 构建时再跑 `pnpm build:web`。`release:check` 的版本一致性必须 PASS。
+- **已推送失败 tag 不要覆盖** — 如果远端 `vX.Y.Z` 已触发失败，优先修复后发新的 patch tag（例如 `v1.0.6`），避免 force 更新已推送 tag。
+- **不要提交本地签名私钥** — `apps/desktop/sparkle_private_key.txt`、Tauri/Sparkle 私钥、`.env`、secret 文件只用于本地或 GitHub Secrets，不能纳入 commit。
+
 ## COMMANDS
 
 ```bash

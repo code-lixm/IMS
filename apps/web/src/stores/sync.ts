@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { ApiError } from "@/api/client";
+import { ApiError, resetAuthCredentials } from "@/api/client";
 import { syncApi } from "@/api/sync";
 import router from "@/router";
 import type { SyncResetRunData, SyncStatusData } from "@ims/shared";
@@ -20,6 +20,7 @@ function isBaobaoAuthExpiredError(error: unknown) {
 
 async function redirectToLogin() {
   const redirect = router.currentRoute.value.fullPath || "/candidates";
+  await resetAuthCredentials("sync-auth-expired");
   if (router.currentRoute.value.path === "/login") return;
 
   try {

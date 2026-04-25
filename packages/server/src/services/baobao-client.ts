@@ -110,6 +110,10 @@ export class BaobaoClient {
       ...extraHeaders,
     };
 
+    if (this.cookieHeader && !headers.Cookie && !headers.cookie) {
+      headers.Cookie = this.cookieHeader;
+    }
+
     if (!body) {
       delete headers["content-type"];
     }

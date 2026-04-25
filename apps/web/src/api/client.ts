@@ -6,10 +6,14 @@
 import { SERVER_BASE_URL, type ApiMeta, type ApiResponse } from "@ims/shared";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DESKTOP_SERVER_DISCOVERY_TIMEOUT_MS = 1_500;
+const AUTH_RESET_TIMEOUT_MS = 5_000;
 const AUTH_REDIRECT_ERROR_CODES = new Set(["AUTH_EXPIRED", "AUTH_INVALID", "AUTH_REQUIRED"]);
 const DESKTOP_SERVER_BASE_URL_STORAGE_KEY = "ims:serverBaseUrl";
+const DESKTOP_SERVER_PORTS = Array.from({ length: 21 }, (_, index) => 9092 + index);
 
 let unauthorizedRedirectInFlight = false;
+let desktopServerDiscoveryPromise: Promise<string | null> | null = null;
 
 declare global {
   interface Window {
@@ -63,6 +67,112 @@ function resolveProductionBaseUrl(): string {
 
   const runtimeBaseUrl = window.__IMS_SERVER_BASE_URL || window.localStorage.getItem(DESKTOP_SERVER_BASE_URL_STORAGE_KEY);
   return runtimeBaseUrl || SERVER_BASE_URL;
+}
+
+function isRelativeApiPath(path: string): boolean {
+  return path.startsWith("/api/");
+}
+
+function isNetworkFailure(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.status === 0;
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return message.includes("failed to fetch")
+      || message.includes("network")
+      || message.includes("econnrefused")
+      || message.includes("econnreset")
+      || message.includes("enotfound")
+      || message.includes("timeout");
+  }
+
+  return false;
+}
+
+function rememberDesktopServerBaseUrl(baseUrl: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.__IMS_SERVER_BASE_URL = baseUrl;
+  window.localStorage.setItem(DESKTOP_SERVER_BASE_URL_STORAGE_KEY, baseUrl);
+}
+
+async function probeDesktopServerBaseUrl(baseUrl: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), DESKTOP_SERVER_DISCOVERY_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${baseUrl}/api/health`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return false;
+    }
+
+    const json = await response.json() as { success?: unknown; data?: { service?: unknown; status?: unknown } };
+    return json.success === true
+      && json.data?.service === "interview-manager"
+      && json.data?.status === "ok";
+  } catch (_error) {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function discoverDesktopServerBaseUrl(): Promise<string | null> {
+  if (import.meta.env.DEV || typeof window === "undefined") {
+    return null;
+  }
+
+  if (!desktopServerDiscoveryPromise) {
+    desktopServerDiscoveryPromise = (async () => {
+      const candidates = [
+        window.__IMS_SERVER_BASE_URL,
+        window.localStorage.getItem(DESKTOP_SERVER_BASE_URL_STORAGE_KEY),
+        SERVER_BASE_URL,
+        ...DESKTOP_SERVER_PORTS.map((port) => `http://127.0.0.1:${port}`),
+      ].filter((value): value is string => Boolean(value));
+
+      for (const baseUrl of Array.from(new Set(candidates))) {
+        if (await probeDesktopServerBaseUrl(baseUrl)) {
+          rememberDesktopServerBaseUrl(baseUrl);
+          return baseUrl;
+        }
+      }
+
+      return null;
+    })().finally(() => {
+      desktopServerDiscoveryPromise = null;
+    });
+  }
+
+  return desktopServerDiscoveryPromise;
+}
+
+async function retryAfterDesktopServerDiscovery<T>(
+  path: string,
+  error: unknown,
+  retry: () => Promise<T>
+): Promise<T> {
+  if (import.meta.env.DEV || path.startsWith("http") || !isRelativeApiPath(path) || !isNetworkFailure(error)) {
+    throw error;
+  }
+
+  const discoveredBaseUrl = await discoverDesktopServerBaseUrl();
+  if (!discoveredBaseUrl) {
+    throw new ApiError("DESKTOP_SERVER_UNAVAILABLE", "本地 IMS 服务未就绪，请稍后重试或重启客户端", 0);
+  }
+
+  return retry();
 }
 
 function createHeaders(headers?: HeadersInit): Headers {
@@ -121,19 +231,47 @@ function isApiFailure<T>(json: ApiResponse<T>): json is Extract<ApiResponse<T>, 
   return json.success === false;
 }
 
+export async function resetAuthCredentials(reason = "auth-invalid"): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), AUTH_RESET_TIMEOUT_MS);
+
+  try {
+    await fetch(resolveUrl("/api/auth/reset"), {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+      signal: controller.signal,
+    });
+  } catch (_error) {
+    // Best-effort fallback: navigation to login must still happen even if the local server is unavailable.
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 function redirectToLoginOnUnauthorized(): void {
   if (typeof window === "undefined" || unauthorizedRedirectInFlight) {
     return;
   }
 
   const { pathname, search, hash } = window.location;
-  if (pathname === "/login") {
-    return;
-  }
-
   unauthorizedRedirectInFlight = true;
   const redirect = `${pathname}${search}${hash}` || "/candidates";
-  window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}&reauth=1`);
+  void (async () => {
+    await resetAuthCredentials("unauthorized-redirect");
+
+    if (pathname === "/login") {
+      unauthorizedRedirectInFlight = false;
+      return;
+    }
+
+    window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}&reauth=1`);
+  })();
 }
 
 function shouldRedirectOnUnauthorized(path: string, errorCode?: string): boolean {
@@ -148,7 +286,7 @@ async function requestEnvelope<T>(path: string, options: BaseRequestOptions = {}
   const { timeoutMs, signal, headers, ...rest } = options;
   const { signal: mergedSignal, cleanup } = mergeSignals(signal, timeoutMs);
 
-  try {
+  const run = async () => {
     const response = await fetch(resolveUrl(path), {
       ...rest,
       headers,
@@ -165,6 +303,12 @@ async function requestEnvelope<T>(path: string, options: BaseRequestOptions = {}
     }
 
     return json.data;
+  };
+
+  try {
+    return await run();
+  } catch (error) {
+    return retryAfterDesktopServerDiscovery(path, error, run);
   } finally {
     cleanup();
   }
@@ -174,7 +318,7 @@ export async function requestRaw(path: string, options: BaseRequestOptions = {})
   const { timeoutMs, signal, headers, ...rest } = options;
   const { signal: mergedSignal, cleanup } = mergeSignals(signal, timeoutMs);
 
-  try {
+  const run = async () => {
     const response = await fetch(resolveUrl(path), {
       ...rest,
       headers,
@@ -197,16 +341,16 @@ export async function requestRaw(path: string, options: BaseRequestOptions = {})
     }
 
     return response;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
+  };
 
+  try {
+    return await run();
+  } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new ApiError("REQUEST_ABORTED", "请求已取消或超时", 0);
     }
 
-    throw error;
+    return retryAfterDesktopServerDiscovery(path, error, run);
   } finally {
     cleanup();
   }

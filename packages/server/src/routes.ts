@@ -1,7 +1,6 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   APPLICATION_STATUS_LABELS,
-  ErrorCodes,
   formatInterviewRoundLabel,
   INTERVIEW_TYPE_LABELS,
   lookupLabelOrDefault,
@@ -1216,7 +1215,7 @@ async function persistBaobaoAuth(
   }
 
   await upsertLocalUser({ name: baobaoUser.name, email: baobaoUser.email });
-  setBaobaoClient(new BaobaoClient(token));
+  setBaobaoClient(new BaobaoClient(token, { cookieHeader: buildBaobaoCookieHeader(cookieJson) }));
 
   const discovery = getDiscovery("Interview-Manager", config.port);
   discovery.setLocalUserInfo(baobaoUser.username, baobaoUser.name);
@@ -1227,16 +1226,36 @@ async function persistBaobaoAuth(
   }, true);
 }
 
+function buildBaobaoCookieHeader(cookieJson: string | null): string | null {
+  if (!cookieJson?.trim()) return null;
+
+  try {
+    const parsed = JSON.parse(cookieJson) as unknown;
+    if (!Array.isArray(parsed)) return null;
+
+    const cookies: string[] = [];
+    for (const item of parsed) {
+      if (!isRecord(item)) continue;
+      const name = sanitizeString(item.name);
+      const value = sanitizeString(item.value);
+      if (name && value) {
+        cookies.push(`${name}=${value}`);
+      }
+    }
+
+    return cookies.length ? cookies.join("; ") : null;
+  } catch {
+    return null;
+  }
+}
+
 function triggerInitialSync(reason: string) {
   void syncManager.runOnce()
     .then((result) => {
       console.log(`[sync] initial sync (${reason}) done, syncedCandidates=${result.syncedCandidates} syncedInterviews=${result.syncedInterviews}`);
     })
     .catch((error) => {
-      if (isBaobaoAuthExpiredError(error)) {
-        void markBaobaoAuthExpired();
-      }
-      console.error(`[sync] initial sync (${reason}) failed: ${(error as Error).message}`);
+      console.error(`[sync] initial sync (${reason}) failed without invalidating auth: ${(error as Error).message}`);
     });
 }
 
@@ -1262,6 +1281,15 @@ async function markBaobaoAuthExpired() {
   await db.update(remoteUsers)
     .set({ tokenExpAt: now, updatedAt: now })
     .where(eq(remoteUsers.provider, "baobao"));
+  setBaobaoClient(null);
+  await clearBaobaoLoginSession();
+}
+
+async function clearLocalAuthCredentials(reason: string) {
+  console.warn("[auth] clear local credentials", { reason });
+  syncManager.stop();
+  await db.update(users).set({ tokenStatus: "unauthenticated" });
+  await db.delete(remoteUsers).where(eq(remoteUsers.provider, "baobao"));
   setBaobaoClient(null);
   await clearBaobaoLoginSession();
 }
@@ -1596,11 +1624,15 @@ export async function route(request: Request): Promise<Response> {
       }
     }
     
-    await db.update(users).set({ tokenStatus: "unauthenticated" });
-    await db.delete(remoteUsers).where(eq(remoteUsers.provider, "baobao"));
-    setBaobaoClient(null);
-    await clearBaobaoLoginSession();
+    await clearLocalAuthCredentials("logout");
     return ok({ status: "logged_out" });
+  }
+
+  if (path === "/api/auth/reset" && request.method === "POST") {
+    const body = await parseJson<{ reason?: string }>(request).catch(() => null);
+    const reason = sanitizeString(body?.reason) || "auth-reset";
+    await clearLocalAuthCredentials(reason);
+    return ok({ status: "reset" });
   }
 
   // Baobao Auth

@@ -11,6 +11,37 @@ import { restorePersistedHttpAuth } from "./services/baobao-http-login";
 import { getDiscovery } from "./services/share/discovery";
 import { syncManager } from "./services/sync-manager";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildCookieHeader(cookieJson: string | null): string | null {
+  if (!cookieJson?.trim()) return null;
+
+  try {
+    const parsed = JSON.parse(cookieJson) as unknown;
+    if (!Array.isArray(parsed)) return null;
+
+    const cookies: string[] = [];
+    for (const item of parsed) {
+      if (!isRecord(item)) continue;
+      const name = readString(item.name);
+      const value = readString(item.value);
+      if (name && value) {
+        cookies.push(`${name}=${value}`);
+      }
+    }
+
+    return cookies.length ? cookies.join("; ") : null;
+  } catch {
+    return null;
+  }
+}
+
 async function runInitialSync(reason: string) {
   try {
     const result = await syncManager.runOnce();
@@ -53,10 +84,11 @@ let startupRecoveredAuth: {
     username: string;
     email: string | null;
   };
+  cookies: Array<{ name: string; value: string }>;
 } | null = null;
 
 if (canRestoreClient && restoredRemote?.token) {
-  setBaobaoClient(new BaobaoClient(restoredRemote.token));
+  setBaobaoClient(new BaobaoClient(restoredRemote.token, { cookieHeader: buildCookieHeader(restoredRemote.cookieJson) }));
   getDiscovery("Interview-Manager", config.port).setLocalUserInfo(restoredRemote.username, restoredRemote.name);
   console.log("[auth:start] restored BaobaoClient from persisted token", {
     username: restoredRemote.username,
@@ -65,7 +97,11 @@ if (canRestoreClient && restoredRemote?.token) {
 } else {
   startupRecoveredAuth = await restorePersistedHttpAuth();
   if (startupRecoveredAuth?.token) {
-    setBaobaoClient(new BaobaoClient(startupRecoveredAuth.token));
+    const recoveredCookieHeader = startupRecoveredAuth.cookies
+      .filter((cookie) => cookie.name && cookie.value)
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+    setBaobaoClient(new BaobaoClient(startupRecoveredAuth.token, { cookieHeader: recoveredCookieHeader || null }));
     getDiscovery("Interview-Manager", config.port).setLocalUserInfo(
       startupRecoveredAuth.user.username,
       startupRecoveredAuth.user.name,
