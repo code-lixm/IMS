@@ -1,36 +1,11 @@
 import { api } from "./client";
-import type { AuthStatusData } from "@ims/shared";
+import type { AuthStatusData, BaobaoLoginQrData, BaobaoLoginSessionStatusData } from "@ims/shared";
 import type { JsonRequestOptions } from "./client";
 
-export interface BaobaoLoginQrData {
-  provider: "baobao";
-  imageSrc: string;
-  qrText: string | null;
-  source: "background-image" | "element-screenshot" | "qr-text";
-  refreshed: boolean;
-  fetchedAt: number;
-  authenticated?: boolean;
-  user?: {
-    id: string;
-    name: string;
-    username: string;
-    email: string | null;
-  } | null;
-}
+export type { BaobaoLoginQrData, BaobaoLoginSessionStatusData };
 
-export interface BaobaoLoginSessionStatusData {
-  provider: "baobao";
-  status: "pending" | "authenticated" | "error";
-  currentUrl: string;
-  lastCheckedAt: number;
-  error: string | null;
-  authenticated: boolean;
-  user: {
-    id: string;
-    name: string;
-    username: string;
-    email: string | null;
-  } | null;
+export interface BaobaoQrRequestOptions extends JsonRequestOptions {
+  forceRefresh?: boolean;
 }
 
 export const authApi = {
@@ -42,7 +17,11 @@ export const authApi = {
       json: { token, expiresAt, name, email },
     });
   },
-  baobaoQr(options?: JsonRequestOptions) { return api<BaobaoLoginQrData>("/api/auth/baobao/qr", options ?? {}); },
+  baobaoQr(options?: BaobaoQrRequestOptions) {
+    const { forceRefresh, ...requestOptions } = options ?? {};
+    const query = forceRefresh ? "?forceRefresh=1" : "";
+    return api<BaobaoLoginQrData>(`/api/auth/baobao/qr${query}`, requestOptions);
+  },
   baobaoLoginStatus(options?: JsonRequestOptions) { return api<BaobaoLoginSessionStatusData>("/api/auth/baobao/login-status", options ?? {}); },
   logout() { return api("/api/auth/logout", { method: "POST" }); },
 };

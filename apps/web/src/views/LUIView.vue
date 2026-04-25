@@ -576,10 +576,11 @@
       :initial-provider-id="presetProviders[0]?.id ?? ''"
       :initial-model-id="store.selectedModelId || ''"
       :saving="isSavingGatewaySetup"
-      :show-test-button="false"
+      :testing="isTestingGatewaySetup"
       save-button-text="保存并继续"
       @update:open="handleGatewaySetupDialogOpenChange"
       @save="saveGatewaySetupFromDialog"
+      @test="testGatewaySetupFromDialog"
     />
   </div>
 </template>
@@ -760,6 +761,7 @@ const lastSubmittedPrompt = ref<{ text: string; files: File[]; conversationId: s
 const lastFailedPrompt = ref<{ text: string; files: File[]; conversationId: string } | null>(null);
 const gatewaySetupDialogOpen = ref(false);
 const isSavingGatewaySetup = ref(false);
+const isTestingGatewaySetup = ref(false);
 const presetProviders = ref<PresetProvider[]>([]);
 const leftPanelWidth = ref(readStoredPanelSize(
   LUI_LEFT_PANEL_WIDTH_STORAGE_KEY,
@@ -1400,46 +1402,24 @@ function openGatewaySetupDialog() {
 }
 
 function handleGatewaySetupDialogOpenChange(open: boolean) {
-  if (!open && isSavingGatewaySetup.value) {
+  if (!open && (isSavingGatewaySetup.value || isTestingGatewaySetup.value)) {
     return;
   }
   gatewaySetupDialogOpen.value = open;
 }
 
 async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
-  const provider = presetProviders.value.find((item) => item.id === payload.providerId);
-  if (!provider) {
-    notifyError("请选择模型厂商");
+  const endpoint = buildGatewayEndpointFromDialogPayload(payload);
+  if (!endpoint) {
     return;
   }
-
-  const apiKey = payload.apiKey.trim();
-  const modelId = payload.modelId.trim();
-  if (!apiKey) {
-    notifyError("请输入 API Key");
-    return;
-  }
-
-  const selectedModelOption = modelId
-    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === payload.providerId)
-    : null;
 
   isSavingGatewaySetup.value = true;
   try {
-    const endpoint: GatewayEndpoint = {
-      id: provider.id,
-      name: provider.name,
-      provider: provider.id,
-      baseURL: provider.baseURL,
-      providerId: provider.id,
-      apiKey,
-      ...(modelId ? { modelId } : {}),
-      ...(selectedModelOption?.label ? { modelDisplayName: selectedModelOption.label } : {}),
-    };
     await store.registerCustomEndpoint(endpoint);
 
-    if (modelId) {
-      store.selectModel(modelId);
+    if (endpoint.modelId) {
+      store.selectModel(endpoint.modelId, endpoint.providerId);
     }
 
     notifySuccess("模型厂商已保存");
@@ -1456,6 +1436,57 @@ async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey:
     );
   } finally {
     isSavingGatewaySetup.value = false;
+  }
+}
+
+function buildGatewayEndpointFromDialogPayload(payload: { providerId: string; apiKey: string; modelId: string }): GatewayEndpoint | null {
+  const provider = presetProviders.value.find((item) => item.id === payload.providerId);
+  if (!provider) {
+    notifyError("请选择模型厂商");
+    return null;
+  }
+
+  const apiKey = payload.apiKey.trim();
+  const modelId = payload.modelId.trim();
+  if (!apiKey) {
+    notifyError("请输入 API Key");
+    return null;
+  }
+
+  const selectedModelOption = modelId
+    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === payload.providerId)
+    : null;
+
+  return {
+    id: provider.id,
+    name: provider.name,
+    provider: provider.id,
+    baseURL: provider.baseURL,
+    providerId: provider.id,
+    apiKey,
+    ...(modelId ? { modelId } : {}),
+    ...(selectedModelOption?.label ? { modelDisplayName: selectedModelOption.label } : {}),
+  };
+}
+
+async function testGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
+  const endpoint = buildGatewayEndpointFromDialogPayload(payload);
+  if (!endpoint) {
+    return;
+  }
+
+  isTestingGatewaySetup.value = true;
+  try {
+    const result = await store.testCustomEndpoint(endpoint);
+    if (result.modelCount > 0) {
+      notifySuccess(`连接成功，发现 ${result.providerCount} 个 Provider、${result.modelCount} 个模型`);
+    } else {
+      notifyWarning("连接成功，但当前端点未返回任何模型");
+    }
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "测试端点连接失败");
+  } finally {
+    isTestingGatewaySetup.value = false;
   }
 }
 

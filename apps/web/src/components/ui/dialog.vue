@@ -23,6 +23,7 @@
         >
           <DialogContent
             v-if="open"
+            :aria-label="props.contentAriaLabel"
             :class="cn('fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border bg-background p-6 shadow-lg sm:rounded-lg', contentClass)"
           >
             <slot name="content" />
@@ -45,8 +46,9 @@ import { cn } from "@/lib/utils";
 interface DialogProps {
   open?: boolean;
   contentClass?: string;
+  contentAriaLabel?: string;
 }
 
-defineProps<DialogProps>();
+const props = defineProps<DialogProps>();
 const emit = defineEmits<{ (e: "update:open", v: boolean): void }>();
 </script>

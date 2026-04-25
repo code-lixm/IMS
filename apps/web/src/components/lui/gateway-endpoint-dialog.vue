@@ -1,6 +1,6 @@
 <template>
   <Dialog :open="open" @update:open="handleOpenChange">
-    <template #content>
+    <DialogContent>
       <DialogHeader>
         <DialogTitle>{{ title }}</DialogTitle>
         <DialogDescription>
@@ -116,7 +116,7 @@
           {{ saveButtonText }}
         </Button>
       </DialogFooter>
-    </template>
+    </DialogContent>
   </Dialog>
 </template>
 
@@ -124,11 +124,14 @@
 import { computed, ref, watch } from "vue";
 import { Eye, EyeOff, Loader2 } from "lucide-vue-next";
 import Button from "@/components/ui/button.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogFooter from "@/components/ui/dialog-footer.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Input from "@/components/ui/input.vue";
 import Label from "@/components/ui/label.vue";
 import { luiApi } from "@/api/lui";

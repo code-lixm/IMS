@@ -78,6 +78,11 @@
         @send="handleBatchShare"
       />
     </template>
+
+    <BaobaoLoginDialog
+      v-model:open="baobaoLoginDialogOpen"
+      @authenticated="handleBaobaoAuthenticated"
+    />
   </AppPageShell>
 </template>
 
@@ -87,6 +92,7 @@ import CandidateFeedbackBanner from "@/components/candidates/candidate-feedback-
 import CandidateList from "@/components/candidates/candidate-list.vue";
 import CandidatePageHeader from "@/components/candidates/candidate-page-header.vue";
 import DeviceSelectDialog from "@/components/candidates/device-select-dialog.vue";
+import BaobaoLoginDialog from "@/components/auth/baobao-login-dialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
 import Card from "@/components/ui/card.vue";
@@ -96,16 +102,20 @@ import { useCandidateSearch } from "@/composables/candidates/use-candidate-searc
 import { useCandidateBatchSelection } from "@/composables/candidates/use-candidate-batch-selection";
 import { useImportBatches } from "@/composables/import/use-import-batches";
 import { shareApi } from "@/api/share";
+import { useAuthStore } from "@/stores/auth";
 import { useCandidatesStore } from "@/stores/candidates";
 import { useOnboardingStore } from "@/stores/onboarding";
-import { useSyncStore } from "@/stores/sync";
+import { isBaobaoAuthExpiredError, useSyncStore } from "@/stores/sync";
 
 const store = useCandidatesStore();
+const authStore = useAuthStore();
 const syncStore = useSyncStore();
 const importActivity = useImportBatches();
 const batchSelection = useCandidateBatchSelection();
 const onboardingStore = useOnboardingStore();
 const initialSyncLoading = ref(true);
+const baobaoLoginDialogOpen = ref(false);
+const pendingBaobaoAction = ref<"sync" | "reset-sync" | null>(null);
 
 const { search, searchSuggestions, initialize, scheduleSearch } = useCandidateSearch(store);
 const {
@@ -148,18 +158,6 @@ onMounted(async () => {
       syncStore.fetchStatus(),
     ]);
 
-    const shouldRunInitialSync = !syncStore.status.lastSyncAt;
-    if (shouldRunInitialSync) {
-      try {
-        await syncStore.runNow();
-      } catch (error: unknown) {
-        setFeedback({
-          tone: "error",
-          message: `首次同步失败：${getErrorMessage(error)}`,
-        });
-      }
-    }
-
     await initialize();
   } finally {
     initialSyncLoading.value = false;
@@ -180,8 +178,21 @@ async function handleImportImr() {
 }
 
 async function runSyncNow() {
-  await syncStore.runNow();
-  await store.refreshCurrentPage();
+  try {
+    await syncStore.runNow();
+    await store.refreshCurrentPage();
+  } catch (error: unknown) {
+    if (isBaobaoAuthExpiredError(error)) {
+      pendingBaobaoAction.value = "sync";
+      baobaoLoginDialogOpen.value = true;
+      return;
+    }
+
+    setFeedback({
+      tone: "error",
+      message: `同步失败：${getErrorMessage(error)}`,
+    });
+  }
 }
 
 async function runResetSyncNow() {
@@ -193,10 +204,29 @@ async function runResetSyncNow() {
       message: `已删除 ${result.clearedCandidates} 条本地候选人记录，并重新同步 ${result.syncedCandidates} 条候选人。`,
     });
   } catch (error: unknown) {
+    if (isBaobaoAuthExpiredError(error)) {
+      pendingBaobaoAction.value = "reset-sync";
+      baobaoLoginDialogOpen.value = true;
+      return;
+    }
+
     setFeedback({
       tone: "error",
       message: `重置并重新导入失败：${getErrorMessage(error)}`,
     });
+  }
+}
+
+async function handleBaobaoAuthenticated() {
+  const action = pendingBaobaoAction.value;
+  pendingBaobaoAction.value = null;
+
+  await authStore.checkStatus({ force: true });
+
+  if (action === "sync") {
+    await runSyncNow();
+  } else if (action === "reset-sync") {
+    await runResetSyncNow();
   }
 }
 

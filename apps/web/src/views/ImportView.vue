@@ -450,17 +450,18 @@
       :initial-provider-id="presetProviders[0]?.id ?? ''"
       :initial-model-id="luiStore.selectedModelId || ''"
       :saving="isSavingGatewaySetup"
-      :show-test-button="false"
+      :testing="isTestingGatewaySetup"
       save-button-text="保存并继续"
       @update:open="handleGatewaySetupDialogOpenChange"
       @save="saveGatewaySetupFromDialog"
+      @test="testGatewaySetupFromDialog"
     />
 
     <Dialog
       :open="modelSelectionDialogOpen"
       @update:open="handleModelSelectionDialogOpenChange"
     >
-      <template #content>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>选择模型</DialogTitle>
           <DialogDescription>
@@ -487,7 +488,7 @@
                 :key="`${provider.id}:${model.id}`"
                 variant="outline"
                 class="h-auto justify-start px-3 py-2 text-left"
-                @click="selectImportModel(model.id)"
+                @click="selectImportModel(model.id, provider.id)"
               >
                 <span class="truncate text-sm">{{ model.displayName }}</span>
               </Button>
@@ -500,7 +501,7 @@
             取消
           </Button>
         </DialogFooter>
-      </template>
+      </DialogContent>
     </Dialog>
 
     <AiScreeningDetailDialog
@@ -560,11 +561,14 @@ import Progress from "@/components/ui/progress.vue";
 import Skeleton from "@/components/ui/skeleton.vue";
 import { Switch } from "@/components/ui/switch";
 import EmptyState from "@/components/ui/empty-state.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogFooter from "@/components/ui/dialog-footer.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Separator from "@/components/ui/separator.vue";
 import { ApiError } from "@/api/client";
 import { luiApi } from "@/api/lui";
@@ -584,7 +588,7 @@ interface PresetProvider {
 
 const importBatches = useImportBatches();
 const luiStore = useLuiStore();
-const { autoScreen, setAutoScreen } = useImportPreferences();
+const { autoScreen, userManuallyDisabled, setAutoScreenManual, setAutoScreenSystem } = useImportPreferences();
 const { notifyError, notifySuccess, notifyInfo } = useAppNotifications();
 const fileImport = useImportFileSelection({
   onImportFinished: importBatches.refresh,
@@ -674,6 +678,7 @@ const analysisRunningFiles = computed(() =>
 
 const gatewaySetupDialogOpen = ref(false);
 const isSavingGatewaySetup = ref(false);
+const isTestingGatewaySetup = ref(false);
 const modelSelectionDialogOpen = ref(false);
 const pendingImportRequest = ref(false);
 const pendingBatchScreeningRuns = ref(new Set<string>());
@@ -737,7 +742,7 @@ function openGatewaySetupDialog() {
 }
 
 function handleGatewaySetupDialogOpenChange(open: boolean) {
-  if (!open && isSavingGatewaySetup.value) {
+  if (!open && (isSavingGatewaySetup.value || isTestingGatewaySetup.value)) {
     return;
   }
   gatewaySetupDialogOpen.value = open;
@@ -754,46 +759,24 @@ function handleModelSelectionDialogOpenChange(open: boolean) {
 }
 
 async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
-  const provider = presetProviders.value.find((item) => item.id === payload.providerId);
-  if (!provider) {
-    notifyError("请选择模型厂商");
+  const endpoint = buildGatewayEndpointFromDialogPayload(payload);
+  if (!endpoint) {
     return;
   }
-
-  const apiKey = payload.apiKey.trim();
-  const modelId = payload.modelId.trim();
-  if (!apiKey) {
-    notifyError("请输入 API Key");
-    return;
-  }
-
-  const selectedModelOption = modelId
-    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === payload.providerId)
-    : null;
 
   isSavingGatewaySetup.value = true;
   try {
-    const endpoint: GatewayEndpoint = {
-      id: provider.id,
-      name: provider.name,
-      provider: provider.id,
-      baseURL: provider.baseURL,
-      providerId: provider.id,
-      apiKey,
-      ...(modelId ? { modelId } : {}),
-      ...(selectedModelOption?.label ? { modelDisplayName: selectedModelOption.label } : {}),
-    };
     await luiStore.registerCustomEndpoint(endpoint);
 
     if (!hasAvailableModels.value) {
       notifyError("未检测到可用模型，请检查 API Key、厂商配置或网络后重试");
       gatewaySetupDialogOpen.value = true;
-      setAutoScreen(false);
+      setAutoScreenSystem(false);
       return;
     }
 
-    if (modelId) {
-      luiStore.selectModel(modelId);
+    if (endpoint.modelId) {
+      luiStore.selectModel(endpoint.modelId, endpoint.providerId);
     }
 
     notifySuccess("模型厂商已保存");
@@ -804,7 +787,7 @@ async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey:
       return;
     }
 
-    setAutoScreen(true);
+    setAutoScreenManual(true);
 
     if (pendingImportRequest.value) {
       proceedImport();
@@ -821,10 +804,61 @@ async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey:
   }
 }
 
-function selectImportModel(modelId: string) {
-  luiStore.selectModel(modelId);
+function buildGatewayEndpointFromDialogPayload(payload: { providerId: string; apiKey: string; modelId: string }): GatewayEndpoint | null {
+  const provider = presetProviders.value.find((item) => item.id === payload.providerId);
+  if (!provider) {
+    notifyError("请选择模型厂商");
+    return null;
+  }
+
+  const apiKey = payload.apiKey.trim();
+  const modelId = payload.modelId.trim();
+  if (!apiKey) {
+    notifyError("请输入 API Key");
+    return null;
+  }
+
+  const selectedModelOption = modelId
+    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === payload.providerId)
+    : null;
+
+  return {
+    id: provider.id,
+    name: provider.name,
+    provider: provider.id,
+    baseURL: provider.baseURL,
+    providerId: provider.id,
+    apiKey,
+    ...(modelId ? { modelId } : {}),
+    ...(selectedModelOption?.label ? { modelDisplayName: selectedModelOption.label } : {}),
+  };
+}
+
+async function testGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
+  const endpoint = buildGatewayEndpointFromDialogPayload(payload);
+  if (!endpoint) {
+    return;
+  }
+
+  isTestingGatewaySetup.value = true;
+  try {
+    const result = await luiStore.testCustomEndpoint(endpoint);
+    if (result.modelCount > 0) {
+      notifySuccess(`连接成功，发现 ${result.providerCount} 个 Provider、${result.modelCount} 个模型`);
+    } else {
+      notifyInfo("连接成功，但当前端点未返回任何模型");
+    }
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "测试端点连接失败");
+  } finally {
+    isTestingGatewaySetup.value = false;
+  }
+}
+
+function selectImportModel(modelId: string, providerId: string) {
+  luiStore.selectModel(modelId, providerId);
   modelSelectionDialogOpen.value = false;
-  setAutoScreen(true);
+  setAutoScreenManual(true);
   notifySuccess("模型已选择");
 
   if (pendingImportRequest.value) {
@@ -896,6 +930,11 @@ watch([
 
 function startImport() {
   if (!autoScreen.value) {
+    proceedImport();
+    return;
+  }
+
+  if (isAutoScreeningReadyForEnable()) {
     proceedImport();
     return;
   }
@@ -1120,8 +1159,19 @@ function fileNameOf(originalPath: string) {
 }
 
 function syncAutoScreenAvailability() {
-  if (!isAutoScreeningReadyForEnable() && autoScreen.value) {
-    setAutoScreen(false);
+  const ready = isAutoScreeningReadyForEnable();
+
+  if (!ready) {
+    // 模型不可用 → 强制关闭
+    if (autoScreen.value) {
+      setAutoScreenSystem(false);
+    }
+    return;
+  }
+
+  // 模型可用，用户未手动禁用 → 系统自动打开
+  if (!userManuallyDisabled.value && !autoScreen.value) {
+    setAutoScreenSystem(true);
   }
 }
 
@@ -1132,14 +1182,18 @@ function isAutoScreeningReadyForEnable() {
 function onAutoScreenChange(value: boolean | string) {
   const nextValue = Boolean(value);
   if (!nextValue) {
-    setAutoScreen(false);
+    // 用户手动关闭
+    setAutoScreenManual(false);
     return;
   }
 
+  // 用户手动打开
   void ensureAutoScreeningReady().then((ready) => {
-    setAutoScreen(ready);
+    if (ready) {
+      setAutoScreenManual(true);
+    }
   }).catch((error) => {
-    setAutoScreen(false);
+    setAutoScreenManual(false);
     notifyError(
       reportAppError("import/enable-auto-screen", error, {
         title: "AI 初筛暂时无法开启",

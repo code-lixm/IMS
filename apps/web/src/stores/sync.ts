@@ -1,8 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { ApiError, resetAuthCredentials } from "@/api/client";
+import { ApiError } from "@/api/client";
 import { syncApi } from "@/api/sync";
-import router from "@/router";
 import type { SyncResetRunData, SyncStatusData } from "@ims/shared";
 
 function isBaobaoAuthExpiredMessage(message: string | null | undefined) {
@@ -12,22 +11,10 @@ function isBaobaoAuthExpiredMessage(message: string | null | undefined) {
     || message.includes("Invalid baobao token");
 }
 
-function isBaobaoAuthExpiredError(error: unknown) {
+export function isBaobaoAuthExpiredError(error: unknown): error is ApiError {
   return error instanceof ApiError
     && error.status === 401
-    && (error.code === "AUTH_EXPIRED" || error.code === "AUTH_INVALID");
-}
-
-async function redirectToLogin() {
-  const redirect = router.currentRoute.value.fullPath || "/candidates";
-  await resetAuthCredentials("sync-auth-expired");
-  if (router.currentRoute.value.path === "/login") return;
-
-  try {
-    await router.replace({ path: "/login", query: { redirect, reauth: "1" } });
-  } catch (_error) {
-    window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}&reauth=1`);
-  }
+    && (error.code === "AUTH_EXPIRED" || error.code === "AUTH_INVALID" || isBaobaoAuthExpiredMessage(error.message));
 }
 
 export const useSyncStore = defineStore("sync", () => {
@@ -35,10 +22,15 @@ export const useSyncStore = defineStore("sync", () => {
   const loading = ref(false);
   const resetLoading = ref(false);
 
+  function recordAuthError(message: string) {
+    status.value.enabled = false;
+    status.value.lastError = message;
+  }
+
   async function fetchStatus() {
     status.value = await syncApi.status();
     if (isBaobaoAuthExpiredMessage(status.value.lastError)) {
-      await redirectToLogin();
+      status.value.enabled = false;
     }
   }
 
@@ -50,9 +42,7 @@ export const useSyncStore = defineStore("sync", () => {
       await fetchStatus();
     } catch (error) {
       if (isBaobaoAuthExpiredError(error)) {
-        status.value.enabled = false;
-        await redirectToLogin();
-        return;
+        recordAuthError(error.message);
       }
       throw error;
     }
@@ -65,8 +55,7 @@ export const useSyncStore = defineStore("sync", () => {
       await fetchStatus();
     } catch (error) {
       if (isBaobaoAuthExpiredError(error)) {
-        await redirectToLogin();
-        return;
+        recordAuthError(error.message);
       }
       throw error;
     } finally {
@@ -82,8 +71,7 @@ export const useSyncStore = defineStore("sync", () => {
       return result;
     } catch (error) {
       if (isBaobaoAuthExpiredError(error)) {
-        await redirectToLogin();
-        throw error;
+        recordAuthError(error.message);
       }
       throw error;
     } finally {

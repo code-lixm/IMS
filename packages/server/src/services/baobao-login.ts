@@ -10,6 +10,7 @@ import {
   parseJwtPayload,
   restorePersistedHttpAuth,
   startHttpQrLogin,
+  type QrStatus,
 } from "./baobao-http-login";
 
 const LOGIN_URL = "https://baobao.getui.com/#/login";
@@ -49,6 +50,9 @@ interface AuthenticatedSession {
 
 export interface BaobaoLoginSessionSnapshot {
   status: LoginPhase;
+  qrStatus: QrStatus | null; // 详细 QR 状态：no_scanned, is_scanned, confirm_logined, invalid_uuid
+  scannedAt: number | null; // 扫码时间戳
+  confirmedAt: number | null; // 确认时间戳
   imageSrc: string;
   qrText: string | null;
   source: ExtractionSource | null;
@@ -153,6 +157,9 @@ function toAuthenticatedSnapshot(
   const payload = parseJwtPayload(token);
   return {
     status: "authenticated",
+    qrStatus: "confirm_logined",
+    scannedAt: null,
+    confirmedAt: Date.now(),
     imageSrc: "",
     qrText: null,
     source: null,
@@ -171,7 +178,7 @@ function toAuthenticatedSnapshot(
   };
 }
 
-export async function fetchBaobaoLoginQrCode(): Promise<BaobaoLoginSessionSnapshot> {
+export async function fetchBaobaoLoginQrCode(options: { forceRefresh?: boolean } = {}): Promise<BaobaoLoginSessionSnapshot> {
   const persistedAuth = await loadPersistedRemoteAuth();
   if (persistedAuth?.token && !isGhrTokenExpired(persistedAuth.token)) {
     const payload = parseJwtPayload(persistedAuth.token);
@@ -200,7 +207,7 @@ export async function fetchBaobaoLoginQrCode(): Promise<BaobaoLoginSessionSnapsh
   if (existingSession && !existingSession.ghrToken) {
     const aliveWindowMs = 5 * 60 * 1000;
     const notExpired = Date.now() - existingSession.createdAt < aliveWindowMs;
-    if (existingSession.status !== "invalid_uuid" && notExpired) {
+    if (!options.forceRefresh && existingSession.status !== "invalid_uuid" && notExpired) {
       logBaobaoLogin("qr:reuse-session", {
         uuid: existingSession.uuid,
         status: existingSession.status,
@@ -209,6 +216,9 @@ export async function fetchBaobaoLoginQrCode(): Promise<BaobaoLoginSessionSnapsh
       const imageSrc = buildQrImageSource(existingSession.uuid, existingSession.portrait);
       return {
         status: "pending",
+        qrStatus: existingSession.status,
+        scannedAt: existingSession.scannedAt ?? null,
+        confirmedAt: existingSession.confirmedAt ?? null,
         imageSrc,
         qrText: buildQrText(existingSession.uuid),
         source: imageSrc ? "background-image" : "qr-text",
@@ -222,17 +232,29 @@ export async function fetchBaobaoLoginQrCode(): Promise<BaobaoLoginSessionSnapsh
     }
   }
 
+  if (options.forceRefresh && existingSession && !existingSession.ghrToken) {
+    logBaobaoLogin("qr:force-refresh", {
+      uuid: existingSession.uuid,
+      status: existingSession.status,
+      ageMs: Date.now() - existingSession.createdAt,
+    }, true);
+    clearQrSession();
+  }
+
   try {
     const qr = await startHttpQrLogin();
     logBaobaoLogin("qr:new-session", { uuid: qr.uuid }, true);
     const imageSrc = buildQrImageSource(qr.uuid, qr.portrait);
     return {
       status: "pending",
+      qrStatus: qr.status,
+      scannedAt: qr.scannedAt ?? null,
+      confirmedAt: qr.confirmedAt ?? null,
       imageSrc,
       qrText: buildQrText(qr.uuid),
       source: imageSrc ? "background-image" : "qr-text",
       fetchedAt: Date.now(),
-      refreshed: false,
+      refreshed: Boolean(options.forceRefresh),
       currentUrl: LOGIN_URL,
       lastCheckedAt: Date.now(),
       error: null,
@@ -244,6 +266,9 @@ export async function fetchBaobaoLoginQrCode(): Promise<BaobaoLoginSessionSnapsh
     }, true);
     return {
       status: "error",
+      qrStatus: null,
+      scannedAt: null,
+      confirmedAt: null,
       imageSrc: "",
       qrText: null,
       source: null,
@@ -316,6 +341,9 @@ export async function getBaobaoLoginSessionStatus(): Promise<BaobaoLoginSessionS
     const imageSrc = session ? buildQrImageSource(session.uuid, result.portrait) : "";
     return {
       status: result.error ? "error" : "pending",
+      qrStatus: result.status,
+      scannedAt: session?.scannedAt ?? null,
+      confirmedAt: session?.confirmedAt ?? null,
       imageSrc,
       qrText: session ? buildQrText(session.uuid) : null,
       source: session ? (imageSrc ? "background-image" : "qr-text") : null,
@@ -334,6 +362,9 @@ export async function getBaobaoLoginSessionStatus(): Promise<BaobaoLoginSessionS
     const imageSrc = session ? buildQrImageSource(session.uuid, session.portrait) : "";
     return {
       status: "error",
+      qrStatus: null,
+      scannedAt: null,
+      confirmedAt: null,
       imageSrc,
       qrText: session ? buildQrText(session.uuid) : null,
       source: session ? (imageSrc ? "background-image" : "qr-text") : null,

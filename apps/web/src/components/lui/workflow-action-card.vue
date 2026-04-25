@@ -185,6 +185,7 @@ import { formatInterviewRoundLabel, getInterviewRoundRoleLabel, type CandidateDe
 import { luiApi } from "@/api/lui"
 import Button from "@/components/ui/button.vue"
 import { useAppNotifications } from "@/composables/use-app-notifications"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import { useLuiStore } from "@/stores/lui"
 import type { FileResource, Workflow } from "@/stores/lui"
 import InterviewScoreUploadDialog from "./interview-score-upload-dialog.vue"
@@ -392,7 +393,8 @@ async function copyWechatSummary() {
 
   const content = stripMarkdownFormat(rawContent)
 
-  if (typeof window === "undefined" || !navigator?.clipboard?.writeText) {
+  const copied = await copyTextToClipboard(content)
+  if (!copied) {
     notifyError(new Error("当前环境不支持剪贴板"), {
       title: "复制失败",
       fallbackMessage: "当前环境不支持复制到剪贴板",
@@ -400,7 +402,6 @@ async function copyWechatSummary() {
     return
   }
 
-  await navigator.clipboard.writeText(content)
   notifySuccess("已复制评价文案，可直接同步到微信")
 }
 

@@ -1249,16 +1249,6 @@ function buildBaobaoCookieHeader(cookieJson: string | null): string | null {
   }
 }
 
-function triggerInitialSync(reason: string) {
-  void syncManager.runOnce()
-    .then((result) => {
-      console.log(`[sync] initial sync (${reason}) done, syncedCandidates=${result.syncedCandidates} syncedInterviews=${result.syncedInterviews}`);
-    })
-    .catch((error) => {
-      console.error(`[sync] initial sync (${reason}) failed without invalidating auth: ${(error as Error).message}`);
-    });
-}
-
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string") return error;
@@ -1667,7 +1657,9 @@ export async function route(request: Request): Promise<Response> {
 
       await persistBaobaoAuth(body.token, baobaoUser, tokenExpAt, null);
       setBaobaoClient(client);
-      triggerInitialSync("auth-connect");
+      // Auth connect only validates and persists credentials; Baobao business API
+      // sync must be explicitly requested by the user.
+      logBaobaoAuth("route:connect:no-auto-sync", { userId: baobaoUser.id });
 
       return ok({
         status: "valid" as const,
@@ -1681,8 +1673,9 @@ export async function route(request: Request): Promise<Response> {
 
   if (path === "/api/auth/baobao/qr" && request.method === "GET") {
     try {
-      logBaobaoAuth("route:qr:start");
-      const qrCode = await fetchBaobaoLoginQrCode();
+      const forceRefresh = url.searchParams.get("forceRefresh") === "1" || url.searchParams.get("forceRefresh") === "true";
+      logBaobaoAuth("route:qr:start", { forceRefresh });
+      const qrCode = await fetchBaobaoLoginQrCode({ forceRefresh });
       if (!qrCode.authenticated && !qrCode.imageSrc && !qrCode.qrText) {
         const message = qrCode.error ?? "未获取到可用二维码数据";
         logBaobaoAuth("route:qr:no-renderable-data", {
@@ -1703,19 +1696,25 @@ export async function route(request: Request): Promise<Response> {
           qrCode.authenticated.tokenExpAt,
           JSON.stringify(qrCode.authenticated.cookies),
         );
-        triggerInitialSync("auth-qr");
+        // QR login only persists credentials; Baobao business API sync must be
+        // explicitly requested by the user.
+        logBaobaoAuth("route:qr:no-auto-sync", { userId: qrCode.authenticated.user.id });
       }
       logBaobaoAuth("route:qr:done", {
         currentUrl: qrCode.currentUrl,
         source: qrCode.source,
         refreshed: qrCode.refreshed,
         status: qrCode.status,
+        qrStatus: qrCode.qrStatus,
       });
       return ok({
         provider: "baobao" as const,
         imageSrc: qrCode.imageSrc,
         qrText: qrCode.qrText,
         source: qrCode.source,
+        qrStatus: qrCode.qrStatus,
+        scannedAt: qrCode.scannedAt,
+        confirmedAt: qrCode.confirmedAt,
         refreshed: qrCode.refreshed,
         fetchedAt: Date.now(),
         authenticated: Boolean(qrCode.authenticated),
@@ -1740,6 +1739,9 @@ export async function route(request: Request): Promise<Response> {
       logBaobaoAuth("route:login-status:timeout", { error: err.message });
       return {
         status: "error" as const,
+        qrStatus: null,
+        scannedAt: null,
+        confirmedAt: null,
         imageSrc: "",
         source: null,
         fetchedAt: null,
@@ -1762,7 +1764,9 @@ export async function route(request: Request): Promise<Response> {
         session.authenticated.tokenExpAt,
         JSON.stringify(session.authenticated.cookies),
       );
-      triggerInitialSync("auth-login-status");
+      // Login status polling only persists credentials; Baobao business API sync
+      // must be explicitly requested by the user.
+      logBaobaoAuth("route:login-status:no-auto-sync", { userId: session.authenticated.user.id });
     }
 
     logBaobaoAuth("route:login-status:done", {
@@ -1775,6 +1779,9 @@ export async function route(request: Request): Promise<Response> {
     return ok({
       provider: "baobao" as const,
       status: session.status,
+      qrStatus: session.qrStatus,
+      scannedAt: session.scannedAt,
+      confirmedAt: session.confirmedAt,
       currentUrl: session.currentUrl,
       lastCheckedAt: session.lastCheckedAt,
       error: session.error,
@@ -1840,6 +1847,16 @@ export async function route(request: Request): Promise<Response> {
     const syncStatus = syncManager.status();
     const shouldRestartPolling = syncStatus.enabled;
     let hasClearedLocalRecords = false;
+    const client = getBaobaoClient();
+
+    if (!client || BaobaoClient.isTokenExpired(client.getToken())) {
+      if (shouldRestartPolling) {
+        syncManager.stop();
+      }
+      await markBaobaoAuthExpired();
+      return fail("AUTH_EXPIRED", "抱抱登录未就绪，请先登录后再重新导入", 401);
+    }
+
     syncManager.stop();
 
     try {

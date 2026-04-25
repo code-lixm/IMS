@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { authApi } from "@/api/auth";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { isUnauthorizedError, reportAppError } from "@/lib/errors/normalize";
+import { forgetSkippedBaobaoLogin } from "@/lib/baobao-login-skip";
 import type { AuthStatusData } from "@ims/shared";
 
 export const useAuthStore = defineStore("auth", () => {
@@ -29,6 +30,9 @@ export const useAuthStore = defineStore("auth", () => {
       const data = await authApi.status();
       status.value = data.status;
       user.value = data.user;
+      if (data.status === "valid") {
+        forgetSkippedBaobaoLogin();
+      }
     } catch (error) {
       status.value = "unauthenticated";
       user.value = null;
@@ -58,6 +62,7 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       await authApi.logout();
     } finally {
+      forgetSkippedBaobaoLogin();
       status.value = "unauthenticated";
       user.value = null;
       initialized.value = true;

@@ -358,6 +358,7 @@ import {
 } from "lucide-vue-next";
 import { importApi } from "@/api/import";
 import { useAppNotifications } from "@/composables/use-app-notifications";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import Button from "@/components/ui/button.vue";
 import Badge from "@/components/ui/badge.vue";
 import Checkbox from "@/components/ui/checkbox.vue";
@@ -683,24 +684,4 @@ function formatYearsLabel(years: number | null | undefined) {
     : `${years} 年经验`;
 }
 
-async function copyTextToClipboard(text: string) {
-  if (typeof window === "undefined") return false;
-  if (navigator?.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return true;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    return document.execCommand("copy");
-  } finally {
-    document.body.removeChild(textarea);
-  }
-}
 </script>

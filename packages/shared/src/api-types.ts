@@ -115,14 +115,27 @@ export interface BaobaoLoginQrData {
   provider: "baobao";
   imageSrc: string;
   qrText: string | null;
-  source: "background-image" | "element-screenshot" | "qr-text";
+  source: "background-image" | "element-screenshot" | "qr-text" | null;
+  qrStatus: "no_scanned" | "is_scanned" | "confirm_logined" | "invalid_uuid" | string | null;
+  scannedAt: number | null;
+  confirmedAt: number | null;
   fetchedAt: number;
   refreshed: boolean;
+  authenticated?: boolean;
+  user?: {
+    id: string;
+    name: string;
+    username: string;
+    email: string | null;
+  } | null;
 }
 
 export interface BaobaoLoginSessionStatusData {
   provider: "baobao";
   status: "pending" | "authenticated" | "error";
+  qrStatus: "no_scanned" | "is_scanned" | "confirm_logined" | "invalid_uuid" | string | null;
+  scannedAt: number | null;
+  confirmedAt: number | null;
   currentUrl: string;
   lastCheckedAt: number;
   error: string | null;

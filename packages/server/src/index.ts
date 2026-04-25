@@ -42,15 +42,6 @@ function buildCookieHeader(cookieJson: string | null): string | null {
   }
 }
 
-async function runInitialSync(reason: string) {
-  try {
-    const result = await syncManager.runOnce();
-    console.log(`[sync] initial sync (${reason}) done, syncedCandidates=${result.syncedCandidates} syncedInterviews=${result.syncedInterviews}`);
-  } catch (error) {
-    console.error(`[sync] initial sync (${reason}) failed: ${(error as Error).message}`);
-  }
-}
-
 const persistedRemote = await db
   .select()
   .from(remoteUsers)
@@ -131,12 +122,8 @@ const server = Bun.serve({
   },
 });
 
-if ((canRestoreClient && restoredRemote?.token) || startupRecoveredAuth?.token) {
-  // Keep health endpoint responsive on startup; remote sync runs in background.
-  queueMicrotask(() => {
-    void runInitialSync("startup");
-  });
-}
+// Startup only restores Baobao auth state. Remote Baobao business API sync is
+// intentionally left to explicit user-triggered sync endpoints.
 
 const shutdown = async () => {
   syncManager.stop();

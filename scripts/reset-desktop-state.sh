@@ -98,7 +98,23 @@ should_kill_pid() {
   if [[ "${lower_command}" == *"/packages/server/dist/server"* ]]; then
     return 0
   fi
+  if [[ "${lower_command}" == *"@ims/server"* ]]; then
+    return 0
+  fi
+  if [[ "${lower_command}" == *"packages/server"* ]]; then
+    return 0
+  fi
+  if [[ "${lower_command}" == *"src/index.ts"* ]] && [[ "${lower_command}" == *"bun"* ]]; then
+    return 0
+  fi
+  if [[ "${lower_command}" == *"pnpm dev:server"* ]] || [[ "${lower_command}" == *"pnpm --filter @ims/server"* ]]; then
+    return 0
+  fi
   if [[ "${lower_command}" == *"/dist/server"* ]]; then
+    return 0
+  fi
+  # Node/Vite dev server 残留进程（port 9091）
+  if [[ "${lower_command}" == *"vite"* ]] && [[ "${lower_command}" == *"node"* ]]; then
     return 0
   fi
 
@@ -108,35 +124,59 @@ should_kill_pid() {
 terminate_pid() {
   local pid="$1"
   kill -TERM "${pid}" 2>/dev/null || true
-  sleep 0.5
+  sleep 1
   if kill -0 "${pid}" 2>/dev/null; then
     kill -KILL "${pid}" 2>/dev/null || true
+    sleep 0.5
   fi
 }
 
+is_gitbash() {
+  [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]
+}
+
+port_pid_from_netstat() {
+  local port="$1"
+  netstat -ano 2>/dev/null | grep ":${port} " | awk '{print $NF}' | head -1 | grep -E '^[0-9]+$' || true
+}
+
+kill_pid_windows() {
+  local pid="$1"
+  taskkill //PID "${pid}" //F >/dev/null 2>&1 || true
+}
 release_port_9092() {
-  if ! command -v lsof >/dev/null 2>&1; then
-    log "未找到 lsof，跳过端口 ${PORT} 进程清理"
-    return
-  fi
+  local pid=""
 
-  local pids
-  pids="$(lsof -nP -t -iTCP:${PORT} -sTCP:LISTEN 2>/dev/null || true)"
-  if [[ -z "${pids}" ]]; then
-    log "端口 ${PORT} 当前未被占用"
-    return
-  fi
-
-  local pid
-  while IFS= read -r pid; do
-    [[ -z "${pid}" ]] && continue
-    if should_kill_pid "${pid}"; then
-      terminate_pid "${pid}"
-      log "已结束占用 ${PORT} 的 IMS 相关进程 pid=${pid}"
-    else
-      log "检测到非 IMS 进程占用 ${PORT}，跳过 pid=${pid}"
+  # macOS / Linux: lsof
+  if command -v lsof >/dev/null 2>&1; then
+    local pids
+    pids="$(lsof -nP -t -iTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -z "${pids}" ]]; then
+      log "端口 ${PORT} 当前未被占用"
+      return
     fi
-  done <<< "${pids}"
+
+    local pid
+    while IFS= read -r pid; do
+      [[ -z "${pid}" ]] && continue
+      if should_kill_pid "${pid}"; then
+        terminate_pid "${pid}"
+        log "已结束占用 ${PORT} 的 IMS 相关进程 pid=${pid}"
+      else
+        log "检测到非 IMS 进程占用 ${PORT}，跳过 pid=${pid}"
+      fi
+    done <<< "${pids}"
+  # Windows Git Bash: netstat + taskkill (ps 不可用，直接杀端口占用进程)
+  elif is_gitbash; then
+    pid="$(port_pid_from_netstat "${PORT}")"
+    if [[ -n "${pid}" ]]; then
+      log "释放占用端口 ${PORT} 的进程 (netstat): pid=${pid}"
+      kill_pid_windows "${pid}"
+    else
+      log "端口 ${PORT} 当前未被占用"
+    fi
+    log "未找到 lsof/netstat，跳过端口 ${PORT} 进程清理"
+  fi
 }
 
 clean_repo_runtime() {
@@ -263,7 +303,11 @@ main() {
   parse_args "$@"
 
   log "开始执行桌面端一键重置"
-  release_port_9092
+  for PORT in $(seq 9091 9112); do
+    release_port_9092
+  done
+  # Give Bun/SQLite a moment to close WAL/SHM handles before deleting App Support.
+  sleep 1
   clean_repo_runtime
   clean_desktop_app_support
   clean_webview_storage

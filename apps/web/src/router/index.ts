@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { pinia } from "@/stores";
+import { hasSkippedBaobaoLogin } from "@/lib/baobao-login-skip";
 import CandidatesView from "@/views/CandidatesView.vue";
 import CandidateDetailView from "@/views/CandidateDetailView.vue";
 import ImportView from "@/views/ImportView.vue";
@@ -30,12 +31,14 @@ router.beforeEach(async (to) => {
   await authStore.ensureStatus();
 
   const isAuthenticated = authStore.status === "valid";
-  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
   const guestOnly = to.matched.some((record) => record.meta.guestOnly);
   const forceReauth = typeof to.query.reauth === "string" && to.query.reauth === "1";
 
-  if (requiresAuth && !isAuthenticated) {
-    return { path: "/login", query: { redirect: to.fullPath, reauth: "1" } };
+  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+  const skippedBaobaoLogin = hasSkippedBaobaoLogin();
+
+  if (requiresAuth && !isAuthenticated && !skippedBaobaoLogin) {
+    return { path: "/login", query: { redirect: to.fullPath } };
   }
 
   if (guestOnly && isAuthenticated && !forceReauth) {

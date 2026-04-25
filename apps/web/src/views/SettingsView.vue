@@ -645,6 +645,11 @@
         </div>
       </Card>
     </AppPageContent>
+
+    <BaobaoLoginDialog
+      v-model:open="baobaoLoginDialogOpen"
+      @authenticated="handleBaobaoAuthenticated"
+    />
   </AppPageShell>
 </template>
 
@@ -664,11 +669,12 @@ import {
 } from "lucide-vue-next";
 import { useAuthStore } from "@/stores/auth";
 import { useLuiStore } from "@/stores/lui";
-import { useSyncStore } from "@/stores/sync";
+import { isBaobaoAuthExpiredError, useSyncStore } from "@/stores/sync";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { useTheme } from "@/composables/use-theme";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
+import BaobaoLoginDialog from "@/components/auth/baobao-login-dialog.vue";
 import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
@@ -729,6 +735,9 @@ const {
   AVAILABLE_RADII: themeRadii,
 } = useTheme();
 const syncEnabled = ref(false);
+const baobaoLoginDialogOpen = ref(false);
+const pendingBaobaoAction = ref<"run-sync" | "toggle-sync" | null>(null);
+const pendingToggleEnabled = ref<boolean | null>(null);
 const isGatewayEndpointDialogOpen = ref(false);
 const editingGatewayEndpointId = ref<string | null>(null);
 const testingEndpointId = ref<string | null>(null);
@@ -913,13 +922,51 @@ async function logout() {
 async function toggleSync() {
   try {
     await syncStore.toggle(syncEnabled.value);
+  } catch (error: unknown) {
+    if (isBaobaoAuthExpiredError(error)) {
+      pendingBaobaoAction.value = "toggle-sync";
+      pendingToggleEnabled.value = syncEnabled.value;
+      baobaoLoginDialogOpen.value = true;
+      return;
+    }
+
+    notifyError(error instanceof Error ? `同步设置失败：${error.message}` : "同步设置失败");
   } finally {
     syncEnabled.value = syncStore.status.enabled;
   }
 }
 
 async function runSyncNow() {
-  await syncStore.runNow();
+  try {
+    await syncStore.runNow();
+  } catch (error: unknown) {
+    if (isBaobaoAuthExpiredError(error)) {
+      pendingBaobaoAction.value = "run-sync";
+      baobaoLoginDialogOpen.value = true;
+      return;
+    }
+
+    notifyError(error instanceof Error ? `同步失败：${error.message}` : "同步失败");
+  }
+}
+
+async function handleBaobaoAuthenticated() {
+  const action = pendingBaobaoAction.value;
+  const targetEnabled = pendingToggleEnabled.value;
+  pendingBaobaoAction.value = null;
+  pendingToggleEnabled.value = null;
+
+  await authStore.checkStatus({ force: true });
+
+  if (action === "run-sync") {
+    await runSyncNow();
+    return;
+  }
+
+  if (action === "toggle-sync" && targetEnabled !== null) {
+    syncEnabled.value = targetEnabled;
+    await toggleSync();
+  }
 }
 
 async function checkAppUpdate() {

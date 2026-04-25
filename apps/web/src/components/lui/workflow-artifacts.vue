@@ -159,6 +159,8 @@ import DialogFooter from "@/components/ui/dialog-footer.vue";
 import DialogHeader from "@/components/ui/dialog-header.vue";
 import DialogTitle from "@/components/ui/dialog-title.vue";
 import ScrollArea from "@/components/ui/scroll-area.vue";
+import { useAppNotifications } from "@/composables/use-app-notifications";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { stripDisplayOnlyFrontmatter } from "@/lib/markdown-display";
 
@@ -172,6 +174,7 @@ const currentWorkflow = computed(() => props.workflow);
 
 const previewOpen = ref(false);
 const previewArtifact = ref<WorkflowArtifact | null>(null);
+const { notifyError, notifySuccess } = useAppNotifications();
 
 const fileLookup = computed(
   () => new Map(props.files.map((file) => [file.id, file])),
@@ -231,14 +234,20 @@ async function copyArtifact(artifact: WorkflowArtifact) {
         fileLookup.value.get(artifact.fileResourceId)?.content ?? "",
       )
     : "";
-  if (
-    !content ||
-    typeof window === "undefined" ||
-    !navigator?.clipboard?.writeText
-  ) {
+  if (!content) {
     return;
   }
-  await navigator.clipboard.writeText(content);
+
+  const copied = await copyTextToClipboard(content);
+  if (!copied) {
+    notifyError(new Error("当前环境不支持复制到剪贴板"), {
+      title: "复制失败",
+      fallbackMessage: "请下载文件后手动复制内容",
+    });
+    return;
+  }
+
+  notifySuccess("已复制内容");
 }
 
 function downloadArtifact(artifact: WorkflowArtifact) {

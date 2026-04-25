@@ -86,6 +86,52 @@ choose_server_port() {
   return 1
 }
 
+is_gitbash() {
+  [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]
+}
+
+port_pid_from_netstat() {
+  local port="$1"
+  netstat -ano 2>/dev/null | grep ":${port} " | awk '{print $NF}' | head -1 | grep -E '^[0-9]+$' || true
+}
+
+kill_pid_windows() {
+  local pid="$1"
+  taskkill //PID "${pid}" //F >/dev/null 2>&1 || true
+}
+
+release_stale_vite_on_port() {
+  local port="$1"
+  local pid=""
+
+  # macOS / Linux: lsof
+  if command -v lsof >/dev/null 2>&1; then
+    pid="$(lsof -nP -t -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+    if [[ -n "${pid}" ]]; then
+      local cmd
+      cmd="$(ps -p "${pid}" -o command= 2>/dev/null || true)"
+      if [[ "${cmd}" == *"vite"* ]]; then
+        log "释放残留 Vite 进程 (lsof): port=${port} pid=${pid}"
+        kill -TERM "${pid}" 2>/dev/null || true
+        sleep 0.5
+        kill -0 "${pid}" 2>/dev/null && kill -KILL "${pid}" 2>/dev/null || true
+        return 0
+      fi
+    fi
+  # Windows Git Bash: netstat + taskkill
+  elif is_gitbash; then
+    pid="$(port_pid_from_netstat "${port}")"
+    if [[ -n "${pid}" ]]; then
+      log "释放占用端口 ${port} 的进程 (netstat): pid=${pid}"
+      kill_pid_windows "${pid}"
+      return 0
+    fi
+  fi
+
+  # 无法检测或无需清理：静默通过
+  return 0
+}
+
 wait_server_health() {
   local attempts
   attempts=$((SERVER_WAIT_SECONDS * 2))
@@ -124,6 +170,9 @@ main() {
     exit 1
   fi
   log "Server 已就绪"
+
+  # 确保 UI 端口 9091 不被残留 Vite 进程占用
+  release_stale_vite_on_port 9091
 
   log "2/2 启动 UI (pnpm dev:ui)"
   (

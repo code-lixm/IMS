@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-04-20
+**Generated:** 2026-04-25
 **Commit:** 8df4ec7
 **Branch:** master
 
@@ -17,10 +17,10 @@ ims/
 │   └── desktop/       # Tauri v2 桌面壳 (@ims/desktop)
 ├── packages/
 │   ├── server/        # Bun HTTP API 服务 (@ims/server)
-│   └── shared/        # 共享类型和常量 (@ims/shared)
+│   └── shared/       # 共享类型和常量 (@ims/shared)
 ├── .spec-workflow/    # Spec 驱动开发工作流
 ├── archive/           # 历史文档归档
-└── runtime/           # 本地运行时数据（SQLite、日志等）
+└── runtime/          # 本地运行时数据（SQLite、日志等）
 ```
 
 ## WHERE TO LOOK
@@ -42,7 +42,6 @@ ims/
 - **TypeScript strict mode** — 所有包均启用 `strict: true`
 - **路径别名** — `@/*` → `./src/*` (web)
 - **无 ESLint/Prettier** — 依赖 TS strict 保证质量（刻意选择）
-- **无测试** — 当前阶段未配置测试基础设施
 - **双锁文件** — pnpm-lock.yaml + bun.lock（pnpm管理workspace + Bun运行时）
 
 ## ANTI-PATTERNS (THIS PROJECT)
@@ -53,6 +52,9 @@ ims/
 - **禁用 linter** — `extractor.ts` 使用 `eslint-disable-next-line`
 - **Magic numbers** — 硬编码超时、端口、重试次数、maxTokens (15x 128000)
 - **`@ts-ignore`** — `apps/web/src/auto-imports.d.ts:85`
+- **`@ts-expect-error`** — `apps/web/src/auto-imports.d.ts` 多处
+- **Entry point 业务逻辑泄漏** — `apps/web/src/main.ts` 混杂 E2E 测试重置逻辑
+- **lib.rs 巨型单体** — `apps/desktop/src/lib.rs` 1294 行混合 server 管理、tray、deep-link
 - **hardcoded 平台** — server `bun build --compile --target=bun-darwin-arm64` 只能跑 Apple Silicon
 - **无 CI/CD** — 没有 GitHub Actions/Docker
 - **Turbo 弱用** — root build 用 `&&` 链而非 `turbo run build`
@@ -146,6 +148,23 @@ pnpm clean            # Turbo clean + rm node_modules
 | Server | `packages/server/src/index.ts` | Bun.serve 启动 |
 | Desktop | `apps/desktop/src/main.rs` → `lib.rs` | Rust 薄入口 → Tauri 应用 |
 | Shared | `packages/shared/src/index.ts` | Barrel 导出 |
+
+## ENTRY POINT NOTES
+
+- **Web (`apps/web/src/main.ts`)** — 61 行，混杂 localStorage 重置逻辑和 URL query 处理，应提取到 `composables/use-state-reset.ts`
+- **Server (`packages/server/src/index.ts`)** — 138 行，auth 恢复逻辑和 DB 查询在模块加载时执行，应拆分到 `services/startup.ts`
+- **Desktop (`apps/desktop/src/lib.rs`)** — 1294 行巨型单体，应拆分为 `server.rs`, `logger.rs`, `tray.rs`, `updater.rs`, `deep_link.rs`
+- **Shared (`packages/shared/src/index.ts`)** — 38 行，存在冗余的选择性重导出（`export *` 已覆盖部分仍单独列出）
+
+## TESTING
+
+- **Playwright E2E** — 6 spec files in `e2e/`
+- **Vitest 单元测试** — 24 .test.ts files across web/server/shared packages
+- **Vitest Workspace** — root `vitest.config.ts` 聚合 3 个子项目配置
+- **Remote CDP** — 支持通过 Chrome DevTools Protocol 复用已登录浏览器
+- **环境变量驱动** — Playwright 配置通过 `PLAYWRIGHT_*` 环境变量控制
+- **无 Vitest Vue 组件测试** — Web 包使用 `happy-dom` 而非真实 Vue
+- **无 CI 测试任务** — 测试仅本地运行，CI 不执行测试
 
 ## KNOWN ISSUES
 

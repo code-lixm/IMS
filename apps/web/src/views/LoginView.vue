@@ -87,7 +87,7 @@
                 variant="outline"
                 size="sm"
                 class="gap-1.5"
-                :disabled="qrState.loading || qrState.resetting"
+                :disabled="qrState.loading"
                 @click="loadQrCode"
               >
                 <RefreshCw
@@ -100,14 +100,11 @@
                 variant="secondary"
                 size="sm"
                 class="gap-1.5"
-                :disabled="qrState.loading || qrState.resetting"
-                @click="resetLoginSession"
+                :disabled="qrState.loading || qrState.redirecting"
+                @click="skipLogin"
               >
-                <RefreshCw
-                  class="h-3.5 w-3.5"
-                  :class="qrState.resetting ? 'animate-spin' : ''"
-                />
-                清空并重刷
+                <LogIn class="h-3.5 w-3.5" />
+                跳过登录
               </Button>
             </div>
           </div>
@@ -182,6 +179,7 @@ import QRCode from "qrcode";
 import { useRoute, useRouter } from "vue-router";
 import {
   CircleAlert,
+  LogIn,
   RefreshCw,
   ScanQrCode,
 } from "lucide-vue-next";
@@ -199,6 +197,7 @@ import Card from "@/components/ui/card.vue";
 import Separator from "@/components/ui/separator.vue";
 import Skeleton from "@/components/ui/skeleton.vue";
 import { useAuthStore } from "@/stores/auth";
+import { rememberSkippedBaobaoLogin } from "@/lib/baobao-login-skip";
 
 const route = useRoute();
 const router = useRouter();
@@ -217,7 +216,6 @@ const qrState = reactive<{
   loginPolling: boolean;
   loginDetected: boolean;
   redirecting: boolean;
-  resetting: boolean;
 }>({
   loading: false,
   refreshing: false,
@@ -231,35 +229,46 @@ const qrState = reactive<{
   loginPolling: false,
   loginDetected: false,
   redirecting: false,
-  resetting: false,
 });
 
 const AUTO_REFRESH_MS = 20000;
 const STATUS_POLL_MS = 3000;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let statusTimer: ReturnType<typeof setInterval> | null = null;
-let requestEpoch = 0;
-let abortCtrl: AbortController | null = null;
+let qrAbortCtrl: AbortController | null = null;
+let statusAbortCtrl: AbortController | null = null;
+let qrRequestEpoch = 0;
+let statusRequestEpoch = 0;
 
-function newEpoch(): number {
-  requestEpoch += 1;
-  if (abortCtrl) {
-    abortCtrl.abort();
-  }
-  abortCtrl = new AbortController();
-  return requestEpoch;
+function startQrRequest(): { epoch: number; signal: AbortSignal } {
+  qrRequestEpoch += 1;
+  qrAbortCtrl?.abort();
+  qrAbortCtrl = new AbortController();
+  return { epoch: qrRequestEpoch, signal: qrAbortCtrl.signal };
 }
 
-function abortEpoch(): void {
-  if (abortCtrl) {
-    abortCtrl.abort();
-    abortCtrl = null;
-  }
-  requestEpoch += 1;
+function startStatusRequest(): { epoch: number; signal: AbortSignal } {
+  statusRequestEpoch += 1;
+  statusAbortCtrl?.abort();
+  statusAbortCtrl = new AbortController();
+  return { epoch: statusRequestEpoch, signal: statusAbortCtrl.signal };
 }
 
-function isEpochValid(epoch: number): boolean {
-  return epoch === requestEpoch && abortCtrl !== null && !abortCtrl.signal.aborted;
+function isCurrentQrRequest(epoch: number): boolean {
+  return epoch === qrRequestEpoch && qrAbortCtrl !== null && !qrAbortCtrl.signal.aborted;
+}
+
+function isCurrentStatusRequest(epoch: number): boolean {
+  return epoch === statusRequestEpoch && statusAbortCtrl !== null && !statusAbortCtrl.signal.aborted;
+}
+
+function abortAllRequests(): void {
+  qrAbortCtrl?.abort();
+  statusAbortCtrl?.abort();
+  qrAbortCtrl = null;
+  statusAbortCtrl = null;
+  qrRequestEpoch += 1;
+  statusRequestEpoch += 1;
 }
 
 function isUpstreamConnectionError(message: string | null | undefined) {
@@ -325,25 +334,12 @@ function stopPollingTimers() {
     statusTimer = null;
   }
 
-  abortEpoch();
+  abortAllRequests();
 }
 
 async function initializeLoginView() {
   await loadQrCode();
   startPollingTimers();
-}
-
-function resetQrState() {
-  qrState.imageSrc = "";
-  qrState.qrSvgMarkup = "";
-  qrState.loadError = "";
-  qrState.statusError = "";
-  qrState.fetchedAt = null;
-  qrState.source = null;
-  qrState.refreshed = false;
-  qrState.loginPolling = false;
-  qrState.loginDetected = false;
-  qrState.redirecting = false;
 }
 
 function applyAuthenticatedUser(user: { id: string; name: string; email: string | null }) {
@@ -376,35 +372,15 @@ async function navigateAfterLogin() {
   void authStore.checkStatus({ force: true });
 }
 
-async function resetLoginSession() {
-  if (qrState.resetting) {
-    return;
-  }
-
-  qrState.resetting = true;
-  stopPollingTimers();
-  resetQrState();
-
-  try {
-    await authStore.logout();
-    notifySuccess("已清空当前登录信息，正在重新获取二维码", {
-      title: "已重置登录状态",
-    });
-    await initializeLoginView();
-  } catch (error) {
-    notifyError(reportAppError("login-view/reset-login-session", error, {
-      title: "清空登录信息失败",
-      fallbackMessage: "请稍后重试",
-    }));
-    await initializeLoginView();
-  } finally {
-    qrState.resetting = false;
-  }
-}
-
 function redirectTarget() {
   const redirect = route.query.redirect;
   return typeof redirect === "string" && redirect.startsWith("/") ? redirect : "/candidates";
+}
+
+function skipLogin() {
+  stopPollingTimers();
+  rememberSkippedBaobaoLogin();
+  void router.replace(redirectTarget());
 }
 
 function formatTime(timestamp: number) {
@@ -418,8 +394,7 @@ function formatTime(timestamp: number) {
 
 async function loadQrCode(options?: { silent?: boolean }) {
   const silent = options?.silent ?? false;
-  const epoch = newEpoch();
-  const signal = abortCtrl!.signal;
+  const { epoch, signal } = startQrRequest();
 
   console.log("[login-view] loadQrCode:start", {
     silent,
@@ -437,8 +412,8 @@ async function loadQrCode(options?: { silent?: boolean }) {
   try {
     const result = await authApi.baobaoQr({ signal });
 
-    if (!isEpochValid(epoch)) {
-      console.log("[login-view] loadQrCode:epoch-expired", { epoch, currentEpoch: requestEpoch });
+    if (!isCurrentQrRequest(epoch)) {
+      console.log("[login-view] loadQrCode:epoch-expired", { epoch, currentEpoch: qrRequestEpoch });
       return;
     }
 
@@ -476,8 +451,8 @@ async function loadQrCode(options?: { silent?: boolean }) {
     qrState.loadError = "";
     qrState.statusError = "";
   } catch (error) {
-    if (!isEpochValid(epoch)) {
-      console.log("[login-view] loadQrCode:epoch-expired-error", { epoch, currentEpoch: requestEpoch });
+    if (!isCurrentQrRequest(epoch)) {
+      console.log("[login-view] loadQrCode:epoch-expired-error", { epoch, currentEpoch: qrRequestEpoch });
       return;
     }
 
@@ -554,8 +529,8 @@ async function checkLoginStatus() {
   if (qrState.redirecting || qrState.loading) return;
   if (!hasRenderedQrCode()) return;
 
-  const epoch = newEpoch();
-  const signal = abortCtrl!.signal;
+  const qrEpochAtStart = qrRequestEpoch;
+  const { epoch, signal } = startStatusRequest();
   qrState.loginPolling = true;
   console.log("[login-view] checkLoginStatus:start", {
     redirecting: qrState.redirecting,
@@ -573,8 +548,13 @@ async function checkLoginStatus() {
       userId: result.user?.id ?? null,
     });
 
-    if (!isEpochValid(epoch)) {
-      console.log("[login-view] checkLoginStatus:epoch-expired", { epoch, currentEpoch: requestEpoch });
+    if (!isCurrentStatusRequest(epoch)) {
+      console.log("[login-view] checkLoginStatus:epoch-expired", { epoch, currentEpoch: statusRequestEpoch });
+      return;
+    }
+    // 如果 QR epoch 已变化且未认证，说明 QR 已刷新，跳过此次状态检查
+    if (qrEpochAtStart !== qrRequestEpoch && !result.authenticated) {
+      console.log("[login-view] checkLoginStatus:qr-epoch-changed", { qrEpochAtStart, currentQrEpoch: qrRequestEpoch });
       return;
     }
 
@@ -613,8 +593,8 @@ async function checkLoginStatus() {
       await navigateAfterLogin();
     }
   } catch (error) {
-    if (!isEpochValid(epoch)) {
-      console.log("[login-view] checkLoginStatus:epoch-expired-error", { epoch, currentEpoch: requestEpoch });
+    if (!isCurrentStatusRequest(epoch)) {
+      console.log("[login-view] checkLoginStatus:epoch-expired-error", { epoch, currentEpoch: statusRequestEpoch });
       return;
     }
 

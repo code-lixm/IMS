@@ -32,7 +32,7 @@ export interface LuiModelModule {
   removeCustomEndpoint: (endpointId: string) => Promise<void>;
   setDefaultCustomEndpoint: (endpointId: string | null) => Promise<void>;
   testCustomEndpoint: (endpoint: GatewayEndpoint) => Promise<{ providerCount: number; modelCount: number }>;
-  selectModel: (id: string | null) => void;
+  selectModel: (id: string | null, providerId?: string | null) => void;
 }
 
 export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelModule {
@@ -468,9 +468,11 @@ export function createLuiModelModule(options: LuiModelModuleOptions): LuiModelMo
     }
   }
 
-  function selectModel(id: string | null) {
+  function selectModel(id: string | null, providerId?: string | null) {
     selectedId.value = id;
-    const model = id ? getModelById(id) : undefined;
+    const model = id
+      ? models.value.find((item) => item.id === id && item.provider === providerId) ?? getModelById(id)
+      : undefined;
     selectedProviderId.value = model?.provider ?? null;
   }
 

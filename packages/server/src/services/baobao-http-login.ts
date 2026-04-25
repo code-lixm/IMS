@@ -700,6 +700,7 @@ interface QrSession {
   mToken: string | null;
   status: QrStatus;
   createdAt: number;
+  scannedAt: number | null;
   confirmedAt: number | null;
   ghrToken: string | null;
   userInfo: BaobaoLoginInfoResponse["data"]["data"] | null;
@@ -742,6 +743,8 @@ export async function startHttpQrLogin(): Promise<{
   uuid: string;
   portrait: string | null;
   status: QrStatus;
+  scannedAt: number | null;
+  confirmedAt: number | null;
 }> {
   const runtimeCookies: CookieJar = FORCED_SESSION_COOKIE_VALUE
     ? { session: FORCED_SESSION_COOKIE_VALUE }
@@ -778,6 +781,7 @@ export async function startHttpQrLogin(): Promise<{
     mToken: initialStatus.mToken,
     status: initialStatus.status,
     createdAt: Date.now(),
+    scannedAt: initialStatus.scannedAt,
     confirmedAt: initialStatus.confirmedAt,
     ghrToken: null,
     userInfo: null,
@@ -798,6 +802,8 @@ export async function startHttpQrLogin(): Promise<{
     uuid,
     portrait: initialStatus.portrait,
     status: initialStatus.status,
+    scannedAt: initialStatus.scannedAt,
+    confirmedAt: initialStatus.confirmedAt,
   };
 }
 
@@ -895,6 +901,9 @@ export async function checkHttpLoginStatus(): Promise<{
       status: newStatus,
       portrait: newPortrait,
       mToken: newMToken,
+      scannedAt: newStatus === "is_scanned" && !qrSession.scannedAt
+        ? Date.now()
+        : qrSession.scannedAt,
       confirmedAt: newStatus === "confirm_logined" && !qrSession.confirmedAt
         ? Date.now()
         : qrSession.confirmedAt,

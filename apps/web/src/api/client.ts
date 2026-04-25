@@ -7,12 +7,9 @@ import { SERVER_BASE_URL, type ApiMeta, type ApiResponse } from "@ims/shared";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DESKTOP_SERVER_DISCOVERY_TIMEOUT_MS = 1_500;
-const AUTH_RESET_TIMEOUT_MS = 5_000;
-const AUTH_REDIRECT_ERROR_CODES = new Set(["AUTH_EXPIRED", "AUTH_INVALID", "AUTH_REQUIRED"]);
 const DESKTOP_SERVER_BASE_URL_STORAGE_KEY = "ims:serverBaseUrl";
 const DESKTOP_SERVER_PORTS = Array.from({ length: 21 }, (_, index) => 9092 + index);
 
-let unauthorizedRedirectInFlight = false;
 let desktopServerDiscoveryPromise: Promise<string | null> | null = null;
 
 declare global {
@@ -231,57 +228,6 @@ function isApiFailure<T>(json: ApiResponse<T>): json is Extract<ApiResponse<T>, 
   return json.success === false;
 }
 
-export async function resetAuthCredentials(reason = "auth-invalid"): Promise<void> {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), AUTH_RESET_TIMEOUT_MS);
-
-  try {
-    await fetch(resolveUrl("/api/auth/reset"), {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason }),
-      signal: controller.signal,
-    });
-  } catch (_error) {
-    // Best-effort fallback: navigation to login must still happen even if the local server is unavailable.
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
-function redirectToLoginOnUnauthorized(): void {
-  if (typeof window === "undefined" || unauthorizedRedirectInFlight) {
-    return;
-  }
-
-  const { pathname, search, hash } = window.location;
-  unauthorizedRedirectInFlight = true;
-  const redirect = `${pathname}${search}${hash}` || "/candidates";
-  void (async () => {
-    await resetAuthCredentials("unauthorized-redirect");
-
-    if (pathname === "/login") {
-      unauthorizedRedirectInFlight = false;
-      return;
-    }
-
-    window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}&reauth=1`);
-  })();
-}
-
-function shouldRedirectOnUnauthorized(path: string, errorCode?: string): boolean {
-  if (path.startsWith("/api/auth/")) {
-    return false;
-  }
-
-  return Boolean(errorCode && AUTH_REDIRECT_ERROR_CODES.has(errorCode));
-}
-
 async function requestEnvelope<T>(path: string, options: BaseRequestOptions = {}): Promise<T> {
   const { timeoutMs, signal, headers, ...rest } = options;
   const { signal: mergedSignal, cleanup } = mergeSignals(signal, timeoutMs);
@@ -296,9 +242,6 @@ async function requestEnvelope<T>(path: string, options: BaseRequestOptions = {}
     const json = await readJsonResponse<T>(response);
 
     if (isApiFailure(json)) {
-      if (response.status === 401 && shouldRedirectOnUnauthorized(path, json.error.code)) {
-        redirectToLoginOnUnauthorized();
-      }
       throw new ApiError(json.error.code, json.error.message, response.status, json.meta);
     }
 
@@ -330,9 +273,6 @@ export async function requestRaw(path: string, options: BaseRequestOptions = {})
       if (contentType.includes("application/json")) {
         const json = await readJsonResponse<unknown>(response);
         if (isApiFailure(json)) {
-          if (response.status === 401 && shouldRedirectOnUnauthorized(path, json.error.code)) {
-            redirectToLoginOnUnauthorized();
-          }
           throw new ApiError(json.error.code, json.error.message, response.status, json.meta);
         }
       }
