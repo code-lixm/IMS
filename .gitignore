@@ -11,6 +11,9 @@ runtime/
 # Tauri build output
 apps/desktop/target
 
+# Local signing keys / secrets
+apps/desktop/sparkle_private_key.txt
+
 # App-specific dirs
 packages/server/runtime/
 packages/server/dist/
