@@ -638,7 +638,7 @@ export async function cancelImportBatch(batchId: string) {
   await refreshBatchProgress(batchId);
 }
 
-export async function rerunImportBatchScreening(batchId: string): Promise<{ retriedCount: number }> {
+export async function rerunImportBatchScreening(batchId: string, templateId?: string): Promise<{ retriedCount: number }> {
   const [batch] = await db.select().from(importBatches).where(eq(importBatches.id, batchId)).limit(1);
   if (!batch) {
     return { retriedCount: 0 };
@@ -697,6 +697,7 @@ export async function rerunImportBatchScreening(batchId: string): Promise<{ retr
         parsed: result.parsedResume,
         confidence,
         fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+        templateId,
       });
       nextResult = {
         ...nextResult,
@@ -792,7 +793,7 @@ export async function startRerunImportBatchScreening(batchId: string): Promise<{
 
 
 
-export async function rerunFileScreening(taskId: string): Promise<{ retried: boolean; screeningStatus: string }> {
+export async function rerunFileScreening(taskId: string, templateId?: string): Promise<{ retried: boolean; screeningStatus: string }> {
   const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
   if (!task) {
     return { retried: false, screeningStatus: "not_requested" };
@@ -827,6 +828,7 @@ export async function rerunFileScreening(taskId: string): Promise<{ retried: boo
       parsed: result.parsedResume,
       confidence,
       fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+      templateId,
     });
     nextResult.screeningStatus = "completed";
     nextResult.screeningSource = "ai";

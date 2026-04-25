@@ -2505,6 +2505,7 @@ export async function route(request: Request): Promise<Response> {
 
   if (batchRerunScreeningMatch && request.method === "POST") {
     const id = batchRerunScreeningMatch[1];
+    const body = await parseJson<{ templateId?: string }>(request).catch(() => null);
     const kickoff = await startRerunImportBatchScreening(id);
     if (kickoff.notFound) return fail("NOT_FOUND", "batch not found", 404);
     if (kickoff.alreadyRunning) {
@@ -2514,7 +2515,7 @@ export async function route(request: Request): Promise<Response> {
       return ok({ id, retriedCount: 0, status: kickoff.status });
     }
 
-    void rerunImportBatchScreening(id).catch((error) => {
+    void rerunImportBatchScreening(id, body?.templateId).catch((error) => {
       console.error("[import] rerun batch screening failed", {
         batchId: id,
         error: error instanceof Error ? error.message : String(error),
@@ -2529,7 +2530,9 @@ export async function route(request: Request): Promise<Response> {
     const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
     if (!task) return fail("NOT_FOUND", "task not found", 404);
 
-    void rerunFileScreening(taskId).catch((error) => {
+    const body = await parseJson<{ templateId?: string }>(request).catch(() => null);
+
+    void rerunFileScreening(taskId, body?.templateId).catch((error) => {
       console.error("[import] rerun file screening failed", {
         taskId,
         error: error instanceof Error ? error.message : String(error),

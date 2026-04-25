@@ -515,6 +515,56 @@
       @navigate-prev="showAdjacentScreeningDetail(-1)"
       @navigate-next="showAdjacentScreeningDetail(1)"
     />
+    <Dialog v-model:open="templateDialogOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>选择筛选模板</DialogTitle>
+          <DialogDescription>
+            选择本次重跑使用的 AI 筛选模板
+          </DialogDescription>
+        </DialogHeader>
+
+        <Separator class="my-4" />
+
+        <div class="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+          <Button
+            variant="outline"
+            class="h-auto w-full justify-start px-3 py-2 text-left"
+            :class="{ 'border-primary': dialogSelectedTemplateId === '' }"
+            @click="dialogSelectedTemplateId = ''"
+          >
+            <span class="truncate text-sm">沿用上次模板</span>
+          </Button>
+
+          <template v-if="screeningTemplates.templates.value.length > 0">
+            <p class="text-xs font-medium text-muted-foreground px-1">
+              自定义模板
+            </p>
+            <Button
+              v-for="template in screeningTemplates.templates.value"
+              :key="template.id"
+              variant="outline"
+              class="h-auto w-full justify-between px-3 py-2 text-left"
+              :class="{ 'border-primary': dialogSelectedTemplateId === template.id }"
+              @click="dialogSelectedTemplateId = template.id"
+            >
+              <span class="truncate text-sm">{{ template.name }}</span>
+              <Badge v-if="template.isDefault" variant="secondary" class="text-xs">默认</Badge>
+            </Button>
+          </template>
+        </div>
+
+        <DialogFooter class="mt-6 gap-2">
+          <Button variant="secondary" @click="templateDialogOpen = false">
+            取消
+          </Button>
+          <Button @click="executeTemplateRerun">
+            开始筛选
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
   </AppPageShell>
 </template>
 
@@ -539,6 +589,7 @@ import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
 import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue";
 import { useImportBatches } from "@/composables/import/use-import-batches";
+import { useScreeningTemplates } from "@/composables/import/use-screening-templates";
 import { useImportFileSelection } from "@/composables/import/use-import-file-selection";
 import { useImportPreferences } from "@/composables/import/use-import-preferences";
 import {
@@ -608,6 +659,15 @@ const {
   deleteBatch,
 } = importBatches;
 
+const screeningTemplates = useScreeningTemplates();
+const templateDialogOpen = ref(false);
+const dialogSelectedTemplateId = ref("");
+interface TemplateDialogTarget {
+  type: "batch" | "file";
+  id: string;
+  batchId?: string;
+}
+const templateDialogTarget = ref<TemplateDialogTarget | null>(null);
 const hasActiveImports = computed(
   () => importBatches.activeBatchCount.value > 0,
 );
@@ -1261,11 +1321,12 @@ async function handleRunFileScreening(taskId: string) {
     return;
   }
 
-  // Find the batchId for this file
   for (const [batchId, files] of Object.entries(batchFiles.value)) {
     const file = files.find((f) => f.id === taskId);
     if (file) {
-      await importBatches.rerunFileScreening(taskId, batchId);
+      templateDialogTarget.value = { type: "file", id: taskId, batchId };
+      dialogSelectedTemplateId.value = "";
+      templateDialogOpen.value = true;
       screeningDialogOpen.value = false;
       return;
     }
@@ -1277,7 +1338,9 @@ async function requestRunFileScreening(taskId: string, batchId: string) {
     return;
   }
 
-  await importBatches.rerunFileScreening(taskId, batchId);
+  templateDialogTarget.value = { type: "file", id: taskId, batchId };
+  dialogSelectedTemplateId.value = "";
+  templateDialogOpen.value = true;
 }
 
 function canRerunBatchScreening(batch: ImportBatchView) {
@@ -1312,10 +1375,16 @@ async function rerunBatchScreening(batchId: string) {
     return;
   }
 
+  templateDialogTarget.value = { type: "batch", id: batchId };
+  dialogSelectedTemplateId.value = "";
+  templateDialogOpen.value = true;
+}
+
+async function executeBatchRerun(batchId: string, templateId?: string) {
   markBatchScreeningPending(batchId, true);
 
   try {
-    const result = await rerunScreening(batchId);
+    const result = await rerunScreening(batchId, templateId);
     if (result.status === "processing") {
       notifySuccess(`已开始 AI 初筛，本批次共 ${result.retriedCount} 个文件`, {
         title: "任务已启动",
@@ -1343,6 +1412,20 @@ async function rerunBatchScreening(batchId: string) {
     );
   } finally {
     markBatchScreeningPending(batchId, false);
+  }
+}
+
+async function executeTemplateRerun() {
+  const target = templateDialogTarget.value;
+  if (!target) return;
+
+  templateDialogOpen.value = false;
+  const tid = dialogSelectedTemplateId.value || undefined;
+
+  if (target.type === "batch") {
+    await executeBatchRerun(target.id, tid);
+  } else {
+    await importBatches.rerunFileScreening(target.id, target.batchId!, tid);
   }
 }
 </script>

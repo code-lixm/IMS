@@ -155,8 +155,8 @@ export function useImportBatches() {
     ]);
   }
 
-  async function rerunScreening(batchId: string) {
-    const result = await importApi.rerunScreening(batchId);
+  async function rerunScreening(batchId: string, templateId?: string) {
+    const result = await importApi.rerunScreening(batchId, templateId);
     await Promise.all([
       refresh(),
       expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
@@ -164,8 +164,8 @@ export function useImportBatches() {
     return result;
   }
 
-  async function rerunFileScreening(taskId: string, batchId: string) {
-    await importApi.rerunFileScreening(taskId);
+  async function rerunFileScreening(taskId: string, batchId: string, templateId?: string) {
+    await importApi.rerunFileScreening(taskId, templateId);
     await Promise.all([
       refresh(),
       expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),

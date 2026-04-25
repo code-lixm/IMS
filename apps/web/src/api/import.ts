@@ -28,12 +28,15 @@ export const importApi = {
       json: { paths, autoScreen },
     });
   },
-  upload(files: File[], autoScreen = false) {
+  upload(files: File[], autoScreen = false, templateId?: string | null) {
     const formData = new FormData();
     for (const file of files) {
       formData.append("files", file);
     }
     formData.append("autoScreen", String(autoScreen));
+    if (templateId) {
+      formData.append("templateId", templateId);
+    }
     return requestForm<CreateImportBatchData>("/api/import/batches", {
       method: "POST",
       formData,
@@ -41,8 +44,8 @@ export const importApi = {
   },
   files(batchId: string) { return api<ImportFileListData>(`/api/import/batches/${batchId}/files`); },
   retryFailed(id: string) { return api<{ retriedCount: number }>(`/api/import/batches/${id}/retry-failed`, { method: "POST" }); },
-  rerunScreening(id: string) { return api<{ id: string; retriedCount: number; status: string }>(`/api/import/batches/${id}/rerun-screening`, { method: "POST" }); },
-  rerunFileScreening(taskId: string) { return api<{ taskId: string; retried: boolean; screeningStatus: string }>(`/api/import/file-tasks/${taskId}/rerun-screening`, { method: "POST", timeoutMs: 10_000 }); },
+  rerunScreening(id: string, templateId?: string) { return api<{ id: string; retriedCount: number; status: string }>(`/api/import/batches/${id}/rerun-screening`, { method: "POST", json: templateId ? { templateId } : undefined }); },
+  rerunFileScreening(taskId: string, templateId?: string) { return api<{ taskId: string; retried: boolean; screeningStatus: string }>(`/api/import/file-tasks/${taskId}/rerun-screening`, { method: "POST", timeoutMs: 10_000, json: templateId ? { templateId } : undefined }); },
   async exportResults(payload: ImportScreeningExportRequest): Promise<ExportedScreeningFile> {
     const response = await requestStream("/api/screening/export", {
       method: "POST",

@@ -1,4 +1,4 @@
-import type { ImportBatch, ParsedResume, ScreeningTemplateInfo, UniversityVerificationResult } from "@ims/shared";
+import type { ImportBatch, ParsedResume, ScreeningTemplateInfo, ScreeningTemplateRenderedInfo, UniversityVerificationResult } from "@ims/shared";
 
 type ImportScreeningVerdict = "pass" | "review" | "reject";
 type ImportScreeningStatus = "not_requested" | "running" | "completed";
@@ -20,6 +20,8 @@ interface ImportScreeningConclusion {
   wechatReason?: string;
   wechatAction?: string;
   wechatCopyText: string;
+  templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
+  universityVerification?: UniversityVerificationResult;
 }
 
 interface ImportTaskResultData {

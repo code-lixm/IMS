@@ -86,20 +86,32 @@
 
               <!-- 有结论状态 -->
               <template v-else-if="hasScreeningConclusion && screeningData">
-                <!-- Verdict badge -->
-                <div class="flex items-center gap-3">
-                  <span
-                    :class="[
-                      'inline-flex items-center rounded-full border px-2 py-0.5 text-sm font-medium',
-                      screeningScoreClass(screeningData.screeningConclusion?.score),
-                    ]"
-                  >
-                    初筛{{ screeningData.screeningConclusion?.label }}
-                    <span class="ml-1 opacity-80">{{ screeningData.screeningConclusion?.score }}分</span>
-                  </span>
-                  <Badge variant="outline" class="text-xs">
-                    {{ screeningSourceLabel(screeningData.screeningSource) }}
-                  </Badge>
+                <!-- Match degree card -->
+                <div class="rounded-lg border p-4 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <p class="text-2xl font-bold" :class="matchDegreeColorClass">{{ score }}%</p>
+                      <p class="text-sm font-medium">{{ matchDegreeLabel }}</p>
+                    </div>
+                    <div class="text-right text-xs text-muted-foreground">
+                      <p v-if="templateInfo">模板：{{ screeningTemplateLabel(templateInfo) }}</p>
+                      <p>来源：{{ screeningSourceLabel(screeningData.screeningSource) }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- University verification -->
+                <div v-if="universityVerification" class="rounded-lg border p-4 space-y-2">
+                  <h3 class="text-sm font-medium">院校信息</h3>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm">{{ universityVerification.schoolName }}</span>
+                    <Badge v-for="tag in screeningUniversityTags(universityVerification)" :key="tag" variant="secondary">{{ tag }}</Badge>
+                    <Badge v-if="universityVerification.verdict === 'not_found'" variant="destructive">高危</Badge>
+                    <Badge v-else-if="universityVerification.verdict === 'api_failed'" variant="outline">查询失败</Badge>
+                  </div>
+                  <p v-if="universityVerification.detail" class="text-xs text-muted-foreground">
+                    {{ universityVerification.detail }}
+                  </p>
                 </div>
 
                 <div class="grid gap-3 md:grid-cols-2">
@@ -250,7 +262,7 @@ import Tabs from "@/components/ui/tabs.vue";
 import TabsList from "@/components/ui/tabs-list.vue";
 import TabsTrigger from "@/components/ui/tabs-trigger.vue";
 import TabsContent from "@/components/ui/tabs-content.vue";
-import { screeningSourceLabel, screeningScoreClass } from "@/composables/import/formatters";
+import { screeningSourceLabel, screeningUniversityTags, screeningTemplateLabel } from "@/composables/import/formatters";
 
 type ImportTaskResultWithConfidence = ImportTaskResultData & {
   extractionConfidence?: number | null;
@@ -287,10 +299,37 @@ const hasScreeningConclusion = computed(() => {
   return !!props.screeningData?.screeningConclusion;
 });
 
+const score = computed(() => {
+  return props.screeningData?.screeningConclusion?.score ?? 0;
+});
+
+const matchDegreeColorClass = computed(() => {
+  const s = score.value;
+  if (s >= 85) return "text-green-600";
+  if (s >= 70) return "text-blue-600";
+  if (s >= 55) return "text-amber-600";
+  return "text-red-600";
+});
+
+const matchDegreeLabel = computed(() => {
+  const s = score.value;
+  if (s >= 85) return "强匹配";
+  if (s >= 70) return "较匹配";
+  if (s >= 55) return "待确认";
+  return "不匹配";
+});
+
+const templateInfo = computed(() => {
+  return props.screeningData?.screeningConclusion?.templateInfo ?? null;
+});
+
+const universityVerification = computed(() => {
+  return props.screeningData?.screeningConclusion?.universityVerification ?? null;
+});
+
 const isScreeningRunning = computed(() => {
   return props.file?.stage === "ai_screening";
 });
-
 const extractionConfidenceValue = computed(() => {
   const raw = props.screeningData?.extractionConfidence;
   return typeof raw === "number" && Number.isFinite(raw) ? raw : null;

@@ -113,6 +113,11 @@ export function useScreeningTemplates() {
     persistSelected(id);
   }
 
+  function clearSelection() {
+    state.value.selectedId = null;
+    persistSelected(null);
+  }
+
   async function createTemplate(input: CreateMatchingTemplateInput): Promise<MatchingTemplate> {
     const template = await screeningTemplatesApi.create(input);
     state.value.items.unshift(template);
@@ -200,5 +205,6 @@ export function useScreeningTemplates() {
     createTemplate,
     updateTemplate,
     deleteTemplate,
+    clearSelection,
   };
 }
