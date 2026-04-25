@@ -325,7 +325,7 @@ fn release_stale_server_on_port<R: Runtime>(
 fn should_kill_stale_server_process(command: &str, expected_server_path: &Path) -> bool {
     let lower = command.to_lowercase();
     let expected = expected_server_path.to_string_lossy().to_lowercase();
-    lower.contains(expected.as_ref())
+    lower.contains(expected.as_str())
 }
 
 #[cfg(windows)]
