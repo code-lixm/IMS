@@ -261,6 +261,8 @@ export interface MatchingTemplate {
   description: string | null;
   prompt: string;
   isDefault: boolean;
+  isActive: boolean;
+  version: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -272,14 +274,14 @@ export interface MatchingTemplateListData {
 export interface CreateMatchingTemplateInput {
   name: string;
   description?: string;
-  content: string;
+  prompt: string;
   isDefault?: boolean;
 }
 
 export interface UpdateMatchingTemplateInput {
   name?: string;
   description?: string;
-  content?: string;
+  prompt?: string;
   isDefault?: boolean;
 }
 
@@ -481,7 +483,33 @@ export interface ImportFileListData {
   items: ImportFileTask[];
 }
 
+// ---------------------------------------------------------------------------
+// Screening Template & University Verification
+// ---------------------------------------------------------------------------
+
+export interface ScreeningTemplateInfo {
+  templateId: string;
+  templateName: string;
+  templateVersion: number;
+  promptSnapshot: string;
+}
+
+export interface ScreeningTemplateRenderedInfo {
+  renderedPromptSnapshot: string;
+}
+
+export interface UniversityVerificationResult {
+  schoolName: string | null;
+  found: boolean;
+  is985: boolean;
+  is211: boolean;
+  isDoubleFirstClass: boolean;
+  detail: string | null;
+  verdict: "verified" | "not_found" | "api_failed";
+}
+
 export type ImportScreeningVerdict = "pass" | "review" | "reject";
+
 
 export type ImportScreeningStatus = "not_requested" | "running" | "completed";
 
@@ -503,6 +531,8 @@ export interface ImportScreeningConclusion {
   wechatReason?: string;
   wechatAction?: string;
   wechatCopyText: string;
+  templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
+  universityVerification?: UniversityVerificationResult;
 }
 
 export interface ImportTaskResultData {
@@ -511,6 +541,8 @@ export interface ImportTaskResultData {
   screeningSource?: ImportScreeningSource | null;
   screeningError?: string | null;
   screeningConclusion?: ImportScreeningConclusion | null;
+  templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
+  universityVerification?: UniversityVerificationResult;
 }
 
 export interface CreateImportBatchData {

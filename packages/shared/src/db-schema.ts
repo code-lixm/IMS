@@ -373,6 +373,18 @@ export interface EmailTemplate {
   updatedAt: number;
 }
 
+export interface ScreeningTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  prompt: string;
+  isDefault: boolean;
+  isActive: boolean;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ---------------------------------------------------------------------------
 // Parsed resume shape (used in API responses)
 // ---------------------------------------------------------------------------
@@ -400,4 +412,16 @@ export interface Device {
   apiPort: number;
   version: string;
   lastSeen: number;
+}
+
+export interface UniversityCacheRecord {
+  id: string;
+  schoolName: string;
+  responseJson: string;
+  is985: number;
+  is211: number;
+  isDoubleFirstClass: number;
+  detail: string | null;
+  found: number;
+  queriedAt: number;
 }

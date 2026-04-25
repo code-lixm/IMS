@@ -35,7 +35,7 @@ const isEditing = computed(() => !!props.template);
 const formData = ref({
   name: "",
   description: "",
-  content: "",
+  prompt: "",
   isDefault: false,
 });
 
@@ -47,14 +47,14 @@ watch(
         formData.value = {
           name: props.template.name,
           description: props.template.description || "",
-          content: props.template.prompt || "",
+          prompt: props.template.prompt || "",
           isDefault: props.template.isDefault,
         };
       } else {
         formData.value = {
           name: "",
           description: "",
-          content: "",
+          prompt: "",
           isDefault: false,
         };
       }
@@ -69,7 +69,7 @@ async function handleSubmit() {
     return;
   }
 
-  if (!formData.value.content.trim()) {
+  if (!formData.value.prompt.trim()) {
     error.value = "请输入模板内容";
     return;
   }
@@ -82,7 +82,7 @@ async function handleSubmit() {
       const updateData: UpdateMatchingTemplateInput = {
         name: formData.value.name,
         description: formData.value.description,
-        content: formData.value.content,
+        prompt: formData.value.prompt,
         isDefault: formData.value.isDefault,
       };
       await screeningTemplatesApi.update(props.template.id, updateData);
@@ -90,7 +90,7 @@ async function handleSubmit() {
       const createData: CreateMatchingTemplateInput = {
         name: formData.value.name,
         description: formData.value.description,
-        content: formData.value.content,
+        prompt: formData.value.prompt,
         isDefault: formData.value.isDefault,
       };
       await screeningTemplatesApi.create(createData);
@@ -138,13 +138,13 @@ function handleClose() {
         </div>
 
         <div class="space-y-2">
-          <Label for="content">
+          <Label for="prompt">
             模板内容 <span class="text-destructive">*</span>
             <span class="text-xs text-muted-foreground ml-2">支持 Markdown 格式</span>
           </Label>
           <Textarea
-            id="content"
-            v-model="formData.content"
+            id="prompt"
+            v-model="formData.prompt"
             placeholder="输入模板内容..."
             :rows="10"
             :disabled="isSubmitting"

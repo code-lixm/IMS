@@ -206,6 +206,18 @@ CREATE TABLE IF NOT EXISTS email_templates (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS screening_templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  prompt TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS remote_users (
   id TEXT PRIMARY KEY,
   provider TEXT NOT NULL DEFAULT 'baobao',
@@ -311,6 +323,18 @@ CREATE TABLE IF NOT EXISTS session_memories (
   importance INTEGER NOT NULL DEFAULT 5,
   created_at INTEGER NOT NULL,
   expires_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS university_cache (
+  id TEXT PRIMARY KEY,
+  school_name TEXT NOT NULL UNIQUE,
+  response_json TEXT NOT NULL,
+  is985 INTEGER NOT NULL DEFAULT 0,
+  is211 INTEGER NOT NULL DEFAULT 0,
+  is_double_first_class INTEGER NOT NULL DEFAULT 0,
+  detail TEXT,
+  found INTEGER NOT NULL DEFAULT 1,
+  queried_at INTEGER NOT NULL
 );
 `);
 

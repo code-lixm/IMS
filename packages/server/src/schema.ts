@@ -229,6 +229,18 @@ export const emailTemplates = sqliteTable("email_templates", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const screeningTemplates = sqliteTable("screening_templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  prompt: text("prompt").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  version: integer("version").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 // ---------------------------------------------------------------------------
 // LUI - Conversation
 // ---------------------------------------------------------------------------
@@ -362,4 +374,19 @@ export const sessionMemories = sqliteTable("session_memories", {
   importance: integer("importance").notNull().default(5),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   expiresAt: integer("expires_at", { mode: "timestamp" }),
+});
+
+// ---------------------------------------------------------------------------
+// University Cache
+// ---------------------------------------------------------------------------
+export const universityCache = sqliteTable("university_cache", {
+  id: text("id").primaryKey(),
+  schoolName: text("school_name").notNull().unique(),
+  responseJson: text("response_json").notNull(),
+  is985: integer("is985").notNull().default(0),
+  is211: integer("is211").notNull().default(0),
+  isDoubleFirstClass: integer("is_double_first_class").notNull().default(0),
+  detail: text("detail"),
+  found: integer("found").notNull().default(1),
+  queriedAt: integer("queried_at").notNull(),
 });
