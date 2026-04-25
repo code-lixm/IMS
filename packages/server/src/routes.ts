@@ -62,6 +62,7 @@ import { sessionMemoryRoute } from "./routes/session-memory";
 import { fileResourcesRoute } from "./routes/file-resources";
 import { emailRoute } from "./routes/email";
 import { interviewAssessmentRoute } from "./routes/interview-assessment";
+import { screeningTemplatesRoute } from "./routes/screening-templates";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
 let databaseShutdownScheduled = false;
@@ -3836,5 +3837,8 @@ Always be concise and helpful in your responses.`;
 
   const sessionMemoryResponse = await sessionMemoryRoute(request);
   if (sessionMemoryResponse) return sessionMemoryResponse;
+
+  const screeningTemplatesResponse = await screeningTemplatesRoute(request);
+  if (screeningTemplatesResponse) return screeningTemplatesResponse;
   return fail("NOT_FOUND", "route not found", 404);
 }

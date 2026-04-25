@@ -34,4 +34,10 @@ export const screeningTemplatesApi = {
       method: "DELETE",
     });
   },
+
+  setDefault(id: string) {
+    return api<MatchingTemplate>(`/api/screening/templates/${id}/default`, {
+      method: "POST",
+    });
+  },
 };
