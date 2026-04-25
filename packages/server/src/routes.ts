@@ -347,17 +347,16 @@ async function runBatchInQueue<T>(job: () => Promise<T>): Promise<T> {
   }
 }
 
-function runImportBatchSerially(tasks: Array<{ taskId: string; filePath: string; fileType: Parameters<typeof processFile>[2] }>) {
+function runImportBatchSerially(tasks: Array<{ taskId: string; filePath: string; fileType: Parameters<typeof processFile>[2] }>, batchTemplateId?: string | null) {
   void runBatchInQueue(async () => {
     let batchId: string | null = null;
     for (const task of tasks) {
       try {
         if (!batchId) {
-          // Get batch ID from first task for final refresh
           const [taskRow] = await db.select({ batchId: importFileTasks.batchId }).from(importFileTasks).where(eq(importFileTasks.id, task.taskId)).limit(1);
           batchId = taskRow?.batchId ?? null;
         }
-        await processFile(task.taskId, task.filePath, task.fileType);
+        await processFile(task.taskId, task.filePath, task.fileType, batchTemplateId);
       } catch (err) {
         console.error(`[import] file processing error: ${(err as Error).message}`);
       }
@@ -2418,18 +2417,20 @@ export async function route(request: Request): Promise<Response> {
     const contentType = request.headers.get("content-type") ?? "";
 
     let autoScreen = false;
+    let templateId: string | null = null;
     let sourcePaths: string[] = [];
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       autoScreen = sanitizeString(formData.get("autoScreen")) === "true";
+      templateId = sanitizeString(formData.get("templateId")) || null;
       const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File && entry.size > 0);
       if (!files.length) return fail("VALIDATION_ERROR", "files is required and non-empty", 422);
       sourcePaths = await Promise.all(files.map((file) => saveImportUploadToLocal(id, file)));
     } else {
-      const body = await parseJson<{ paths: string[]; autoScreen?: boolean }>(request);
-      if (!body.paths?.length) return fail("VALIDATION_ERROR", "paths is required and non-empty", 422);
+      const body = await parseJson<{ paths: string[]; autoScreen?: boolean; templateId?: string }>(request);
       autoScreen = body.autoScreen ?? false;
+      templateId = body.templateId ?? null;
       sourcePaths = body.paths;
     }
 
@@ -2443,7 +2444,7 @@ export async function route(request: Request): Promise<Response> {
       throw error;
     }
     const displayName = buildImportBatchDisplayName(sourcePaths, preparedTasks.length, ts);
-    await db.insert(importBatches).values({ id, displayName, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, createdAt: ts, startedAt: ts });
+    await db.insert(importBatches).values({ id, displayName, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, templateId, createdAt: ts, startedAt: ts });
     const queuedTasks: Array<{ taskId: string; filePath: string; fileType: typeof preparedTasks[number]["fileType"] }> = [];
     for (const task of preparedTasks) {
       const taskId = `task_${crypto.randomUUID()}`;
@@ -2456,7 +2457,7 @@ export async function route(request: Request): Promise<Response> {
         });
       }
     }
-    runImportBatchSerially(queuedTasks);
+    runImportBatchSerially(queuedTasks, templateId);
     await refreshBatchProgress(id);
     return ok({ id, displayName, status: "processing", totalFiles: preparedTasks.length, autoScreen, createdAt: ts }, { status: 201 });
   }

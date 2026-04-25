@@ -149,7 +149,7 @@ export async function refreshBatchProgress(batchId: string) {
   }).where(eq(importBatches.id, batchId));
 }
 
-export async function processFile(taskId: string, filePath: string, fileTypeHint?: FileType): Promise<void> {
+export async function processFile(taskId: string, filePath: string, fileTypeHint?: FileType, templateId?: string | null): Promise<void> {
   if (await markTaskCancelledIfNeeded(taskId)) {
     await updateBatchProgress(taskId);
     return;
@@ -262,6 +262,7 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
           parsed,
           confidence: extractResult.confidence,
           fileName: basename(filePath),
+          templateId: templateId ?? undefined,
         });
 
         result = {

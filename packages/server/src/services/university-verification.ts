@@ -50,7 +50,7 @@ function rowToResult(
     is211: row.is211 === 1,
     isDoubleFirstClass: row.isDoubleFirstClass === 1,
     detail: row.detail ?? null,
-    verdict: row.found === 1 ? "verified" : "not_found",
+    verdict: (row.verdict as UniversityVerificationResult["verdict"]) ?? (row.found === 1 ? "verified" : "not_found"),
   };
 }
 
@@ -104,6 +104,7 @@ export async function verifySchool(
         isDoubleFirstClass: 0,
         detail,
         found: 0,
+        verdict: "api_failed",
         queriedAt: now,
       })
       .run();
@@ -134,6 +135,7 @@ export async function verifySchool(
         isDoubleFirstClass: 0,
         detail: "Invalid JSON response",
         found: 0,
+        verdict: "api_failed",
         queriedAt: now,
       })
       .run();
@@ -162,6 +164,7 @@ export async function verifySchool(
         isDoubleFirstClass: 0,
         detail,
         found: 0,
+        verdict: "api_failed",
         queriedAt: now,
       })
       .run();
@@ -190,6 +193,7 @@ export async function verifySchool(
         isDoubleFirstClass: 0,
         detail: "Empty data",
         found: 0,
+        verdict: "not_found",
         queriedAt: now,
       })
       .run();
@@ -220,6 +224,7 @@ export async function verifySchool(
       isDoubleFirstClass: isDoubleFirstClass ? 1 : 0,
       detail: intro || null,
       found: found ? 1 : 0,
+      verdict: "verified",
       queriedAt: now,
     })
     .run();

@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS import_batches (
   success_files INTEGER NOT NULL DEFAULT 0,
   failed_files INTEGER NOT NULL DEFAULT 0,
   auto_screen INTEGER DEFAULT 0,
+  template_id TEXT,
   created_at INTEGER NOT NULL,
   started_at INTEGER,
   completed_at INTEGER
@@ -334,6 +335,7 @@ CREATE TABLE IF NOT EXISTS university_cache (
   is_double_first_class INTEGER NOT NULL DEFAULT 0,
   detail TEXT,
   found INTEGER NOT NULL DEFAULT 1,
+  verdict TEXT NOT NULL DEFAULT 'verified',
   queried_at INTEGER NOT NULL
 );
 `);
@@ -382,6 +384,8 @@ ensureColumn("agents", "is_mutable", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("agents", "scene_affinity", "TEXT NOT NULL DEFAULT 'general'");
 ensureColumn("agents", "engine", "TEXT NOT NULL DEFAULT 'builtin'");
 
+ensureColumn("university_cache", "verdict", "TEXT NOT NULL DEFAULT 'verified'");
+ensureColumn("import_batches", "template_id", "TEXT");
 export const db = drizzle(sqlite);
 export const rawDb = sqlite;
 

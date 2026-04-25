@@ -184,6 +184,7 @@ export interface ImportBatch {
   successFiles: number;
   failedFiles: number;
   autoScreen: boolean;
+  templateId: string | null;
   createdAt: number;
   startedAt: number | null;
   completedAt: number | null;
@@ -423,5 +424,6 @@ export interface UniversityCacheRecord {
   isDoubleFirstClass: number;
   detail: string | null;
   found: number;
+  verdict: string;
   queriedAt: number;
 }

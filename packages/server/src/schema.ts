@@ -151,6 +151,7 @@ export const importBatches = sqliteTable("import_batches", {
   successFiles: integer("success_files").notNull().default(0),
   failedFiles: integer("failed_files").notNull().default(0),
   autoScreen: integer("auto_screen", { mode: "boolean" }).default(false),
+  templateId: text("template_id"),
   createdAt: integer("created_at").notNull(),
   startedAt: integer("started_at"),
   completedAt: integer("completed_at"),
@@ -388,5 +389,6 @@ export const universityCache = sqliteTable("university_cache", {
   isDoubleFirstClass: integer("is_double_first_class").notNull().default(0),
   detail: text("detail"),
   found: integer("found").notNull().default(1),
+  verdict: text("verdict").notNull().default("verified"),
   queriedAt: integer("queried_at").notNull(),
 });

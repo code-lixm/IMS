@@ -1,27 +1,41 @@
 {
-  "active_plan": "/Users/lixiaoming/Desktop/desktop/personal/IMS/.sisyphus/plans/agent-bound-skills-deepagent-migration.md",
-  "started_at": "2026-04-09T15:17:09.706Z",
+  "active_plan": "/Users/lixiaoming/Desktop/desktop/personal/IMS/.sisyphus/plans/screening-template-university.md",
+  "started_at": "2026-04-26T09:17:00.000Z",
   "session_ids": [
-    "ses_28d5c87adffe5SUgjR1YKFL3Q9",
-    "ses_28d24b5cdffeX7M6FOi1KDDklM",
-    "ses_28d24b4dcffefWCWkQn4TiBPuL",
-    "ses_28d202810ffeR5TErwx0qCv36y",
-    "ses_28d20276dffezwWdjumxkxBDL3",
-    "ses_28d147fb2ffe8vtI1mRV1ufUa3",
-    "ses_28d051a4fffeaWY6thydmyAcGk",
-    "ses_28b071b09ffeR9FUdo9n8dgMkU",
-    "ses_28b071c8fffex2xxjCI1CibMAu",
-    "ses_28b071be6ffe3WqHnOKMnDYoSf",
-    "ses_28afb1037ffewnIfdzSSe0eZrP",
-    "ses_28afb0333ffeXSdWu9NgEmMs3r",
-    "ses_28afb476cffeyIwA6nomZpTtU9",
-    "ses_28ae8e9a9ffebPL4Zi3Jm9X34N",
-    "ses_28ad01ea6ffe3mKn6Pvcvx7m5X",
-    "ses_28aa7b118ffeC0o7xBVRRbXTWu",
-    "ses_28aa7b359ffe18HG4026UuaMRm",
-    "ses_28aa7b1ceffeNxKgLWVttCiDPS",
-    "ses_28a933a92ffeqj74ak2IEWYMEs"
+    "ses_23a85a4d5ffe6V13EDHuZ39fZX",
+    "ses_239ee6763ffec1JotMqKL2XN9j"
   ],
-  "plan_name": "agent-bound-skills-deepagent-migration",
-  "task_sessions": {}
+  "plan_name": "screening-template-university",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Shared Types 扩展（ScreeningTemplateInfo, UniversityVerification, etc.）",
+      "session_id": "ses_23a570914ffeUNMlHneN5vkOSI",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-25T17:25:12.431Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "筛选详情页匹配程度 + 大学信息展示",
+      "session_id": "ses_23a3bd504ffe4zIaktTeIob3yM",
+      "updated_at": "2026-04-25T18:11:17.465Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_239ee6763ffec1JotMqKL2XN9j",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-25T19:19:54.680Z"
+    }
+  },
+  "session_origins": {
+    "ses_23a85a4d5ffe6V13EDHuZ39fZX": "direct",
+    "ses_239ee6763ffec1JotMqKL2XN9j": "appended"
+  },
+  "agent": "atlas"
 }

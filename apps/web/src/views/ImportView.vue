@@ -85,7 +85,23 @@
                   : "新建导入仅做解析，不自动初筛"
               }}
             </div>
-          </div>
+            <div v-if="autoScreen" class="space-y-2 pt-2 border-t border-border/40">
+              <p class="text-xs font-medium text-muted-foreground">筛选模板</p>
+              <div v-if="screeningTemplates.templates.value.length > 0" class="flex flex-wrap gap-2">
+                <button
+                  v-for="template in screeningTemplates.templates.value"
+                  :key="template.id"
+                  class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors"
+                  :class="screeningTemplates.selectedId.value === template.id ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-muted/50'"
+                  @click="screeningTemplates.selectTemplate(template.id)"
+                >
+                  {{ template.name }}
+                  <Badge v-if="template.isDefault" variant="secondary" class="text-[10px] px-1 py-0">默认</Badge>
+                </button>
+              </div>
+              <p v-else class="text-xs text-muted-foreground">
+                暂无自定义模板，将使用系统默认规则
+              </p>
         </div>
       </Card>
 
@@ -970,7 +986,8 @@ async function ensureAutoScreeningReady() {
 
 function proceedImport() {
   pendingImportRequest.value = false;
-  void fileImport.triggerImport({ autoScreen: autoScreen.value });
+  const templateId = autoScreen.value ? (screeningTemplates.selectedId.value || undefined) : undefined;
+  void fileImport.triggerImport({ autoScreen: autoScreen.value, templateId });
 }
 
 onMounted(() => {
