@@ -1,4 +1,4 @@
-import type { ImportBatch, ParsedResume } from "@ims/shared";
+import type { ImportBatch, ParsedResume, ScreeningTemplateInfo, UniversityVerificationResult } from "@ims/shared";
 
 type ImportScreeningVerdict = "pass" | "review" | "reject";
 type ImportScreeningStatus = "not_requested" | "running" | "completed";
@@ -176,6 +176,29 @@ export function screeningSourceLabel(source: ImportScreeningSource | null | unde
   if (source === "heuristic") return "规则回退";
   return "";
 }
+
+
+export function screeningUniversityTags(result: UniversityVerificationResult | null | undefined): string[] {
+  if (!result) return [];
+  const tags: string[] = [];
+  if (result.is985) tags.push("985");
+  if (result.is211) tags.push("211");
+  if (result.isDoubleFirstClass) tags.push("双一流");
+  return tags;
+}
+
+export function screeningUniversityVerdictLabel(verdict: "verified" | "not_found" | "api_failed" | null | undefined): string {
+  if (verdict === "verified") return "已核验";
+  if (verdict === "not_found") return "⚠ 未查到";
+  if (verdict === "api_failed") return "查询失败";
+  return "";
+}
+
+export function screeningTemplateLabel(info: ScreeningTemplateInfo | null | undefined): string {
+  if (!info) return "系统默认";
+  return `${info.templateName} v${info.templateVersion}`;
+}
+
 
 export function formatImportTimestamp(timestamp: number) {
   return new Date(timestamp).toLocaleString("zh-CN", {

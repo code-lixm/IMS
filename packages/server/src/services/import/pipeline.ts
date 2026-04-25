@@ -11,11 +11,13 @@ import { classifyFileType, ImportErrorCodes, type FileType } from "./types";
 import { extractText } from "./extractor";
 import { parseResumeText } from "./parser";
 import { generateImportScreeningConclusionWithAI } from "./ai-screening";
+import { verifyCandidateSchools } from "../university-verification";
 import { config } from "../../config";
-import { ErrorCodes, type ImportScreeningConclusion, type ImportScreeningExportMode, type ImportScreeningExportRequest, type ImportTaskResultData } from "@ims/shared";
+import { ErrorCodes, type ImportScreeningConclusion, type ImportScreeningExportMode, type ImportScreeningExportRequest, type ImportTaskResultData, type UniversityVerificationResult } from "@ims/shared";
 
-type ImportTaskResultWithConfidence = ImportTaskResultData & {
+type ImportTaskResultWithConfidence = Omit<ImportTaskResultData, "universityVerification"> & {
   extractionConfidence?: number | null;
+  universityVerification?: ImportTaskResultData["universityVerification"] | null;
 };
 
 type ImportScreeningConclusionWithMetadata = ImportScreeningConclusion & {
@@ -34,6 +36,9 @@ const ZIP_IGNORED_ENTRY_PREFIXES = ["__macosx/"];
 const SUPPORTED_ARCHIVE_SUFFIXES = [".zip", ".rar", ".tar", ".7z", ".tgz", ".tar.gz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"];
 const execFileAsync = promisify(execFile);
 const ARCHIVE_BIN_PATH = path7za;
+const UNIVERSITY_NOT_FOUND_CONCERN = "学校信息异常：未在教育部高校库中查到，建议人工核实";
+const UNIVERSITY_API_UNAVAILABLE_ERROR = "大学库查询暂不可用";
+const UNIVERSITY_REVIEW_WARNING = "学校信息异常，建议优先人工核实";
 
 export class ImportValidationError extends Error {
   constructor(message: string) {
@@ -274,6 +279,8 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
           screeningConclusion: buildImportScreeningConclusion(parsed, extractResult.confidence),
         };
       }
+
+      result = await attachUniversityVerificationResult(parsed, result);
     }
 
     if (await markTaskCancelledIfNeeded(taskId)) {
@@ -396,6 +403,132 @@ function buildImportScreeningConclusion(parsed: { name: string | null; position:
     wechatAction,
     wechatCopyText,
   } satisfies ImportScreeningConclusionWithMetadata;
+}
+
+async function attachUniversityVerificationResult(
+  parsed: ImportTaskResultData["parsedResume"],
+  result: ImportTaskResultWithConfidence,
+): Promise<ImportTaskResultWithConfidence> {
+  if (!result.screeningConclusion) {
+    return {
+      ...result,
+      universityVerification: null,
+    };
+  }
+
+  const educationList = parsed.education
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  if (educationList.length === 0) {
+    return {
+      ...result,
+      universityVerification: null,
+    };
+  }
+
+  try {
+    const primaryVerification = (await verifyCandidateSchools(educationList))[0] ?? null;
+    if (!primaryVerification) {
+      return {
+        ...result,
+        universityVerification: null,
+      };
+    }
+
+    if (primaryVerification.verdict === "api_failed") {
+      console.warn(
+        `[import] university verification unavailable for ${primaryVerification.schoolName ?? "unknown school"}: ${primaryVerification.detail ?? "unknown reason"}`,
+      );
+    }
+
+    return {
+      ...result,
+      screeningError: primaryVerification.verdict === "api_failed"
+        ? appendUniqueMessage(result.screeningError, UNIVERSITY_API_UNAVAILABLE_ERROR)
+        : result.screeningError,
+      screeningConclusion: applyUniversityVerificationToConclusion(result.screeningConclusion, primaryVerification),
+      universityVerification: primaryVerification,
+    };
+  } catch (error) {
+    console.warn(`[import] university verification failed: ${error instanceof Error ? error.message : String(error)}`);
+    return {
+      ...result,
+      screeningError: appendUniqueMessage(result.screeningError, UNIVERSITY_API_UNAVAILABLE_ERROR),
+      universityVerification: null,
+    };
+  }
+}
+
+function applyUniversityVerificationToConclusion(
+  conclusion: ImportScreeningConclusion,
+  verification: UniversityVerificationResult,
+): ImportScreeningConclusion {
+  if (verification.verdict !== "not_found") {
+    return {
+      ...conclusion,
+      universityVerification: verification,
+    };
+  }
+
+  const score = Math.max(0, conclusion.score - 30);
+  const verdict = score < 55
+    ? downgradeVerdict(conclusion.verdict)
+    : conclusion.verdict;
+  const recommendedAction = verdict === conclusion.verdict
+    ? conclusion.recommendedAction
+    : getRecommendedActionByVerdict(verdict);
+
+  return {
+    ...conclusion,
+    verdict,
+    label: getScreeningLabelByVerdict(verdict),
+    score,
+    concerns: appendUniqueItem(conclusion.concerns, UNIVERSITY_NOT_FOUND_CONCERN),
+    recommendedAction: appendUniqueMessage(recommendedAction, UNIVERSITY_REVIEW_WARNING),
+    universityVerification: verification,
+  };
+}
+
+function downgradeVerdict(verdict: ImportScreeningConclusion["verdict"]): ImportScreeningConclusion["verdict"] {
+  if (verdict === "pass") {
+    return "review";
+  }
+
+  if (verdict === "review") {
+    return "reject";
+  }
+
+  return verdict;
+}
+
+function getScreeningLabelByVerdict(verdict: ImportScreeningConclusion["verdict"]): string {
+  return verdict === "pass"
+    ? "通过"
+    : verdict === "review"
+      ? "待定"
+      : "淘汰";
+}
+
+function getRecommendedActionByVerdict(verdict: ImportScreeningConclusion["verdict"]): string {
+  return verdict === "pass"
+    ? "建议进入后续面试环节"
+    : verdict === "review"
+      ? "建议人工复核后再决定"
+      : "建议暂不进入后续流程";
+}
+
+function appendUniqueItem(items: string[], nextItem: string): string[] {
+  return items.includes(nextItem) ? items : [...items, nextItem];
+}
+
+function appendUniqueMessage(current: string | null | undefined, nextMessage: string): string {
+  const base = current?.trim();
+  if (!base) {
+    return nextMessage;
+  }
+
+  return base.includes(nextMessage) ? base : `${base}；${nextMessage}`;
 }
 
 export async function importResumeForCandidate(
@@ -582,6 +715,8 @@ export async function rerunImportBatchScreening(batchId: string): Promise<{ retr
       };
     }
 
+    nextResult = await attachUniversityVerificationResult(result.parsedResume, nextResult);
+
     await updateTask(task.id, {
       status: "done",
       stage: "completed",
@@ -703,6 +838,8 @@ export async function rerunFileScreening(taskId: string): Promise<{ retried: boo
     nextResult.screeningError = error instanceof Error ? error.message : "AI 初筛失败，已回退规则结论";
     nextResult.screeningConclusion = buildImportScreeningConclusion(result.parsedResume, fallbackConfidence);
   }
+
+  Object.assign(nextResult, await attachUniversityVerificationResult(result.parsedResume, nextResult));
 
   await updateTask(taskId, {
     status: "done",

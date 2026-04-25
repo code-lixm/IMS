@@ -3,7 +3,12 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { providerCredentials, users } from "../../schema";
-import type { ImportScreeningConclusion } from "@ims/shared";
+import type {
+  ImportScreeningConclusion,
+  ScreeningTemplateInfo,
+  ScreeningTemplateRenderedInfo,
+} from "@ims/shared";
+import { screeningTemplatesService, type ScreeningTemplatesService } from "../screening-templates";
 
 type ImportScreeningConclusionWithMetadata = ImportScreeningConclusion & {
   candidateName?: string | null;
@@ -12,9 +17,31 @@ type ImportScreeningConclusionWithMetadata = ImportScreeningConclusion & {
   screeningBaseUrl?: string | null;
 };
 
+type AiScreeningOutputWithMetadata = Partial<AiScreeningOutput> & {
+  templateInfo?: ScreeningTemplateInfo;
+  renderedPromptSnapshot?: string;
+};
+
+interface ScreeningTemplatePromptContext {
+  templateInfo: ScreeningTemplateInfo;
+}
+
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https://ai-gateway.vercel.com/v1";
 const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.env.VERCEL_AI_GATEWAY_TOKEN || "";
 const DEFAULT_IMPORT_SCREENING_MODEL = process.env.IMPORT_SCREENING_MODEL || process.env.CUSTOM_MODEL_ID || "gpt-4o-mini";
+const IMPORT_SCREENING_SYSTEM_LINES = [
+  "你是批量简历初筛 Agent。",
+  "你只输出 JSON，不输出额外解释。",
+  "请基于简历解析结果给出明确结论：通过 / 待定 / 淘汰。",
+  "输出 JSON 字段必须严格包含：verdict,label,score,candidateName,candidatePosition,candidateYearsOfExperience,screeningBaseUrl,summary,strengths,concerns,recommendedAction,wechatConclusion,wechatReason,wechatAction,wechatCopyText。",
+  "verdict 只能是 pass、review、reject。",
+  "label 只能是 通过、待定、淘汰。",
+  "score 是 0-100 的整数。",
+  "strengths 和 concerns 各返回 0-3 条简短中文句子。",
+  "recommendedAction 返回一句中文建议动作。",
+  "wechatConclusion、wechatReason、wechatAction 都必须是单句中文，分别对应结论、原因、建议，不能带编号。",
+  "wechatCopyText 必须严格由这三句按换行拼成：第1行为 wechatConclusion，第2行为 wechatReason，第3行为 wechatAction。不要输出额外句子。",
+] as const;
 
 let screeningQueue: Promise<void> = Promise.resolve();
 
@@ -52,16 +79,18 @@ export async function generateImportScreeningConclusionWithAI(input: {
   parsed: ParsedResumeInput;
   confidence: number;
   fileName: string;
+  templateId?: string;
 }): Promise<ImportScreeningConclusion> {
   return runScreeningSerially(async () => {
     const endpoint = await resolveImportAiEndpoint();
+    const templateContext = await resolveScreeningTemplateContext(input.templateId);
 
     if (!endpoint.apiKey.trim()) {
       throw new Error("AI screening is not configured");
     }
 
     if (endpoint.providerId === "minimax") {
-      return generateMiniMaxScreeningConclusion(input, endpoint);
+      return generateMiniMaxScreeningConclusion(input, endpoint, templateContext);
     }
 
     const provider = createOpenAI({
@@ -69,25 +98,14 @@ export async function generateImportScreeningConclusionWithAI(input: {
       baseURL: normalizeOpenAIBaseURL(endpoint.baseURL),
       apiKey: endpoint.apiKey,
     });
+    const systemPrompt = buildImportScreeningSystemPrompt(templateContext);
 
     try {
       const result = await generateText({
         model: provider.chat(parseRuntimeModelName(endpoint.model)),
         temperature: 0.1,
         abortSignal: AbortSignal.timeout(45_000),
-        system: [
-          "你是批量简历初筛 Agent。",
-          "你只输出 JSON，不输出额外解释。",
-          "请基于简历解析结果给出明确结论：通过 / 待定 / 淘汰。",
-          "输出 JSON 字段必须严格包含：verdict,label,score,candidateName,candidatePosition,candidateYearsOfExperience,screeningBaseUrl,summary,strengths,concerns,recommendedAction,wechatConclusion,wechatReason,wechatAction,wechatCopyText。",
-          "verdict 只能是 pass、review、reject。",
-          "label 只能是 通过、待定、淘汰。",
-          "score 是 0-100 的整数。",
-          "strengths 和 concerns 各返回 0-3 条简短中文句子。",
-          "recommendedAction 返回一句中文建议动作。",
-          "wechatConclusion、wechatReason、wechatAction 都必须是单句中文，分别对应结论、原因、建议，不能带编号。",
-          "wechatCopyText 必须严格由这三句按换行拼成：第1行为 wechatConclusion，第2行为 wechatReason，第3行为 wechatAction。不要输出额外句子。",
-        ].join("\n"),
+        system: systemPrompt,
         prompt: JSON.stringify({
           fileName: input.fileName,
           extractionConfidence: input.confidence,
@@ -110,7 +128,11 @@ export async function generateImportScreeningConclusionWithAI(input: {
       }
 
       return normalizeAiScreeningOutput(
-        JSON.parse(stripAssistantFormatting(result.text)) as Partial<AiScreeningOutput>,
+        {
+          ...(JSON.parse(stripAssistantFormatting(result.text)) as Partial<AiScreeningOutput>),
+          templateInfo: templateContext?.templateInfo,
+          renderedPromptSnapshot: templateContext ? systemPrompt : undefined,
+        },
         input,
         endpoint.baseURL,
       );
@@ -137,9 +159,12 @@ async function runScreeningSerially<T>(job: () => Promise<T>): Promise<T> {
 }
 
 async function generateMiniMaxScreeningConclusion(
-  input: { parsed: ParsedResumeInput; confidence: number; fileName: string },
+  input: { parsed: ParsedResumeInput; confidence: number; fileName: string; templateId?: string },
   endpoint: { baseURL: string; apiKey: string; model: string; providerId?: string | null },
+  templateContext: ScreeningTemplatePromptContext | null,
 ): Promise<ImportScreeningConclusion> {
+  const systemPrompt = buildImportScreeningSystemPrompt(templateContext);
+
   const response = await fetch(`${normalizeOpenAIBaseURL(endpoint.baseURL)}/text/chatcompletion_v2`, {
     method: "POST",
     headers: {
@@ -152,19 +177,7 @@ async function generateMiniMaxScreeningConclusion(
       messages: [
         {
           role: "system",
-          content: [
-            "你是批量简历初筛 Agent。",
-            "你只输出 JSON，不输出额外解释。",
-            "请基于简历解析结果给出明确结论：通过 / 待定 / 淘汰。",
-            "输出 JSON 字段必须严格包含：verdict,label,score,candidateName,candidatePosition,candidateYearsOfExperience,screeningBaseUrl,summary,strengths,concerns,recommendedAction,wechatConclusion,wechatReason,wechatAction,wechatCopyText。",
-            "verdict 只能是 pass、review、reject。",
-            "label 只能是 通过、待定、淘汰。",
-            "score 是 0-100 的整数。",
-            "strengths 和 concerns 各返回 0-3 条简短中文句子。",
-            "recommendedAction 返回一句中文建议动作。",
-            "wechatConclusion、wechatReason、wechatAction 都必须是单句中文，分别对应结论、原因、建议，不能带编号。",
-            "wechatCopyText 必须严格由这三句按换行拼成：第1行为 wechatConclusion，第2行为 wechatReason，第3行为 wechatAction。不要输出额外句子。",
-          ].join("\n"),
+          content: systemPrompt,
         },
         {
           role: "user",
@@ -209,10 +222,53 @@ async function generateMiniMaxScreeningConclusion(
   }
 
   return normalizeAiScreeningOutput(
-    JSON.parse(stripAssistantFormatting(content)) as Partial<AiScreeningOutput>,
+    {
+      ...(JSON.parse(stripAssistantFormatting(content)) as Partial<AiScreeningOutput>),
+      templateInfo: templateContext?.templateInfo,
+      renderedPromptSnapshot: templateContext ? systemPrompt : undefined,
+    },
     input,
     endpoint.baseURL,
   );
+}
+
+async function resolveScreeningTemplateContext(
+  templateId: string | undefined,
+  templateService: Pick<ScreeningTemplatesService, "getTemplate"> = screeningTemplatesService,
+): Promise<ScreeningTemplatePromptContext | null> {
+  const normalizedTemplateId = templateId?.trim();
+  if (!normalizedTemplateId) {
+    return null;
+  }
+
+  const template = await templateService.getTemplate(normalizedTemplateId);
+  if (!template) {
+    return null;
+  }
+
+  return {
+    templateInfo: {
+      templateId: template.id,
+      templateName: template.name,
+      templateVersion: template.version,
+      promptSnapshot: template.prompt,
+    },
+  };
+}
+
+function buildImportScreeningSystemPrompt(templateContext: ScreeningTemplatePromptContext | null): string {
+  if (!templateContext) {
+    return IMPORT_SCREENING_SYSTEM_LINES.join("\n");
+  }
+
+  return [
+    "---",
+    `【模板名称】${templateContext.templateInfo.templateName}`,
+    "【筛选标准】",
+    templateContext.templateInfo.promptSnapshot,
+    "---",
+    ...IMPORT_SCREENING_SYSTEM_LINES,
+  ].join("\n");
 }
 
 async function resolveImportAiEndpoint() {
@@ -259,7 +315,7 @@ async function resolveImportAiEndpoint() {
 }
 
 function normalizeAiScreeningOutput(
-  raw: Partial<AiScreeningOutput>,
+  raw: AiScreeningOutputWithMetadata,
   input: { parsed: ParsedResumeInput; confidence: number; fileName: string },
   baseURL: string,
 ): ImportScreeningConclusionWithMetadata {
@@ -306,6 +362,12 @@ function normalizeAiScreeningOutput(
   const wechatCopyText = typeof raw.wechatCopyText === "string" && raw.wechatCopyText.trim()
     ? buildWechatCopyText(wechatConclusion, wechatReason, wechatAction, raw.wechatCopyText)
     : buildWechatCopyText(wechatConclusion, wechatReason, wechatAction);
+  const templateInfo = raw.templateInfo && typeof raw.renderedPromptSnapshot === "string" && raw.renderedPromptSnapshot.trim()
+    ? {
+      ...raw.templateInfo,
+      renderedPromptSnapshot: raw.renderedPromptSnapshot,
+    } satisfies ScreeningTemplateInfo & ScreeningTemplateRenderedInfo
+    : undefined;
 
   return {
     verdict,
@@ -331,6 +393,7 @@ function normalizeAiScreeningOutput(
     wechatReason,
     wechatAction,
     wechatCopyText,
+    templateInfo,
   };
 }
 
