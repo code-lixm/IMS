@@ -727,6 +727,7 @@ function normalizeImportBatch(batch: (typeof batches.value)[number]): ImportBatc
     successFiles: batch?.successFiles ?? 0,
     failedFiles: batch?.failedFiles ?? 0,
     autoScreen: batch?.autoScreen ?? false,
+    templateId: batch?.templateId ?? null,
     createdAt: batch?.createdAt ?? 0,
     startedAt: batch?.startedAt ?? null,
     completedAt: batch?.completedAt ?? null,

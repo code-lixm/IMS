@@ -466,6 +466,7 @@ export interface ImportBatchListData {
 }
 
 export interface ImportBatchListItem extends ImportBatch {
+  templateId: string | null;
   analysisTotalFiles: number;
   analysisCompletedFiles: number;
   analysisPendingFiles: number;
