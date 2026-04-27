@@ -133,11 +133,11 @@ import { ChevronsUpDown, ExternalLink, Loader2, Search, User } from "lucide-vue-
 import { candidatesApi } from "@/api/candidates";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
-import Button from "@/components/ui/button.vue";
-import Input from "@/components/ui/input.vue";
-import ScrollArea from "@/components/ui/scroll-area.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogFooter from "@/components/ui/dialog-footer.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
 
 interface CandidateSelectorProps {
   modelValue?: string | null;

@@ -55,7 +55,6 @@
             :is-indeterminate-on-page="pageSelectionState.isIndeterminate"
             :share-loading="isBatchSharing"
             :is-selected="batchSelection.isSelected"
-            @import="triggerImport"
             @import-imr="handleImportImr"
             @select="goToCandidateDetail"
             @open-workspace="openWorkspace"
@@ -95,8 +94,8 @@ import DeviceSelectDialog from "@/components/candidates/device-select-dialog.vue
 import BaobaoLoginDialog from "@/components/auth/baobao-login-dialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
-import Card from "@/components/ui/card.vue";
-import Spinner from "@/components/ui/spinner/Spinner.vue";
+import { Card } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { useCandidatePageActions } from "@/composables/candidates/use-candidate-page-actions";
 import { useCandidateSearch } from "@/composables/candidates/use-candidate-search";
 import { useCandidateBatchSelection } from "@/composables/candidates/use-candidate-batch-selection";
@@ -124,9 +123,9 @@ const {
   exportLoadingId,
   deleteLoadingId,
   clearFeedback,
-    goToCandidateDetail,
-    goToImportPage,
-    triggerImport,
+  goToCandidateDetail,
+  goToImportPage,
+  triggerImport,
     triggerImrImport,
     openWorkspace,
     exportCandidate,

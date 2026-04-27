@@ -2,7 +2,7 @@
 
 ## Alignment with Product Vision
 
-导入流水线支持批量导入 zip/pdf/图片，形成可观察、可重试、可恢复的本地处理流程，是候选人数据入口。
+导入流水线支持批量导入 zip/pdf，形成可观察、可重试、可恢复的本地处理流程，是候选人数据入口。
 
 ## Requirements
 
@@ -12,9 +12,9 @@
 
 #### Acceptance Criteria
 
-1. WHEN user imports files THEN the system SHALL support zip, pdf, png, jpg, jpeg, webp formats
+1. WHEN user imports files THEN the system SHALL support zip and pdf formats
 2. WHEN an unsupported format is encountered THEN the system SHALL skip the file with warning
-3. WHEN a zip is imported THEN the system SHALL recursively extract up to maxDepth=3
+3. WHEN a zip is imported THEN the system SHALL extract PDF files contained in the archive
 
 ### Requirement 2: 流水线阶段
 
@@ -26,15 +26,15 @@
 2. WHEN a file fails at any stage THEN the batch SHALL continue processing other files
 3. WHEN a file completes its stage THEN it SHALL transition to the next stage atomically
 
-### Requirement 3: OCR 与文本提取
+### Requirement 3: PDF 文本提取
 
-**User Story:** As a user, I want OCR to extract text from image-based resumes, so that I can search and parse scanned documents.
+**User Story:** As a user, I want the system to extract text directly from searchable PDFs, so that I can search and parse resume content reliably.
 
 #### Acceptance Criteria
 
-1. WHEN a PDF has insufficient text THEN the system SHALL fall back to OCR
-2. WHEN OCR is running THEN the system SHALL record confidence score
-3. WHEN OCR completes THEN the extracted text SHALL be saved for parsing
+1. WHEN a PDF is imported THEN the system SHALL extract embedded text directly
+2. WHEN an image file or unsupported archive is imported THEN the system SHALL reject it with a clear validation message
+3. WHEN text extraction completes THEN the extracted text SHALL be saved for parsing
 
 ### Requirement 4: 候选人归并
 
@@ -72,7 +72,7 @@
 
 ### Performance
 
-- Concurrent OCR/parsing: 2-4 workers
+- Concurrent text extraction/parsing: 2-4 workers
 - UI never blocked by import processing
 - Batch creation responds immediately
 

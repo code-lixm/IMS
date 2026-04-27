@@ -12,7 +12,7 @@
 services/
 ├── import/                  # 简历导入流水线
 │   ├── pipeline.ts          # 导入流程编排 (851 行)
-│   ├── extractor.ts        # OCR/文本提取
+│   ├── extractor.ts        # PDF 文本提取
 │   ├── parser.ts            # 结构化解析
 │   ├── ai-screening.ts      # AI 初筛
 │   └── types.ts             # 共享类型定义
@@ -66,7 +66,7 @@ services/
 | Service | File | Lines | Purpose |
 |---------|------|-------|---------|
 | **Import Pipeline** | `import/pipeline.ts` | 851 | 批量导入流程编排 |
-| **Extractor** | `import/extractor.ts` | - | PDF/图片 OCR 文本提取 |
+| **Extractor** | `import/extractor.ts` | - | PDF 文本提取 |
 | **Parser** | `import/parser.ts` | - | 简历结构化解析 |
 | **AI Screening** | `import/ai-screening.ts` | - | AI 初筛评估 |
 
@@ -211,7 +211,7 @@ VERCEL_AI_GATEWAY_TOKEN   // Vercel AI Gateway Token
 
 ### 职责
 
-处理简历批量导入，支持 PDF、图片（OCR）、ZIP 压缩包等多种格式。
+处理简历批量导入，支持 PDF 与 ZIP 压缩包（内含 PDF）。
 
 ### 流程阶段
 
@@ -235,7 +235,7 @@ MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  // 50MB
 
 ### 文件类型支持
 
-PDF、图片（通过 OCR）、ZIP（自动解压扫描）
+PDF、ZIP（自动解压扫描）
 
 ---
 
@@ -368,6 +368,6 @@ console.error(`[sync] error (${this.consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}
 | `@deepagents/agent` | Deep Agent 运行时 |
 | `drizzle-orm` + `bun:sqlite` | 数据库 |
 | `jszip` | ZIP 压缩包处理 |
-| `pdf-parse` | PDF 文本提取 |
+| `unpdf` | PDF 文本提取 |
 | `xlsx` | Excel 文件处理 |
 | `nodemailer` | 邮件发送 |

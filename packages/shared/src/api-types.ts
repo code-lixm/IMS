@@ -475,6 +475,7 @@ export interface ImportBatchListItem extends ImportBatch {
 export interface CreateImportBatchInput {
   paths: string[];
   autoScreen?: boolean;
+  templateId?: string | null;
 }
 
 export interface ImportBatchData extends ImportBatchListItem {}

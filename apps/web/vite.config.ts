@@ -24,7 +24,11 @@ export default defineConfig(({ mode }) => {
       }),
       Components({
         dts: "src/components.d.ts",
-        dirs: ["src/components/ui", "src/components/lui", "src/agents"],
+        globs: [
+          "src/components/ui/**/*.vue",
+          "src/components/lui/**/*.vue",
+          "src/agents/**/*.vue",
+        ],
       }),
       mockDevServerPlugin({
         enabled: mockEnabled,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
-import Card from '@/components/ui/card/Card.vue'
+import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Handle, Position } from '@vue-flow/core'
 import { reactiveOmit } from '@vueuse/core'

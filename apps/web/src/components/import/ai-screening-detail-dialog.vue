@@ -255,13 +255,13 @@ import type { ImportTaskResultData } from "@ims/shared/src/api-types";
 import type { ImportFileTask } from "@ims/shared";
 import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates";
 import { AlertCircle, Check, ChevronLeft, ChevronRight, X, Loader2, FileText, ClipboardList, Sparkles } from "lucide-vue-next";
-import Button from "@/components/ui/button.vue";
-import Badge from "@/components/ui/badge.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import Tabs from "@/components/ui/tabs.vue";
-import TabsList from "@/components/ui/tabs-list.vue";
-import TabsTrigger from "@/components/ui/tabs-trigger.vue";
-import TabsContent from "@/components/ui/tabs-content.vue";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
+import { Tabs } from "@/components/ui/tabs";
+import { TabsList } from "@/components/ui/tabs";
+import { TabsTrigger } from "@/components/ui/tabs";
+import { TabsContent } from "@/components/ui/tabs";
 import { screeningSourceLabel, screeningUniversityTags, screeningTemplateLabel } from "@/composables/import/formatters";
 
 type ImportTaskResultWithConfidence = ImportTaskResultData & {

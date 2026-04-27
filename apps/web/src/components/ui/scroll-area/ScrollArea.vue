@@ -10,14 +10,17 @@ import {
 import { cn } from "@/lib/utils"
 import ScrollBar from "./ScrollBar.vue"
 
-const props = defineProps<ScrollAreaRootProps & { class?: HTMLAttributes["class"] }>()
+const props = defineProps<ScrollAreaRootProps & {
+  class?: HTMLAttributes["class"]
+  viewportClass?: HTMLAttributes["class"]
+}>()
 
-const delegatedProps = reactiveOmit(props, "class")
+const delegatedProps = reactiveOmit(props, "class", "viewportClass")
 </script>
 
 <template>
   <ScrollAreaRoot v-bind="delegatedProps" :class="cn('relative overflow-hidden', props.class)">
-    <ScrollAreaViewport class="h-full w-full rounded-[inherit]">
+    <ScrollAreaViewport :class="cn('h-full w-full rounded-[inherit]', viewportClass)">
       <slot />
     </ScrollAreaViewport>
     <ScrollBar />

@@ -55,17 +55,17 @@
 <script setup lang="ts">
 import { ref, watch } from "vue"
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-vue-next"
-import Button from "@/components/ui/button.vue"
-import Input from "@/components/ui/input.vue"
-import Label from "@/components/ui/label.vue"
-import Dialog from "@/components/ui/dialog.vue"
-import DialogHeader from "@/components/ui/dialog-header.vue"
-import DialogTitle from "@/components/ui/dialog-title.vue"
-import DialogDescription from "@/components/ui/dialog-description.vue"
-import DialogFooter from "@/components/ui/dialog-footer.vue"
-import Alert from "@/components/ui/alert.vue"
-import AlertTitle from "@/components/ui/alert-title.vue"
-import AlertDescription from "@/components/ui/alert-description.vue"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Dialog } from "@/components/ui/dialog"
+import { DialogHeader } from "@/components/ui/dialog"
+import { DialogTitle } from "@/components/ui/dialog"
+import { DialogDescription } from "@/components/ui/dialog"
+import { DialogFooter } from "@/components/ui/dialog"
+import { Alert } from "@/components/ui/alert"
+import { AlertTitle } from "@/components/ui/alert"
+import { AlertDescription } from "@/components/ui/alert"
 
 interface AuthDialogProps {
   modelValue?: boolean

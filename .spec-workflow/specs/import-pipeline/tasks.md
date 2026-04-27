@@ -6,8 +6,8 @@
 |------|------|------|
 | 类型定义 | [x] 完成 | ImportBatch, ImportFileTask, 错误码 |
 | Pipeline 骨架 | [x] 完成 | 端到端流水线可运行 |
-| PDF 文本提取 | [x] 完成 | `pdf-parse` 实现 |
-| OCR 处理 | [x] 完成 | `tesseract.js` 实现 |
+| PDF 文本提取 | [x] 完成 | `unpdf` 实现 |
+| 图片 OCR | [x] 已移除 | 删除图片 OCR 依赖路径，仅保留 PDF/ZIP(PDF) |
 | 结构化解析 | [x] 完成 | 正则/关键词规则解析 |
 | 候选人归并 | [x] 完成 | 手机→邮箱→新建 |
 | API 端点 | [x] 完成 | `/api/import/*` |
@@ -17,11 +17,11 @@
 
 - [x] 1. 实现 PDF 文本提取
   - File: `packages/server/src/services/import/extractor.ts`
-  - 状态: ✅ 完成 - `extractPdfText()` 使用 pdf-parse
+  - 状态: ✅ 完成 - `extractPdfText()` 使用 unpdf
 
-- [x] 2. 实现 OCR 处理
+- [x] 2. 移除图片 OCR 处理
   - File: `packages/server/src/services/import/extractor.ts`
-  - 状态: ✅ 完成 - `extractImageText()` 使用 tesseract.js
+  - 状态: ✅ 完成 - 删除图片 OCR 依赖，图片导入改为明确报错
 
 - [x] 3. 实现结构化解析
   - File: `packages/server/src/services/import/parser.ts`

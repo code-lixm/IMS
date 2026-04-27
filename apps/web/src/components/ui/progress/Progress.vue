@@ -6,13 +6,19 @@ import { ProgressIndicator, ProgressRoot } from "reka-ui";
 import { cn } from "@/lib/utils";
 
 const props = withDefaults(
-  defineProps<ProgressRootProps & { class?: HTMLAttributes["class"] }>(),
+  defineProps<ProgressRootProps & {
+    class?: HTMLAttributes["class"]
+    indicatorClass?: HTMLAttributes["class"]
+    max?: number
+    value?: number
+  }>(),
   {
+    max: 100,
     modelValue: 0,
   },
 );
 
-const delegatedProps = reactiveOmit(props, "class");
+const delegatedProps = reactiveOmit(props, "class", "indicatorClass", "value");
 </script>
 
 <template>
@@ -26,8 +32,8 @@ const delegatedProps = reactiveOmit(props, "class");
     "
   >
     <ProgressIndicator
-      class="h-full w-full flex-1 bg-primary transition-all"
-      :style="`transform: translateX(-${100 - (props.modelValue ?? 0)}%);`"
+      :class="cn('h-full w-full flex-1 bg-primary transition-all', indicatorClass)"
+      :style="`transform: translateX(-${100 - Math.min(100, Math.max(0, ((props.modelValue ?? props.value ?? 0) / props.max) * 100))}%);`"
     />
   </ProgressRoot>
 </template>

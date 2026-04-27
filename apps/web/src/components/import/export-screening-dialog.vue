@@ -359,17 +359,17 @@ import {
 import { importApi } from "@/api/import";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { copyTextToClipboard } from "@/lib/clipboard";
-import Button from "@/components/ui/button.vue";
-import Badge from "@/components/ui/badge.vue";
-import Checkbox from "@/components/ui/checkbox.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogFooter from "@/components/ui/dialog-footer.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
-import Input from "@/components/ui/input.vue";
-import Label from "@/components/ui/label.vue";
-import ScrollArea from "@/components/ui/scroll-area.vue";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogDescription } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import {
   formatImportBatchDisplayName,

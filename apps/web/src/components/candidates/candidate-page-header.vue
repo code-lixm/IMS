@@ -36,22 +36,18 @@
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="w-48">
-          <DropdownMenuItem :disabled="isImporting" @click="emit('import')">
+          <DropdownMenuItem @click="emit('goto-import')">
             <Download class="mr-2 h-4 w-4" />
-            简历初筛
+            初筛列表
             <Badge
               v-if="(importActivityCount ?? 0) > 0"
               variant="secondary"
-              class="ml-auto min-w-5 justify-center px-1.5 py-0"
+              class="ml-auto min-w-5 justify-center rounded-full px-1.5 py-0 text-[11px]"
             >
               {{ importActivityCount }}
             </Badge>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem @click="emit('goto-import')">
-            <Download class="mr-2 h-4 w-4" />
-            初筛列表
-          </DropdownMenuItem>
           <DropdownMenuItem :disabled="isImporting" @click="emit('import-imr')">
             <Download class="mr-2 h-4 w-4" />
             导入面试信息
@@ -63,22 +59,12 @@
         class="hidden md:flex items-center gap-1 rounded-lg border border-border/60 bg-muted/35 p-1"
       >
         <Button
-          variant="ghost"
+          variant="secondary"
           size="sm"
-          class="gap-1.5"
+          class="gap-2"
           @click="emit('goto-import')"
         >
           <span class="hidden lg:inline">初筛列表</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="gap-2"
-          :disabled="isImporting"
-          @click="emit('import')"
-        >
-          <Download class="h-4 w-4" />
-          <span class="hidden lg:inline">简历初筛</span>
           <Badge
             v-if="(importActivityCount ?? 0) > 0"
             variant="default"
@@ -88,13 +74,12 @@
           </Badge>
         </Button>
         <Button
-          variant="ghost"
+          variant="secondary"
           size="sm"
           class="gap-1.5"
           :disabled="isImporting"
           @click="emit('import-imr')"
         >
-          <Download class="h-4 w-4" />
           <span class="hidden lg:inline">导入面试信息</span>
         </Button>
       </div>
@@ -199,19 +184,19 @@ import {
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
-import Badge from "@/components/ui/badge.vue";
-import Button from "@/components/ui/button.vue";
-import DropdownMenu from "@/components/ui/dropdown-menu.vue";
-import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
-import DropdownMenuItem from "@/components/ui/dropdown-menu-item.vue";
-import DropdownMenuSeparator from "@/components/ui/dropdown-menu-separator.vue";
-import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogFooter from "@/components/ui/dialog-footer.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
-import Input from "@/components/ui/input.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu } from "@/components/ui/dropdown-menu";
+import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogDescription } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 interface CandidatePageHeaderProps {
   search: string;

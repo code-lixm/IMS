@@ -102,6 +102,8 @@
               <p v-else class="text-xs text-muted-foreground">
                 暂无自定义模板，将使用系统默认规则
               </p>
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -621,13 +623,13 @@ import {
   statusLabel,
   statusVariant,
 } from "@/composables/import/formatters";
-import Badge from "@/components/ui/badge.vue";
-import Button from "@/components/ui/button.vue";
-import Card from "@/components/ui/card.vue";
-import Progress from "@/components/ui/progress.vue";
-import Skeleton from "@/components/ui/skeleton.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import EmptyState from "@/components/ui/empty-state.vue";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -636,7 +638,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import Separator from "@/components/ui/separator.vue";
+import { Separator } from "@/components/ui/separator";
 import { ApiError } from "@/api/client";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";

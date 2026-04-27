@@ -120,8 +120,20 @@
   box-shadow: none;
 }
 
+.ims-onboarding-popover .driver-popover-prev-btn:hover,
+.ims-onboarding-popover .driver-popover-close-btn:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
 .ims-onboarding-popover .driver-popover-next-btn {
   background: hsl(var(--primary));
   border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.ims-onboarding-popover .driver-popover-next-btn:hover {
+  background: hsl(var(--primary) / 0.9);
+  border-color: hsl(var(--primary) / 0.9);
   color: hsl(var(--primary-foreground));
 }

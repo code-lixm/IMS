@@ -39,10 +39,7 @@
       :scenario="emptyScenario"
       class="flex-1 min-h-0 w-full"
       :title="'暂无候选人'"
-      :description="'还没有候选人数据，可以先做简历初筛，或导入已有的面试人信息。'"
-      :action-text="'简历初筛'"
-      :action-icon="Download"
-      :action-handler="() => emit('import')"
+      :description="'还没有候选人数据，可以先导入已有的面试人信息。'"
       :secondary-action-text="'导入面试信息'"
       :secondary-action-handler="() => emit('import-imr')"
     />
@@ -389,17 +386,17 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Download, ExternalLink, Share2 } from "lucide-vue-next";
+import { ExternalLink, Share2 } from "lucide-vue-next";
 import {
   applicationStatusClasses,
   type CandidateListData,
   type CandidateSource,
 } from "@ims/shared";
-import Badge from "@/components/ui/badge.vue";
-import Button from "@/components/ui/button.vue";
-import Card from "@/components/ui/card.vue";
-import Checkbox from "@/components/ui/checkbox.vue";
-import EmptyState from "@/components/ui/empty-state.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Pagination,
   PaginationContent,
@@ -408,13 +405,13 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import Skeleton from "@/components/ui/skeleton.vue";
-import Table from "@/components/ui/table.vue";
-import TableBody from "@/components/ui/table-body.vue";
-import TableCell from "@/components/ui/table-cell.vue";
-import TableHead from "@/components/ui/table-head.vue";
-import TableHeader from "@/components/ui/table-header.vue";
-import TableRow from "@/components/ui/table-row.vue";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table } from "@/components/ui/table";
+import { TableBody } from "@/components/ui/table";
+import { TableCell } from "@/components/ui/table";
+import { TableHead } from "@/components/ui/table";
+import { TableHeader } from "@/components/ui/table";
+import { TableRow } from "@/components/ui/table";
 
 interface CandidateListProps {
   items: CandidateListData["items"];
@@ -463,7 +460,6 @@ function openInLui(candidate: CandidateListData["items"][number]) {
 }
 
 const emit = defineEmits<{
-  (e: "import"): void;
   (e: "import-imr"): void;
   (e: "select", candidateId: string): void;
   (e: "open-workspace", candidateId: string): void;

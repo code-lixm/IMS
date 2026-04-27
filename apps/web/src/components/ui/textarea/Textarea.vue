@@ -6,7 +6,10 @@ import { cn } from "@/lib/utils"
 const props = defineProps<{
   class?: HTMLAttributes["class"]
   defaultValue?: string | number
+  disabled?: boolean
   modelValue?: string | number
+  placeholder?: string
+  rows?: string | number
 }>()
 
 const emits = defineEmits<{
@@ -20,5 +23,11 @@ const modelValue = useVModel(props, "modelValue", emits, {
 </script>
 
 <template>
-  <textarea v-model="modelValue" :class="cn('flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50', props.class)" />
+  <textarea
+    v-model="modelValue"
+    :placeholder="placeholder"
+    :disabled="disabled"
+    :rows="rows"
+    :class="cn('flex min-h-[80px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50', props.class)"
+  />
 </template>

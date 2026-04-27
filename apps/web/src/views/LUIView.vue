@@ -588,8 +588,8 @@
 <script setup lang="ts">
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import { computed, onMounted, ref, watch } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from "vue-router";
 import {
   ArrowLeft,
   Bot,
@@ -666,12 +666,12 @@ import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue"
 import WorkflowActionCard from "@/components/lui/workflow-action-card.vue";
 import WorkflowArtifacts from "@/components/lui/workflow-artifacts.vue";
 import TaskQueueIndicator from "@/components/lui/task-queue-indicator.vue";
-import Input from "@/components/ui/input.vue";
-import Button from "@/components/ui/button.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -725,6 +725,7 @@ interface UiMessageItem {
 }
 
 const STALE_STREAMING_MESSAGE_MS = 2 * 60 * 1000;
+const STREAMING_LEAVE_WARNING = "AI 正在回复中，离开当前页面可能会让你看不到完整的流式输出。确定要离开吗？";
 
 const acceptedFileTypes = ".pdf,.png,.jpg,.jpeg,.webp,.zip,.imr";
 const interviewConversationPolicy = createInterviewConversationPolicy();
@@ -910,6 +911,27 @@ const chatStatus = computed<ChatStatus>(() => {
   if (isSubmittingPrompt.value) return "submitted";
   return "ready";
 });
+
+const isStreamingResponseActive = computed(() =>
+  chatStatus.value === "submitted" || chatStatus.value === "streaming",
+);
+
+onBeforeRouteLeave(() => {
+  if (!isStreamingResponseActive.value) {
+    return true;
+  }
+
+  return window.confirm(STREAMING_LEAVE_WARNING);
+});
+
+function handleStreamingBeforeUnload(event: BeforeUnloadEvent) {
+  if (!isStreamingResponseActive.value) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = STREAMING_LEAVE_WARNING;
+}
 
 const canRetryLastPrompt = computed(() => {
   return Boolean(
@@ -1961,6 +1983,8 @@ function sanitizeMessageContent(content: string | null | undefined): string {
 }
 
 onMounted(async () => {
+  window.addEventListener("beforeunload", handleStreamingBeforeUnload);
+
   await loadPresetProviders();
   const candidateId = explicitRouteCandidateId.value ?? undefined;
   await store.initialize({ skipAutoSelect: true });
@@ -1998,6 +2022,10 @@ onMounted(async () => {
   }
 
   await interviewScene.ensureWorkspace(candidateId);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("beforeunload", handleStreamingBeforeUnload);
 });
 </script>
 

@@ -384,7 +384,16 @@ ensureColumn("agents", "is_mutable", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("agents", "scene_affinity", "TEXT NOT NULL DEFAULT 'general'");
 ensureColumn("agents", "engine", "TEXT NOT NULL DEFAULT 'builtin'");
 
-ensureColumn("university_cache", "verdict", "TEXT NOT NULL DEFAULT 'verified'");
+ensureColumn("university_cache", "verdict", "TEXT");
+sqlite.exec(`
+UPDATE university_cache
+SET verdict = CASE
+  WHEN found = 1 THEN 'verified'
+  WHEN detail = 'Empty data' THEN 'not_found'
+  ELSE 'api_failed'
+END
+WHERE verdict IS NULL OR (verdict = 'verified' AND found = 0);
+`);
 ensureColumn("import_batches", "template_id", "TEXT");
 export const db = drizzle(sqlite);
 export const rawDb = sqlite;

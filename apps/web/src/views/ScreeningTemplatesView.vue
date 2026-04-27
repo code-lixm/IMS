@@ -7,11 +7,11 @@ import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppUserActions from "@/components/app-user-actions.vue";
-import Button from "@/components/ui/button.vue";
-import Card from "@/components/ui/card.vue";
-import Badge from "@/components/ui/badge.vue";
-import Skeleton from "@/components/ui/skeleton.vue";
-import EmptyState from "@/components/ui/empty-state.vue";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import TemplateFormDialog from "@/components/import/template-form-dialog.vue";
 import { Plus, Pencil, Trash2, FileText } from "lucide-vue-next";
 

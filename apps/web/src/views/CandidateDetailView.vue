@@ -15,10 +15,6 @@
         </h1>
         <div class="flex-1" />
         <div class="hidden sm:flex items-center gap-2 shrink-0">
-          <Button variant="outline" class="gap-2" @click="$router.push('/import')">
-            <Upload class="h-4 w-4" />
-            初筛列表
-          </Button>
           <AppUserActions />
         </div>
     </AppPageHeader>
@@ -311,7 +307,6 @@ import {
   FileText,
   MessageSquare,
   Send,
-  Upload,
   User,
 } from "lucide-vue-next";
 import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates";
@@ -320,20 +315,20 @@ import AppUserActions from "@/components/app-user-actions.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
-import Badge from "@/components/ui/badge.vue";
-import Button from "@/components/ui/button.vue";
-import Card from "@/components/ui/card.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
-import ScrollArea from "@/components/ui/scroll-area.vue";
-import Skeleton from "@/components/ui/skeleton.vue";
-import Tabs from "@/components/ui/tabs.vue";
-import TabsContent from "@/components/ui/tabs-content.vue";
-import TabsList from "@/components/ui/tabs-list.vue";
-import TabsTrigger from "@/components/ui/tabs-trigger.vue";
-import EmptyState from "@/components/ui/empty-state.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs } from "@/components/ui/tabs";
+import { TabsContent } from "@/components/ui/tabs";
+import { TabsList } from "@/components/ui/tabs";
+import { TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatInterviewRoundLabel, type CandidateDetailData } from "@ims/shared";
 
 const route = useRoute();

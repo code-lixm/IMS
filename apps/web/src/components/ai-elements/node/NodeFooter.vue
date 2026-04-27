@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
-import CardFooter from '@/components/ui/card/CardFooter.vue'
+import { CardFooter } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 const props = defineProps<{

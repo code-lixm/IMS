@@ -123,7 +123,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { Eye, EyeOff, Loader2 } from "lucide-vue-next";
-import Button from "@/components/ui/button.vue";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -132,8 +132,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import Input from "@/components/ui/input.vue";
-import Label from "@/components/ui/label.vue";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { luiApi } from "@/api/lui";
 
 interface PresetProviderOption {

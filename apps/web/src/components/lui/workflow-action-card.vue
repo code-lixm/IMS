@@ -183,7 +183,7 @@
 import { computed, ref } from "vue"
 import { formatInterviewRoundLabel, getInterviewRoundRoleLabel, type CandidateDetailData } from "@ims/shared"
 import { luiApi } from "@/api/lui"
-import Button from "@/components/ui/button.vue"
+import { Button } from "@/components/ui/button"
 import { useAppNotifications } from "@/composables/use-app-notifications"
 import { copyTextToClipboard } from "@/lib/clipboard"
 import { useLuiStore } from "@/stores/lui"

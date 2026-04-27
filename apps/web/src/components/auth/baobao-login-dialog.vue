@@ -65,12 +65,12 @@ import QRCode from "qrcode";
 import { CircleAlert, RefreshCw } from "lucide-vue-next";
 import { ApiError } from "@/api/client";
 import { authApi } from "@/api/auth";
-import Button from "@/components/ui/button.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
-import Skeleton from "@/components/ui/skeleton.vue";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const props = defineProps<{ open: boolean }>();
 

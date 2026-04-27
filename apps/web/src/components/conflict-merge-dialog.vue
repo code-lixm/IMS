@@ -93,15 +93,15 @@
 
 <script setup lang="ts">
 import { ArrowRight, Check, X } from "lucide-vue-next";
-import Button from "@/components/ui/button.vue";
-import Badge from "@/components/ui/badge.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import Table from "@/components/ui/table.vue";
-import TableBody from "@/components/ui/table-body.vue";
-import TableCell from "@/components/ui/table-cell.vue";
-import TableHead from "@/components/ui/table-head.vue";
-import TableHeader from "@/components/ui/table-header.vue";
-import TableRow from "@/components/ui/table-row.vue";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
+import { Table } from "@/components/ui/table";
+import { TableBody } from "@/components/ui/table";
+import { TableCell } from "@/components/ui/table";
+import { TableHead } from "@/components/ui/table";
+import { TableHeader } from "@/components/ui/table";
+import { TableRow } from "@/components/ui/table";
 
 export interface ConflictField {
   name: string;

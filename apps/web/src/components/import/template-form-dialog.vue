@@ -8,11 +8,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import Button from "@/components/ui/button.vue";
-import Input from "@/components/ui/input.vue";
-import Label from "@/components/ui/label.vue";
-import Textarea from "@/components/ui/textarea.vue";
-import Checkbox from "@/components/ui/checkbox.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { screeningTemplatesApi } from "@/api/screening-templates";
 
 interface Props {

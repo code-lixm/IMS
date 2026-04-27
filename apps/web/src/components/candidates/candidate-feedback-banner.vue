@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import Button from "@/components/ui/button.vue";
+import { Button } from "@/components/ui/button";
 import type { CandidateActionFeedback } from "@/composables/candidates/types";
 
 interface CandidateFeedbackBannerProps {

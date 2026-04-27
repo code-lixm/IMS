@@ -7,7 +7,7 @@
  * Enhanced with database integration for IMS (Interview Management System).
  */
 
-import { mkdir, access, writeFile, readFile, readdir, stat, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, access, writeFile, readdir, stat, mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -19,6 +19,8 @@ import { candidates, resumes, interviews, luiWorkflows } from "../schema";
 import { syncWorkflowMetaFile } from "./workflow-meta";
 import { buildWechatCopyTextFromStructuredAssessment } from "./document-templates";
 import type { StructuredInterviewAssessmentView } from "./document-templates";
+import { extractPdfTextFromFile } from "./pdf-text";
+import { extractPdfEntriesFromZip, ZipPdfError } from "./import/zip-pdf";
 
 // ============================================================================
 // Tool Context
@@ -524,11 +526,8 @@ export async function executeScanPdf(
       throw new Error(`Path is not a file: ${resolvedPdfPath}`);
     }
 
-    // Extract text from PDF using pdf-parse
-    const extract = await import("pdf-parse");
-    const fileBuffer = await readFile(resolvedPdfPath);
-    const pdfData = await extract.default(fileBuffer);
-    const content = (pdfData.text ?? "").trim();
+    const pdfData = await extractPdfTextFromFile(resolvedPdfPath);
+    const content = pdfData.text;
 
     // Calculate quality metrics
     const wordCount = content.split(/\s+/).filter((w: string) => w.length > 0).length;
@@ -572,7 +571,7 @@ export async function executeScanPdf(
           issues: qualityIssues,
           printable_ratio: charCount > 0 ? content.replace(/[^\x20-\x7E\u4E00-\u9FFF\s]/g, "").length / charCount : 0
         },
-        error: "Quality gate failed. PDF may be image-based or corrupted. Consider using OCR."
+        error: "Quality gate failed. PDF may be image-based or corrupted. 请先转换为可搜索 PDF 或人工复核。"
       }, null, 2);
     }
 
@@ -590,8 +589,8 @@ export async function executeScanPdf(
         issues: qualityIssues,
         printable_ratio: charCount > 0 ? content.replace(/[^\x20-\x7E\u4E00-\u9FFF\s]/g, "").length / charCount : 0
       },
-      page_count: pdfData.numpages || null,
-      info: pdfData.info || {}
+      page_count: pdfData.pageCount,
+      info: pdfData.info
     }, null, 2);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -643,6 +642,8 @@ export async function executeBatchScreenResumes(
     pdf_path: string;
     quality_status: "pass" | "warning" | "fail";
     word_count: number;
+    page_count: number | null;
+    info: Record<string, string | number | boolean | null>;
     next_action: string;
     error?: string;
   }> = [];
@@ -667,19 +668,22 @@ export async function executeBatchScreenResumes(
           if (ext === ".pdf") {
             extractedPdfs.push(resolvedPath);
           } else if (ext === ".zip") {
-            // Extract ZIP files
-            const JSZip = await import("jszip");
-            const zipBuffer = await readFile(resolvedPath);
-            const zip = await JSZip.default.loadAsync(zipBuffer);
+            const zipEntries = await extractPdfEntriesFromZip(resolvedPath, {
+              archiveReadErrorMessage: "ZIP 文件读取失败",
+              archiveExtractErrorMessage: "ZIP 文件解压失败",
+              invalidEntryMessage: "ZIP 中存在无法处理的 PDF 文件",
+              emptyArchiveMessage: "ZIP 中未找到可筛选的 PDF 文件",
+              archiveTooLargeMessage: "ZIP 文件过大",
+              entryTooLargeMessage: "ZIP 中存在过大的 PDF 文件",
+              totalTooLargeMessage: "ZIP 解压后的 PDF 总体积过大",
+              tooManyEntriesMessage: "ZIP 中文件数量过多",
+              strictPdfOnly: false,
+            });
 
-            for (const [filename, file] of Object.entries(zip.files)) {
-              if (file.dir) continue;
-              if (path.extname(filename).toLowerCase() === ".pdf") {
-                const extractedPath = path.join(tempDir, path.basename(filename));
-                const content = await file.async("nodebuffer");
-                await writeFile(extractedPath, content);
-                extractedPdfs.push(extractedPath);
-              }
+            for (const { entryName, buffer } of zipEntries) {
+              const extractedPath = path.join(tempDir, `${crypto.randomUUID()}-${path.basename(entryName)}`);
+              await writeFile(extractedPath, buffer);
+              extractedPdfs.push(extractedPath);
             }
           }
         } else if (stats.isDirectory()) {
@@ -694,7 +698,10 @@ export async function executeBatchScreenResumes(
           }
         }
       } catch (error) {
-        console.error(`Error processing ${inputPath}:`, error);
+        const errorMessage = error instanceof ZipPdfError || error instanceof Error
+          ? error.message
+          : String(error);
+        console.error(`Error processing ${inputPath}:`, errorMessage);
       }
     }
 
@@ -703,11 +710,8 @@ export async function executeBatchScreenResumes(
       const candidateName = path.basename(pdfPath, path.extname(pdfPath));
 
       try {
-        // Import pdf-parse dynamically
-        const extract = await import("pdf-parse");
-        const fileBuffer = await readFile(pdfPath);
-        const pdfData = await extract.default(fileBuffer);
-        const content = (pdfData.text ?? "").trim();
+        const pdfData = await extractPdfTextFromFile(pdfPath);
+        const content = pdfData.text;
 
         // Calculate metrics
         const wordCount = content.split(/\s+/).filter((w: string) => w.length > 0).length;
@@ -746,6 +750,8 @@ export async function executeBatchScreenResumes(
           pdf_path: pdfPath,
           quality_status: qualityStatus,
           word_count: wordCount,
+          page_count: pdfData.pageCount,
+          info: pdfData.info,
           next_action: nextAction
         });
       } catch (error) {
@@ -755,6 +761,8 @@ export async function executeBatchScreenResumes(
           pdf_path: pdfPath,
           quality_status: "fail",
           word_count: 0,
+          page_count: null,
+          info: {},
           next_action: "跳过",
           error: errorMessage
         });

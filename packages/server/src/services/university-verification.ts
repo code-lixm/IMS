@@ -13,6 +13,7 @@ import type { UniversityVerificationResult } from "@ims/shared";
 
 const API_BASE = "https://api.52vmy.cn/api/query/daxue";
 const TIMEOUT_MS = 5_000;
+const API_FAILED_CACHE_TTL_MS = 5 * 60 * 1000;
 
 
 interface ApiDaxueResponse {
@@ -75,7 +76,12 @@ export async function verifySchool(
     .get();
 
   if (cached) {
-    return rowToResult(schoolName, cached);
+    const isStaleApiFailure = cached.verdict === "api_failed" && Date.now() - cached.queriedAt > API_FAILED_CACHE_TTL_MS;
+    if (isStaleApiFailure) {
+      db.delete(universityCache).where(eq(universityCache.schoolName, schoolName)).run();
+    } else {
+      return rowToResult(schoolName, cached);
+    }
   }
 
   let rawJson: string;

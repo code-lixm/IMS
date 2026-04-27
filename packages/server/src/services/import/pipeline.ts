@@ -1,9 +1,6 @@
-import { readFileSync, copyFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync, chmodSync } from "node:fs";
+import { readFileSync, copyFileSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, basename, extname } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import JSZip from "jszip";
-import { path7za } from "7zip-bin";
 import { db } from "../../db";
 import { artifacts, candidateWorkspaces, candidates, importBatches, importFileTasks, interviews, resumes } from "../../schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -14,6 +11,7 @@ import { generateImportScreeningConclusionWithAI } from "./ai-screening";
 import { verifyCandidateSchools } from "../university-verification";
 import { config } from "../../config";
 import { ErrorCodes, type ImportScreeningConclusion, type ImportScreeningExportMode, type ImportScreeningExportRequest, type ImportTaskResultData, type UniversityVerificationResult } from "@ims/shared";
+import { extractPdfEntriesFromZip, MAX_IMPORT_FILE_SIZE_BYTES, ZipPdfError } from "./zip-pdf";
 
 type ImportTaskResultWithConfidence = Omit<ImportTaskResultData, "universityVerification"> & {
   extractionConfidence?: number | null;
@@ -27,15 +25,12 @@ type ImportScreeningConclusionWithMetadata = ImportScreeningConclusion & {
   screeningBaseUrl?: string | null;
 };
 
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 const ACTIVE_TASK_STATUSES = ["queued", "extracting", "text_extracting", "ocr_running", "parsing", "matching_candidate", "saving", "ai_screening"] as const;
 const TERMINAL_TASK_STATUSES = ["done", "failed", "skipped"] as const;
 const STAGE_PRIORITY = ["queued", "extracting", "text_extracting", "ocr_running", "parsing", "matching_candidate", "saving", "ai_screening"] as const;
-const ZIP_IGNORED_ENTRY_NAMES = [".ds_store", "thumbs.db"];
-const ZIP_IGNORED_ENTRY_PREFIXES = ["__macosx/"];
-const SUPPORTED_ARCHIVE_SUFFIXES = [".zip", ".rar", ".tar", ".7z", ".tgz", ".tar.gz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"];
-const execFileAsync = promisify(execFile);
-const ARCHIVE_BIN_PATH = path7za;
+const SUPPORTED_ARCHIVE_SUFFIXES = [".zip"];
+const UNSUPPORTED_ARCHIVE_SUFFIXES = [".7z", ".rar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar"];
+const UNSUPPORTED_IMAGE_SUFFIXES = [".png", ".jpg", ".jpeg", ".webp"];
 const UNIVERSITY_NOT_FOUND_CONCERN = "学校信息异常：未在教育部高校库中查到，建议人工核实";
 const UNIVERSITY_API_UNAVAILABLE_ERROR = "大学库查询暂不可用";
 const UNIVERSITY_REVIEW_WARNING = "学校信息异常，建议优先人工核实";
@@ -79,7 +74,11 @@ export async function prepareImportTasks(batchId: string, paths: string[]): Prom
       continue;
     }
 
-    throw new ImportValidationError("仅支持导入 PDF 或压缩包");
+    if (sourceType === "unsupported_archive" || sourceType === "unsupported_image") {
+      throw new ImportValidationError(buildUnsupportedSourceMessage(sourcePath));
+    }
+
+    throw new ImportValidationError("仅支持导入 PDF 或 ZIP 压缩包");
   }
 
   return tasks;
@@ -159,19 +158,20 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
   await updateTask(taskId, { status: "extracting", stage: "extracting", updatedAt: Date.now() });
 
   try {
-    if (fileType === "unknown" || fileType === "zip") {
-      await updateTask(taskId, { status: "skipped", stage: "classifying", errorCode: ImportErrorCodes.UNSUPPORTED_TYPE, errorMessage: `unsupported: ${extname(filePath)}`, updatedAt: Date.now() });
+    const unsupportedMessage = getUnsupportedImportMessage(fileType, filePath);
+    if (unsupportedMessage) {
+      await updateTask(taskId, { status: "skipped", stage: "classifying", errorCode: ImportErrorCodes.UNSUPPORTED_TYPE, errorMessage: unsupportedMessage, updatedAt: Date.now() });
       await updateBatchProgress(taskId);
       return;
     }
 
-    await updateTask(taskId, { status: fileType === "pdf" ? "text_extracting" : "ocr_running", stage: fileType === "pdf" ? "text_extracting" : "ocr_running", updatedAt: Date.now() });
+    await updateTask(taskId, { status: "text_extracting", stage: "text_extracting", updatedAt: Date.now() });
 
     let extractResult: Awaited<ReturnType<typeof extractText>>;
     try {
-      extractResult = await extractText(filePath, fileType as "pdf" | "png" | "jpg" | "jpeg" | "webp");
+      extractResult = await extractText(filePath, "pdf");
     } catch (err) {
-      await updateTask(taskId, { status: "failed", stage: "text_extracting", errorCode: fileType === "pdf" ? ImportErrorCodes.TEXT_EXTRACT_FAILED : ImportErrorCodes.OCR_FAILED, errorMessage: (err as Error).message, updatedAt: Date.now() });
+      await updateTask(taskId, { status: "failed", stage: "text_extracting", errorCode: ImportErrorCodes.TEXT_EXTRACT_FAILED, errorMessage: (err as Error).message, updatedAt: Date.now() });
       await updateBatchProgress(taskId);
       return;
     }
@@ -541,11 +541,12 @@ export async function importResumeForCandidate(
   }
 ): Promise<{ resumeId: string; parsed: ReturnType<typeof parseResumeText> }> {
   const fileType = options?.fileTypeHint ?? detectFileType(filePath);
-  if (fileType === "unknown" || fileType === "zip") {
-    throw new Error(`unsupported resume file type: ${extname(filePath) || "unknown"}`);
+  const unsupportedMessage = getUnsupportedImportMessage(fileType, filePath);
+  if (unsupportedMessage) {
+    throw new Error(unsupportedMessage);
   }
 
-  const extractResult = await extractText(filePath, fileType as "pdf" | "png" | "jpg" | "jpeg" | "webp");
+  const extractResult = await extractText(filePath, "pdf");
   const parsed = parseResumeText(extractResult.text);
 
   const resumeId = `res_${crypto.randomUUID()}`;
@@ -644,6 +645,7 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
   if (!batch) {
     return { retriedCount: 0 };
   }
+  const effectiveTemplateId = templateId ?? batch.templateId ?? undefined;
 
   const rows = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchId));
   const runnableTasks = rows
@@ -698,7 +700,7 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
         parsed: result.parsedResume,
         confidence,
         fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
-        templateId,
+        templateId: effectiveTemplateId,
       });
       nextResult = {
         ...nextResult,
@@ -799,6 +801,8 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
   if (!task) {
     return { retried: false, screeningStatus: "not_requested" };
   }
+  const [batch] = await db.select({ templateId: importBatches.templateId }).from(importBatches).where(eq(importBatches.id, task.batchId)).limit(1);
+  const effectiveTemplateId = templateId ?? batch?.templateId ?? undefined;
 
   const result = parseImportTaskResult(task.resultJson);
   if (!result?.parsedResume) {
@@ -829,7 +833,7 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
       parsed: result.parsedResume,
       confidence,
       fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
-      templateId,
+      templateId: effectiveTemplateId,
     });
     nextResult.screeningStatus = "completed";
     nextResult.screeningSource = "ai";
@@ -980,26 +984,56 @@ function unlinkIfExists(filePath: string) {
   }
 }
 
-function shouldIgnoreZipEntry(entryName: string) {
-  const normalized = entryName.replace(/\\/g, "/").toLowerCase();
-  if (ZIP_IGNORED_ENTRY_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
-    return true;
-  }
-
-  const baseName = basename(normalized);
-  return ZIP_IGNORED_ENTRY_NAMES.includes(baseName);
-}
-
-function detectImportSourceType(filePath: string): "archive" | "pdf" | "unknown" {
-  const normalized = filePath.toLowerCase();
-  if (SUPPORTED_ARCHIVE_SUFFIXES.some((suffix) => normalized.endsWith(suffix))) {
+function detectImportSourceType(filePath: string): "archive" | "pdf" | "unsupported_archive" | "unsupported_image" | "unknown" {
+  if (findMatchingSuffix(filePath, SUPPORTED_ARCHIVE_SUFFIXES)) {
     return "archive";
   }
-  if (normalized.endsWith(".pdf")) {
+  if (findMatchingSuffix(filePath, UNSUPPORTED_ARCHIVE_SUFFIXES)) {
+    return "unsupported_archive";
+  }
+  if (findMatchingSuffix(filePath, UNSUPPORTED_IMAGE_SUFFIXES)) {
+    return "unsupported_image";
+  }
+  if (filePath.toLowerCase().endsWith(".pdf")) {
     return "pdf";
   }
 
   return detectImportSourceTypeFromContent(filePath);
+}
+
+function findMatchingSuffix(filePath: string, suffixes: readonly string[]): string | null {
+  const normalized = filePath.toLowerCase();
+  return suffixes.find((suffix) => normalized.endsWith(suffix)) ?? null;
+}
+
+function buildUnsupportedSourceMessage(filePath: string): string {
+  const imageSuffix = findMatchingSuffix(filePath, UNSUPPORTED_IMAGE_SUFFIXES);
+  if (imageSuffix) {
+    return `图片导入已不再支持（${imageSuffix}），图片 OCR 已移除，请先转换为可搜索 PDF 后再导入`;
+  }
+
+  const archiveSuffix = findMatchingSuffix(filePath, UNSUPPORTED_ARCHIVE_SUFFIXES);
+  if (archiveSuffix) {
+    return `仅支持导入 PDF 或 ZIP 压缩包，不再支持 ${archiveSuffix} 归档格式`;
+  }
+
+  return "仅支持导入 PDF 或 ZIP 压缩包";
+}
+
+function getUnsupportedImportMessage(fileType: FileType, filePath: string): string | null {
+  if (fileType === "pdf") {
+    return null;
+  }
+
+  if (fileType === "zip") {
+    return "ZIP 压缩包仅支持作为批量导入入口，不能作为单个简历文件处理";
+  }
+
+  if (fileType === "png" || fileType === "jpg" || fileType === "jpeg" || fileType === "webp") {
+    return buildUnsupportedSourceMessage(filePath);
+  }
+
+  return `暂不支持的文件类型：${extname(filePath) || "unknown"}`;
 }
 
 function isPdfBuffer(buffer: Buffer) {
@@ -1010,111 +1044,36 @@ function isPdfBuffer(buffer: Buffer) {
   return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
 }
 
-function ensureArchiveBinaryReady() {
-  if (process.platform === "win32") {
-    return ARCHIVE_BIN_PATH;
-  }
-
-  try {
-    chmodSync(ARCHIVE_BIN_PATH, 0o755);
-  } catch {
-    // ignore chmod failure and let actual execution surface the error
-  }
-
-  return ARCHIVE_BIN_PATH;
-}
-
-async function runArchiveCommand(args: string[], encoding: BufferEncoding): Promise<string>;
-async function runArchiveCommand(args: string[], encoding: "buffer"): Promise<Buffer>;
-async function runArchiveCommand(args: string[], encoding: BufferEncoding | "buffer"): Promise<string | Buffer> {
-  const binPath = ensureArchiveBinaryReady();
-  const { stdout } = await execFileAsync(binPath, args, {
-    encoding,
-    maxBuffer: MAX_FILE_SIZE_BYTES + 10 * 1024 * 1024,
-  });
-  return stdout;
-}
-
-function parseArchiveListOutput(output: string): string[] {
-  const lines = output.split(/\r?\n/);
-  const entries: string[] = [];
-  let current: Record<string, string> = {};
-
-  const flush = () => {
-    const entryPath = current.Path?.trim();
-    const isFile = current.Folder?.trim() === "-";
-    if (entryPath && isFile) {
-      entries.push(entryPath);
-    }
-    current = {};
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) {
-      flush();
-      continue;
-    }
-
-    const separatorIndex = line.indexOf(" = ");
-    if (separatorIndex <= 0) {
-      continue;
-    }
-
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 3).trim();
-    current[key] = value;
-  }
-
-  flush();
-  return entries;
-}
-
-async function listArchiveEntries(archivePath: string): Promise<string[]> {
-  try {
-    const stdout = await runArchiveCommand(["l", "-slt", archivePath], "utf8");
-    return parseArchiveListOutput(stdout);
-  } catch (error) {
-    void error;
-    throw new ImportValidationError("压缩包读取失败");
-  }
-}
-
-async function extractArchiveEntry(archivePath: string, entryName: string): Promise<Buffer> {
-  try {
-    return await runArchiveCommand(["e", "-so", archivePath, entryName], "buffer");
-  } catch (error) {
-    void error;
-    throw new ImportValidationError("压缩包解压失败");
-  }
-}
-
 async function expandArchiveImportTasks(batchId: string, archivePath: string): Promise<PreparedImportTask[]> {
-  const archiveEntries = (await listArchiveEntries(archivePath))
-    .filter((entryName) => !shouldIgnoreZipEntry(entryName));
-
-  const invalidEntries = archiveEntries
-    .map((entryName) => ({ entryName, fileType: classifyFileType(extname(entryName)) }))
-    .filter(({ fileType }) => fileType !== "pdf");
-
-  if (invalidEntries.length > 0) {
-    throw new ImportValidationError("压缩包内只能包含 PDF 文件");
-  }
-
-  if (archiveEntries.length === 0) {
-    throw new ImportValidationError("压缩包内没有可导入的 PDF 文件");
+  let archiveEntries: Awaited<ReturnType<typeof extractPdfEntriesFromZip>>;
+  try {
+    archiveEntries = await extractPdfEntriesFromZip(archivePath, {
+      archiveReadErrorMessage: "ZIP 压缩包读取失败",
+      archiveExtractErrorMessage: "ZIP 压缩包解压失败",
+      invalidEntryMessage: "压缩包内存在无法解析的 PDF 文件",
+      emptyArchiveMessage: "压缩包内没有可导入的 PDF 文件",
+      archiveTooLargeMessage: "ZIP 压缩包过大",
+      entryTooLargeMessage: "压缩包内文件过大",
+      totalTooLargeMessage: "ZIP 压缩包解压后的总文件过大",
+      tooManyEntriesMessage: "ZIP 压缩包内文件数量过多",
+      strictPdfOnly: false,
+    });
+  } catch (error) {
+    if (error instanceof ZipPdfError) {
+      throw new ImportValidationError(error.message);
+    }
+    throw error;
   }
 
   const stagingDir = join(config.dataDir, "import-staging", batchId);
   mkdirSync(stagingDir, { recursive: true });
 
   const tasks: PreparedImportTask[] = [];
-  for (const entryName of archiveEntries) {
+  for (const { entryName, buffer } of archiveEntries) {
     const fileType = classifyFileType(extname(entryName));
-    const buffer = await extractArchiveEntry(archivePath, entryName);
     const entryPath = `${archivePath}#${entryName}`;
 
-    if (buffer.byteLength > MAX_FILE_SIZE_BYTES) {
+    if (buffer.byteLength > MAX_IMPORT_FILE_SIZE_BYTES) {
       throw new ImportValidationError("压缩包内文件过大");
     }
 

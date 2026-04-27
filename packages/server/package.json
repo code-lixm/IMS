@@ -1,6 +1,6 @@
 {
   "name": "@ims/server",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,6 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "7zip-bin": "^5.2.0",
     "@ai-sdk/openai": "^3.0.47",
     "@ai-sdk/openai-compatible": "^0.2.0",
     "@deepagents/agent": "^0.31.0",
@@ -21,8 +20,7 @@
     "drizzle-orm": "^0.44.6",
     "jszip": "^3.10.1",
     "nodemailer": "^8.0.4",
-    "pdf-parse": "^1.1.1",
-    "tesseract.js": "^7.0.0",
+    "unpdf": "^1.6.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

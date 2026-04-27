@@ -198,6 +198,26 @@ fn open_in_file_manager(path: &Path) -> Result<(), String> {
     }
 }
 
+fn reveal_in_file_manager(path: &Path) -> Result<(), String> {
+    let status = if cfg!(target_os = "macos") {
+        Command::new("open").arg("-R").arg(path).status()
+    } else if cfg!(target_os = "windows") {
+        Command::new("explorer")
+            .arg(format!("/select,{}", path.display()))
+            .status()
+    } else {
+        let target = path.parent().unwrap_or(path);
+        Command::new("xdg-open").arg(target).status()
+    }
+    .map_err(|err| err.to_string())?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("failed to reveal path: {}", path.display()))
+    }
+}
+
 fn stop_managed_server<R: Runtime>(app: &AppHandle<R>) {
     if let Ok(mut server) = app.state::<Mutex<ServerProcess>>().lock() {
         if let Some(child) = server.child.take() {
@@ -870,7 +890,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
 
-    let _tray = TrayIconBuilder::with_id("main-tray")
+    let mut tray_builder = TrayIconBuilder::with_id("main-tray")
         .tooltip("IMS")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -920,8 +940,13 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        })
-        .build(app)?;
+        });
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray_builder = tray_builder.icon(icon);
+    }
+
+    let _tray = tray_builder.build(app)?;
 
     Ok(())
 }
@@ -1117,7 +1142,7 @@ fn export_logs_bundle(app: AppHandle) -> Result<String, String> {
         logger.export_bundle().map_err(|err| err.to_string())?
     };
 
-    open_in_file_manager(&export_path)?;
+    reveal_in_file_manager(&export_path)?;
     Ok(export_path.display().to_string())
 }
 

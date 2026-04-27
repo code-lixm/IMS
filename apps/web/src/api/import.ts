@@ -22,10 +22,10 @@ export const IMPORT_SCREENING_EXPORT_LABELS: Record<ImportScreeningExportMode, s
 export const importApi = {
   list() { return api<ImportBatchListData>("/api/import/batches"); },
   get(id: string) { return api(`/api/import/batches/${id}`); },
-  create(paths: string[], autoScreen = false) {
+  create(paths: string[], autoScreen = false, templateId?: string | null) {
     return api<CreateImportBatchData>("/api/import/batches", {
       method: "POST",
-      json: { paths, autoScreen },
+      json: { paths, autoScreen, ...(templateId ? { templateId } : {}) },
     });
   },
   upload(files: File[], autoScreen = false, templateId?: string | null) {

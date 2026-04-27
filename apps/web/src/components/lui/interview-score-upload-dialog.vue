@@ -12,11 +12,11 @@ import {
   getLatestS2Artifact,
   stripMarkdownFormat,
 } from "./interview-score-utils"
-import Button from "@/components/ui/button.vue"
-import Checkbox from "@/components/ui/checkbox.vue"
-import Input from "@/components/ui/input.vue"
-import Label from "@/components/ui/label.vue"
-import Textarea from "@/components/ui/textarea.vue"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,

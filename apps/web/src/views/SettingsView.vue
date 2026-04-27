@@ -417,6 +417,7 @@
                 </DialogDescription>
               </DialogHeader>
 
+            <div class="overflow-y-auto flex-1 min-h-0">
               <Separator class="my-4" />
 
               <div class="space-y-4">
@@ -542,6 +543,7 @@
                   设为默认智能体
                 </label>
               </div>
+            </div>
 
               <DialogFooter class="mt-6 gap-2">
                 <Button
@@ -657,6 +659,7 @@
 import { computed, reactive, ref, onMounted } from "vue";
 import {
   CheckCircle,
+  Download,
   FlaskConical,
   Loader2,
   Pencil,
@@ -679,17 +682,17 @@ import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue"
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
-import Badge from "@/components/ui/badge.vue";
-import Button from "@/components/ui/button.vue";
-import Card from "@/components/ui/card.vue";
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogFooter from "@/components/ui/dialog-footer.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
-import Input from "@/components/ui/input.vue";
-import Separator from "@/components/ui/separator.vue";
-import Textarea from "@/components/ui/textarea/Textarea.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogDescription } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
 import { luiApi } from "@/api/lui";
 import type { Agent as LuiAgent } from "@/stores/lui";

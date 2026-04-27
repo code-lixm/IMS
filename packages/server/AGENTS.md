@@ -155,5 +155,7 @@ pnpm typecheck     # tsc --noEmit
 
 - `bun` — 运行时
 - `drizzle-orm` + `bun:sqlite` — 数据库
+- `jszip` — ZIP 压缩包处理
 - `nodemailer` — 邮件发送
+- `unpdf` — PDF 文本提取
 - `@ai-sdk/openai` — AI 模型调用 (Vercel AI SDK)

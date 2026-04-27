@@ -13,9 +13,11 @@ test.describe("候选人列表页 smoke", () => {
 
     await expect(page).toHaveURL(/\/candidates$/);
     await expect(page.getByRole("banner").getByRole("button", { name: "导入面试信息" })).toBeVisible();
-    await expect(page.getByRole("banner").getByRole("button", { name: "简历初筛" })).toBeVisible();
     await expect(page.getByRole("banner").getByRole("button", { name: "初筛列表" })).toBeVisible();
     await expect(page.getByText("张三")).toBeVisible();
     await expect(page.getByText("前端工程师")).toBeVisible();
+
+    await page.getByRole("banner").getByRole("button", { name: "初筛列表" }).click();
+    await expect(page).toHaveURL(/\/import$/);
   });
 });

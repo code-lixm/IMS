@@ -70,13 +70,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue"
 import { Snowflake, Scale, Sun, ChevronDown } from "lucide-vue-next"
-import Button from "@/components/ui/button.vue"
-import Slider from "@/components/ui/slider.vue"
-import Popover from "@/components/ui/popover.vue"
-import PopoverContent from "@/components/ui/popover-content.vue"
-import Tooltip from "@/components/ui/tooltip.vue"
-import TooltipContent from "@/components/ui/tooltip-content.vue"
-import TooltipTrigger from "@/components/ui/tooltip-trigger.vue"
+import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
+import { Popover } from "@/components/ui/popover"
+import { PopoverContent } from "@/components/ui/popover"
+import { Tooltip } from "@/components/ui/tooltip"
+import { TooltipContent } from "@/components/ui/tooltip"
+import { TooltipTrigger } from "@/components/ui/tooltip"
 
 interface TemperatureControlProps {
   modelValue?: number

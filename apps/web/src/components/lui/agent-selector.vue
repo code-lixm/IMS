@@ -82,11 +82,11 @@ import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import type { LuiAgentSelectorProfile } from "@/stores/lui/scenes/types";
-import Button from "@/components/ui/button.vue";
-import Badge from "@/components/ui/badge.vue";
-import Popover from "@/components/ui/popover.vue";
-import PopoverContent from "@/components/ui/popover-content.vue";
-import PopoverTrigger from "@/components/ui/popover-trigger.vue";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Popover } from "@/components/ui/popover";
+import { PopoverContent } from "@/components/ui/popover";
+import { PopoverTrigger } from "@/components/ui/popover";
 
 interface AgentSelectorProps {
   modelValue?: string | null;

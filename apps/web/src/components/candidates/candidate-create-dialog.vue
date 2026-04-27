@@ -48,14 +48,14 @@
 </template>
 
 <script setup lang="ts">
-import Dialog from "@/components/ui/dialog.vue";
-import DialogDescription from "@/components/ui/dialog-description.vue";
-import DialogFooter from "@/components/ui/dialog-footer.vue";
-import DialogHeader from "@/components/ui/dialog-header.vue";
-import DialogTitle from "@/components/ui/dialog-title.vue";
-import Input from "@/components/ui/input.vue";
-import Separator from "@/components/ui/separator.vue";
-import Button from "@/components/ui/button.vue";
+import { Dialog } from "@/components/ui/dialog";
+import { DialogDescription } from "@/components/ui/dialog";
+import { DialogFooter } from "@/components/ui/dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import type { CandidateCreateFormValue } from "@/composables/candidates/types";
 
 interface CandidateCreateDialogProps {

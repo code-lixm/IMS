@@ -54,6 +54,9 @@
         <DropdownMenuItem @click="handleRestartOnboarding">
           新手引导
         </DropdownMenuItem>
+        <DropdownMenuItem @click="handleExportBackendLogs">
+          导出后端日志
+        </DropdownMenuItem>
         <template v-if="props.dangerActionLabel">
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -85,17 +88,17 @@ import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
-import DropdownMenu from "@/components/ui/dropdown-menu.vue";
-import DropdownMenuContent from "@/components/ui/dropdown-menu-content.vue";
-import DropdownMenuItem from "@/components/ui/dropdown-menu-item.vue";
-import DropdownMenuSeparator from "@/components/ui/dropdown-menu-separator.vue";
-import DropdownMenuTrigger from "@/components/ui/dropdown-menu-trigger.vue";
+import { DropdownMenu } from "@/components/ui/dropdown-menu";
+import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const router = useRouter();
 const authStore = useAuthStore();
 const onboardingStore = useOnboardingStore();
 const { isDark, toggleTheme } = useTheme();
-const { notifyError } = useAppNotifications();
+const { notifyError, notifySuccess } = useAppNotifications();
 const menuOpen = ref(false);
 
 const props = withDefaults(defineProps<{
@@ -109,6 +112,19 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: "danger-action"): void;
 }>();
+
+function getTauriInvoker() {
+  const tauriWindow = window as Window & {
+    __TAURI_INTERNALS__?: {
+      invoke: <T = unknown>(
+        cmd: string,
+        args?: Record<string, unknown>,
+      ) => Promise<T>;
+    };
+  };
+
+  return tauriWindow.__TAURI_INTERNALS__?.invoke ?? null;
+}
 
 onMounted(() => {
   void authStore.checkStatus();
@@ -127,6 +143,33 @@ const userAvatarUrl = computed<string | null>(() => null);
 function handleRestartOnboarding() {
   menuOpen.value = false;
   onboardingStore.requestStart({ force: true });
+}
+
+async function handleExportBackendLogs() {
+  menuOpen.value = false;
+
+  try {
+    const invoke = getTauriInvoker();
+    if (!invoke) {
+      notifyError("当前环境不支持导出后端日志");
+      return;
+    }
+
+    const exportPath = await invoke<string>("export_current_logs");
+    if (exportPath) {
+      notifySuccess("后端日志已导出并定位到文件位置");
+      return;
+    }
+
+    notifyError("未能获取导出日志路径");
+  } catch (error) {
+    notifyError(
+      reportAppError("app-user-actions/export-backend-logs", error, {
+        title: "导出后端日志失败",
+        fallbackMessage: "未能导出后端日志",
+      }),
+    );
+  }
 }
 
 function handleDangerAction() {

@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import type { TooltipRootEmits, TooltipRootProps } from "reka-ui"
-import { TooltipRoot, useForwardPropsEmits } from "reka-ui"
+import { reactiveOmit } from "@vueuse/core"
+import { TooltipProvider, TooltipRoot, useForwardPropsEmits } from "reka-ui"
 
-const props = defineProps<TooltipRootProps>()
+const props = withDefaults(defineProps<TooltipRootProps & { delayDuration?: number }>(), {
+  delayDuration: 0,
+})
 const emits = defineEmits<TooltipRootEmits>()
 
-const forwarded = useForwardPropsEmits(props, emits)
+const delegatedProps = reactiveOmit(props, "delayDuration")
+const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
 
 <template>
-  <TooltipRoot v-bind="forwarded">
-    <slot />
-  </TooltipRoot>
+  <TooltipProvider :delay-duration="delayDuration">
+    <TooltipRoot v-bind="forwarded">
+      <slot />
+    </TooltipRoot>
+  </TooltipProvider>
 </template>

@@ -191,12 +191,13 @@ import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
-import Badge from "@/components/ui/badge.vue";
-import Button from "@/components/ui/button.vue";
-import Card from "@/components/ui/card.vue";
-import Separator from "@/components/ui/separator.vue";
-import Skeleton from "@/components/ui/skeleton.vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/stores/auth";
+import { useSyncStore } from "@/stores/sync";
 import { rememberSkippedBaobaoLogin } from "@/lib/baobao-login-skip";
 
 const route = useRoute();
@@ -370,6 +371,18 @@ async function navigateAfterLogin() {
   }
 
   void authStore.checkStatus({ force: true });
+
+  // 登录成功后自动触发简历同步
+  const syncStore = useSyncStore();
+  try {
+    await syncStore.fetchStatus();
+    if (!syncStore.status.enabled) {
+      await syncStore.toggle(true);
+    }
+    await syncStore.runNow();
+  } catch {
+    // 同步失败不影响登录流程
+  }
 }
 
 function redirectTarget() {

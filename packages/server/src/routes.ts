@@ -2429,8 +2429,9 @@ export async function route(request: Request): Promise<Response> {
       sourcePaths = await Promise.all(files.map((file) => saveImportUploadToLocal(id, file)));
     } else {
       const body = await parseJson<{ paths: string[]; autoScreen?: boolean; templateId?: string }>(request);
+      if (!body.paths?.length) return fail("VALIDATION_ERROR", "paths is required and non-empty", 422);
       autoScreen = body.autoScreen ?? false;
-      templateId = body.templateId ?? null;
+      templateId = sanitizeString(body.templateId) || null;
       sourcePaths = body.paths;
     }
 

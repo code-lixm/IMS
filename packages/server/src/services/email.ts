@@ -61,8 +61,7 @@ export class EmailServiceError extends Error {
 
 async function loadNodemailer(): Promise<NodemailerModule> {
   if (!nodemailerModulePromise) {
-    const importer = new Function("specifier", "return import(specifier);") as (specifier: string) => Promise<unknown>;
-    nodemailerModulePromise = importer("nodemailer")
+    nodemailerModulePromise = import("nodemailer")
       .then((module) => {
         const candidate = ((module as { default?: unknown }).default ?? module) as Partial<NodemailerModule>;
         if (typeof candidate.createTransport !== "function") {

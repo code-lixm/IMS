@@ -39,9 +39,9 @@
 ```
 Creating batch
   → Scanning input
-  → If ZIP: Extract
+  → If ZIP: Extract PDF entries
   → Classify & filter
-  → PDF text extraction / Image OCR
+  → PDF text extraction
   → Structured parsing
   → Candidate matching or creation
   → Save files & results
@@ -75,16 +75,14 @@ Creating batch
 
 **PDF:**
 - Try direct text extraction first
-- If text length < 200 chars, fallback to OCR
+- If text is insufficient, mark for manual review or reject by quality gate
 
-**Image:**
-- Direct OCR
+**非 PDF:**
+- Reject image and unsupported archive inputs with clear validation messages
 
-### ocr_running
+### ocr_running (legacy)
 
-- Execute OCR on images or scanned PDFs
-- Record page-level progress
-- Save OCR result text
+- 保留给历史任务状态兼容；新的导入流程不再进入 OCR 阶段
 
 ### parsing
 
@@ -134,7 +132,7 @@ Weak matches (e.g., name + position) only prompt, don't auto-merge.
 
 | Stage | Suggested Concurrency |
 |-------|---------------------|
-| Text extraction/OCR | 2-4 |
+| Text extraction | 2-4 |
 | Structured parsing | 2-4 |
 | AI screening | 1-2 |
 | Export/share | Serial |
@@ -164,7 +162,7 @@ Weak matches (e.g., name + position) only prompt, don't auto-merge.
 ```
 packages/server/src/services/import/
 ├── types.ts      # Data types
-├── extractor.ts  # ZIP/PDF/Image extraction
+├── extractor.ts  # PDF text extraction
 ├── parser.ts    # Structured parsing
 ├── pipeline.ts  # Pipeline orchestration
 └── index.ts     # Service entry

@@ -84,8 +84,8 @@ import {
   Circle,
   XCircle,
 } from "lucide-vue-next"
-import Badge from "@/components/ui/badge.vue"
-import Progress from "@/components/ui/progress.vue"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import type { Task } from "@/stores/lui"
 
 interface TaskQueueIndicatorProps {

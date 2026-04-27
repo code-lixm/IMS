@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
-import CardHeader from '@/components/ui/card/CardHeader.vue'
+import { CardHeader } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 const props = defineProps<{
