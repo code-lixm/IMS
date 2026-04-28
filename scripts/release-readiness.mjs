@@ -46,6 +46,10 @@ function tryRun(cmd, args) {
   }
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function checkVersionConsistency() {
   const rootVersion = readJson("package.json").version;
   const versions = {
@@ -182,6 +186,49 @@ function checkGithubSecrets() {
   }
 }
 
+function checkChangelog(rootVersion) {
+  const changelogPath = path.join(cwd, "CHANGELOG.md");
+
+  // 1. Check file exists
+  if (!fs.existsSync(changelogPath)) {
+    add(FAIL, "Changelog 文件", "CHANGELOG.md 不存在");
+    return;
+  }
+
+  const content = readText("CHANGELOG.md");
+
+  // 2. Check current version has entry with format: ## [VERSION] - YYYY-MM-DD
+  const escapedVersion = escapeRegex(rootVersion);
+  const entryRegex = new RegExp(`^## \\[${escapedVersion}\\] - (\\d{4}-\\d{2}-\\d{2})$`, "m");
+  const match = content.match(entryRegex);
+
+  if (!match) {
+    add(FAIL, "Changelog 版本条目", `未找到版本 ${rootVersion} 的 changelog 条目（预期格式: ## [${rootVersion}] - YYYY-MM-DD）`);
+    return;
+  }
+
+  const entryDate = match[1];
+
+  // 3. Validate date format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
+    add(FAIL, "Changelog 日期格式", `版本 ${rootVersion} 的日期格式无效: ${entryDate}，预期 YYYY-MM-DD`);
+    return;
+  }
+
+  // 4. Check date is not beyond today
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const [ey, em, ed] = entryDate.split("-").map(Number);
+  const entryDateObj = new Date(ey, em - 1, ed);
+
+  if (entryDateObj > today) {
+    add(FAIL, "Changelog 日期", `版本 ${rootVersion} 的日期 ${entryDate} 超过今天 ${todayStr}，不能使用未来日期`);
+    return;
+  }
+
+  add(PASS, "Changelog", `版本 ${rootVersion} 条目格式正确（## [${rootVersion}] - ${entryDate}）`);
+}
+
 function printSummary() {
   for (const row of results) {
     console.log(`[${row.level}] ${row.name}: ${row.detail}`);
@@ -198,6 +245,7 @@ function printSummary() {
 
 function main() {
   const { rootVersion } = checkVersionConsistency();
+  checkChangelog(rootVersion);
   checkUpdaterConfig();
   checkWorkflow();
   checkGitState(rootVersion);

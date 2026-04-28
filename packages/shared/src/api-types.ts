@@ -512,10 +512,24 @@ export interface UniversityVerificationResult {
 
 export type ImportScreeningVerdict = "pass" | "review" | "reject";
 
+export interface TemplateEvidenceMatchedItem {
+  item: string;
+  evidence: string;
+}
 
-export type ImportScreeningStatus = "not_requested" | "running" | "completed";
+export interface TemplateEvidenceUnmatchedItem {
+  item: string;
+  reason: string;
+}
 
-export type ImportScreeningSource = "ai" | "heuristic";
+export interface TemplateEvidence {
+  matched: TemplateEvidenceMatchedItem[];
+  unmatched: TemplateEvidenceUnmatchedItem[];
+}
+
+export type ImportScreeningStatus = "not_requested" | "queued" | "running" | "completed" | "failed";
+
+export type ImportScreeningSource = "ai" | "heuristic" | "failed";
 
 export interface ImportScreeningConclusion {
   verdict: ImportScreeningVerdict;
@@ -524,6 +538,8 @@ export interface ImportScreeningConclusion {
   candidateName?: string | null;
   candidatePosition?: string | null;
   candidateYearsOfExperience?: number | null;
+  candidateEducation?: string[];
+  candidateSchools?: string[];
   screeningBaseUrl?: string | null;
   summary: string;
   strengths: string[];
@@ -535,6 +551,7 @@ export interface ImportScreeningConclusion {
   wechatCopyText: string;
   templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
   universityVerification?: UniversityVerificationResult;
+  templateEvidence?: TemplateEvidence;
 }
 
 export interface ImportTaskResultData {

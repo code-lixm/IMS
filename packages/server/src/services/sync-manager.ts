@@ -2,6 +2,7 @@ import { db } from "../db";
 import { candidates, interviews } from "../schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { getBaobaoClient } from "./baobao-client";
+import { logError, logInfo, logWarn } from "../utils/logger";
 
 const MAX_CONSECUTIVE_ERRORS = 3;
 
@@ -21,12 +22,14 @@ class SyncManager {
     this.consecutiveErrors = 0;
     this.timer = setInterval(() => { void this.tick(); }, this.intervalMs);
     console.log(`[sync] polling started, interval=${intervalMs}ms`);
+    logInfo("sync.polling.start", { intervalMs });
   }
 
   stop() {
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
     this.enabled = false;
     console.log("[sync] polling stopped");
+    logInfo("sync.polling.stop", { intervalMs: this.intervalMs });
   }
 
   isEnabled() { return this.enabled; }
@@ -35,19 +38,37 @@ class SyncManager {
 
   async runOnce(): Promise<{ syncedCandidates: number; syncedInterviews: number }> {
     const before = Date.now();
+    const opId = `sync_${crypto.randomUUID()}`;
+    logInfo("sync.run.start", { opId, intervalMs: this.intervalMs, enabled: this.enabled });
     try {
-      const result = await this.doSync();
+      const result = await this.doSync(opId);
       this.lastSyncAt = Date.now();
       this.lastError = null;
       this.consecutiveErrors = 0;
       console.log(`[sync] done in ${this.lastSyncAt - before}ms, syncedCandidates=${result.syncedCandidates} syncedInterviews=${result.syncedInterviews}`);
+      logInfo("sync.run.finish", {
+        opId,
+        durationMs: this.lastSyncAt - before,
+        syncedCandidates: result.syncedCandidates,
+        syncedInterviews: result.syncedInterviews,
+      });
       return result;
     } catch (err) {
       const msg = (err as Error).message;
       this.lastError = msg;
       this.consecutiveErrors++;
       console.error(`[sync] error (${this.consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${msg}`);
-      if (this.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) { console.error("[sync] too many errors, pausing polling"); this.stop(); }
+      logError("sync.run.error", err, {
+        opId,
+        durationMs: Date.now() - before,
+        consecutiveErrors: this.consecutiveErrors,
+        maxConsecutiveErrors: MAX_CONSECUTIVE_ERRORS,
+      });
+      if (this.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.error("[sync] too many errors, pausing polling");
+        logWarn("sync.polling.pause", { opId, reason: "too_many_errors", consecutiveErrors: this.consecutiveErrors });
+        this.stop();
+      }
       throw err;
     }
   }
@@ -58,10 +79,17 @@ class SyncManager {
 
   private async tick() {
     if (!this.enabled) return;
-    try { await this.runOnce(); } catch {}
+    try {
+      await this.runOnce();
+    } catch (error) {
+      logWarn("sync.tick.error_swallowed", {
+        error: error instanceof Error ? error.message : String(error),
+        consecutiveErrors: this.consecutiveErrors,
+      });
+    }
   }
 
-  private async doSync(): Promise<{ syncedCandidates: number; syncedInterviews: number }> {
+  private async doSync(opId: string): Promise<{ syncedCandidates: number; syncedInterviews: number }> {
     const client = getBaobaoClient();
     if (!client) {
       throw new Error("Baobao client not initialized. Please connect via /api/auth/baobao/connect");
@@ -74,6 +102,7 @@ class SyncManager {
     let hasMore = true;
 
     while (hasMore) {
+      logInfo("sync.page.fetch.start", { opId, page, pageSize });
       const response = await client.getApplicantInterviewAll({
         pageNum: page,
         pageSize: pageSize,
@@ -84,6 +113,7 @@ class SyncManager {
       }
 
       const list = response.data?.list || [];
+      logInfo("sync.page.fetch.finish", { opId, page, pageSize, fetchedCount: list.length });
       
       for (const applicant of list) {
         await this.syncApplicantToLocal(applicant);

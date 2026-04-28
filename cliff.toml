@@ -1,0 +1,60 @@
+# git-cliff configuration for IMS monorepo
+# Generates changelog drafts with Chinese category names.
+#
+# Usage:
+#   git-cliff --config cliff.toml --unreleased
+#
+# See https://git-cliff.org for full documentation.
+
+[git-cliff]
+# Parse scope (e.g. "fix(release): message" → scope="release")
+parse_scope = true
+
+[changelog]
+# No header/footer — draft content gets inserted into existing CHANGELOG.md [Unreleased] section
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{%- for commit in commits %}
+- {{ commit.message | split(pat=": ") | last | trim }}
+{%- endfor %}
+
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+# Filter commits by monorepo project paths.
+include_paths = [
+  "apps/desktop/",
+  "apps/web/",
+  "packages/server/",
+  "packages/shared/",
+  "scripts/",
+  "package.json",
+  "pnpm-workspace.yaml",
+]
+
+# Map conventional commit types to Chinese category names matching CHANGELOG.md format.
+# Order matters: more specific patterns first, catch-all last.
+commit_parsers = [
+  # Breaking changes (exclamation mark or BREAKING in message)
+  { message = "^.*!|^.*BREAKING", group = "变更" },
+  # Removed/deprecated features
+  { message = "^remove|^deprecat", group = "移除" },
+  # New features
+  { message = "^feat", group = "新增" },
+  # Bug fixes
+  { message = "^fix", group = "修复" },
+  # Refactoring and performance improvements
+  { message = "^refactor|^perf", group = "优化" },
+  # Release commits — skip these entirely
+  { message = "^chore\\(release\\)|^release:", skip = true },
+  # Everything else mapped to 其他 (catch-all)
+  { message = ".*", group = "其他" },
+]
+
+[links]
+# No links for draft generation

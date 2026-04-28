@@ -1,41 +1,49 @@
 {
-  "active_plan": "/Users/lixiaoming/Desktop/desktop/personal/IMS/.sisyphus/plans/screening-template-university.md",
-  "started_at": "2026-04-26T09:17:00.000Z",
+  "active_plan": "/Users/lixiaoming/Desktop/desktop/personal/IMS/.sisyphus/plans/changelog-system.md",
+  "started_at": "2026-04-27T08:08:07.354Z",
   "session_ids": [
-    "ses_23a85a4d5ffe6V13EDHuZ39fZX",
-    "ses_239ee6763ffec1JotMqKL2XN9j"
+    "ses_2322a9629ffeektv9qgs2AH8cS",
+    "ses_231cb8d71ffeC2xY3MEeERcbco",
+    "ses_231cb5ac9ffecbr6Bnf2N6eTJr",
+    "ses_231cb2f9effe6OICPFSA6Oh5uO",
+    "ses_231cb2f3dffeodURECiVdA4GRz"
   ],
-  "plan_name": "screening-template-university",
+  "session_origins": {
+    "ses_2322a9629ffeektv9qgs2AH8cS": "direct",
+    "ses_231cb8d71ffeC2xY3MEeERcbco": "appended",
+    "ses_231cb5ac9ffecbr6Bnf2N6eTJr": "appended",
+    "ses_231cb2f9effe6OICPFSA6Oh5uO": "appended",
+    "ses_231cb2f3dffeodURECiVdA4GRz": "appended"
+  },
+  "plan_name": "changelog-system",
+  "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Shared Types 扩展（ScreeningTemplateInfo, UniversityVerification, etc.）",
-      "session_id": "ses_23a570914ffeUNMlHneN5vkOSI",
+      "task_title": "CHANGELOG.md 创建 + 已有版本回填",
+      "session_id": "ses_232020c0dffe6YMAh3L8jZ14tt",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-25T17:25:12.431Z"
+      "category": "quick",
+      "updated_at": "2026-04-27T08:11:40.278Z"
     },
-    "todo:11": {
-      "task_key": "todo:11",
-      "task_label": "11",
-      "task_title": "筛选详情页匹配程度 + 大学信息展示",
-      "session_id": "ses_23a3bd504ffe4zIaktTeIob3yM",
-      "updated_at": "2026-04-25T18:11:17.465Z"
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "git-cliff 配置 + 草稿生成脚本",
+      "session_id": "ses_231fe6e62ffeho9NYSnTb23MUp",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-27T08:21:05.358Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_239ee6763ffec1JotMqKL2XN9j",
+      "session_id": "ses_231b958f7ffeu1ujwDTE4Er1Rc",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-04-25T19:19:54.680Z"
+      "category": "quick",
+      "updated_at": "2026-04-27T09:31:30.628Z"
     }
-  },
-  "session_origins": {
-    "ses_23a85a4d5ffe6V13EDHuZ39fZX": "direct",
-    "ses_239ee6763ffec1JotMqKL2XN9j": "appended"
-  },
-  "agent": "atlas"
+  }
 }

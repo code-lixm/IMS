@@ -46,6 +46,7 @@ describe("import formatters", () => {
   test("formats source labels and timestamps for zh-CN display", () => {
     expect(screeningSourceLabel("ai")).toBe("AI Agent");
     expect(screeningSourceLabel("heuristic")).toBe("规则回退");
+    expect(screeningSourceLabel("failed")).toBe("AI 初筛失败");
     expect(screeningSourceLabel(null)).toBe("");
     expect(formatImportTimestamp(new Date(2026, 3, 20, 1, 5).getTime())).toMatch(/04\/20.*01:05|4\/20.*01:05/);
   });

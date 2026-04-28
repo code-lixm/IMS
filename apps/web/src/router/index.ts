@@ -10,6 +10,7 @@ import SettingsView from "@/views/SettingsView.vue";
 import NotFoundView from "@/views/NotFoundView.vue";
 import ServerErrorView from "@/views/ServerErrorView.vue";
 import LUIView from "@/views/LUIView.vue";
+import ScreeningTemplatesView from "@/views/ScreeningTemplatesView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,6 +22,7 @@ const router = createRouter({
     { path: "/import", component: ImportView, meta: { requiresAuth: true } },
     { path: "/settings", component: SettingsView, meta: { requiresAuth: true } },
     { path: "/lui", component: LUIView, meta: { requiresAuth: true } },
+    { path: "/screening/templates", component: ScreeningTemplatesView, meta: { requiresAuth: true } },
     { path: "/500", component: ServerErrorView },
     { path: "/:pathMatch(.*)*", component: NotFoundView },
   ],

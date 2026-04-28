@@ -12,7 +12,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { syncManager } from "./services/sync-manager";
 import { resetCandidateRecords } from "./services/sync-reset";
-import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, exportScreeningResults, ImportScreeningExportError, ImportValidationError, startRerunImportBatchScreening } from "./services/import/pipeline";
+import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, retryFileUniversityVerification, exportScreeningResults, ImportScreeningExportError, ImportValidationError, startRerunImportBatchScreening } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
@@ -22,6 +22,7 @@ import { clearBaobaoLoginSession, fetchBaobaoLoginQrCode, getBaobaoLoginSessionS
 import { config } from "./config";
 import { closeDatabase, db, rawDb } from "./db";
 import { corsHeaders, ok, fail } from "./utils/http";
+import { logError, logInfo, logWarn, resolveRequestId } from "./utils/logger";
 import {
   users, candidates, resumes, interviews, artifacts, artifactVersions,
   candidateWorkspaces, importBatches, importFileTasks, shareRecords, notifications,
@@ -88,11 +89,13 @@ function scheduleDatabaseHealthShutdown(error: unknown, message: string) {
   }
   databaseShutdownScheduled = true;
   console.error("[health] fatal database state detected; server will exit so supervisor can restart", error);
+  logError("health.database.fatal", error, { message });
   setTimeout(() => {
     try {
       closeDatabase();
     } finally {
       console.error(`[health] exiting after database failure: ${message}`);
+      logWarn("health.database.exit", { message });
       process.exit(1);
     }
   }, 50);
@@ -158,11 +161,15 @@ function decodeStoredFileName(fileName: string | null | undefined): string {
   }
 }
 
-function parseStoredImportTaskResult(resultJson: string | null | undefined): ImportTaskResultData | null {
+type StoredImportTaskResultData = Omit<ImportTaskResultData, "screeningStatus"> & {
+  screeningStatus?: ImportTaskResultData["screeningStatus"] | "failed";
+};
+
+function parseStoredImportTaskResult(resultJson: string | null | undefined): StoredImportTaskResultData | null {
   if (!resultJson) return null;
 
   try {
-    const parsed = JSON.parse(resultJson) as ImportTaskResultData;
+    const parsed = JSON.parse(resultJson) as StoredImportTaskResultData;
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
@@ -179,7 +186,7 @@ function summarizeImportBatchAnalysis(
   for (const task of tasks) {
     const result = parseStoredImportTaskResult(task.resultJson);
 
-    if (result?.screeningStatus === "completed") {
+    if (result?.screeningStatus === "completed" || result?.screeningStatus === "failed") {
       analysisCompletedFiles += 1;
       continue;
     }
@@ -1556,7 +1563,7 @@ function pickLatestByCandidate<T extends { candidateId: string }>(rows: T[]) {
   return latestByCandidate;
 }
 
-export async function route(request: Request): Promise<Response> {
+async function routeInternal(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
@@ -1568,10 +1575,12 @@ export async function route(request: Request): Promise<Response> {
   if ((path === "/api/health" || path === "/health") && request.method === "GET") {
     try {
       rawDb.query("SELECT COUNT(*) AS count FROM remote_users").get();
+      logInfo("health.check.ok", { path, method: request.method });
       return ok({ service: "interview-manager", status: "ok", database: "ok" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "database unavailable";
       console.error("[health] database check failed", error);
+      logError("health.check.failed", error, { path, method: request.method });
       if (isFatalSqliteIoError(error, message)) {
         scheduleDatabaseHealthShutdown(error, message);
       }
@@ -1619,7 +1628,10 @@ export async function route(request: Request): Promise<Response> {
   }
 
   if (path === "/api/auth/reset" && request.method === "POST") {
-    const body = await parseJson<{ reason?: string }>(request).catch(() => null);
+    const body = await parseJson<{ reason?: string }>(request).catch((error) => {
+      logWarn("auth.reset.parse_body_failed", { path, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    });
     const reason = sanitizeString(body?.reason) || "auth-reset";
     await clearLocalAuthCredentials(reason);
     return ok({ status: "reset" });
@@ -1667,6 +1679,7 @@ export async function route(request: Request): Promise<Response> {
         tokenExpAt,
       });
     } catch (err) {
+      logError("auth.baobao.connect.failed", err, { path });
       return fail("AUTH_INVALID", `Failed to validate token: ${(err as Error).message}`, 401);
     }
   }
@@ -1807,6 +1820,7 @@ export async function route(request: Request): Promise<Response> {
   // Sync
   if (path === "/api/sync/toggle" && request.method === "POST") {
     const body = await parseJson<{ enabled: boolean }>(request) ?? { enabled: false };
+    logInfo("sync.toggle.request", { enabled: Boolean(body.enabled) });
     if (body.enabled) {
       try {
         await syncManager.runOnce();
@@ -1819,19 +1833,26 @@ export async function route(request: Request): Promise<Response> {
           return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
         }
         console.error("[sync] toggle failed", { message: getErrorMessage(err) });
+        logError("sync.toggle.failed", err, { enabled: Boolean(body.enabled) });
         return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
       }
     } else {
       syncManager.stop();
     }
     const s = syncManager.status();
+    logInfo("sync.toggle.finish", { enabled: s.enabled, intervalMs: s.intervalMs });
     return ok({ enabled: s.enabled, intervalMs: s.intervalMs });
   }
 
   if (path === "/api/sync/status" && request.method === "GET") return ok(syncManager.status());
 
   if (path === "/api/sync/run" && request.method === "POST") {
-    try { const result = await syncManager.runOnce(); return ok({ ...result, syncAt: syncManager.getLastSyncAt() ?? Date.now() }); }
+    try {
+      logInfo("sync.manual_run.request");
+      const result = await syncManager.runOnce();
+      logInfo("sync.manual_run.finish", result);
+      return ok({ ...result, syncAt: syncManager.getLastSyncAt() ?? Date.now() });
+    }
     catch (err) {
       if (isBaobaoAuthExpiredError(err)) {
         console.warn("[sync] run detected auth expiry", { message: getErrorMessage(err) });
@@ -1839,6 +1860,7 @@ export async function route(request: Request): Promise<Response> {
         return fail("AUTH_EXPIRED", getErrorMessage(err), 401);
       }
       console.error("[sync] run failed", { message: getErrorMessage(err) });
+      logError("sync.manual_run.failed", err);
       return fail("REMOTE_SYNC_FAILED", getErrorMessage(err), 502);
     }
   }
@@ -1860,6 +1882,7 @@ export async function route(request: Request): Promise<Response> {
     syncManager.stop();
 
     try {
+      logInfo("sync.reset_run.start", { shouldRestartPolling });
       const resetResult = await resetCandidateRecords();
       hasClearedLocalRecords = true;
       const syncResult = await syncManager.runOnce();
@@ -1868,6 +1891,11 @@ export async function route(request: Request): Promise<Response> {
         syncManager.start(syncStatus.intervalMs);
       }
 
+      logInfo("sync.reset_run.finish", {
+        clearedCandidates: resetResult.clearedCandidates,
+        syncedCandidates: syncResult.syncedCandidates,
+        syncedInterviews: syncResult.syncedInterviews,
+      });
       return ok({
         ...resetResult,
         ...syncResult,
@@ -1890,6 +1918,7 @@ export async function route(request: Request): Promise<Response> {
       const message = hasClearedLocalRecords
         ? `本地记录已清空，但重新同步失败：${getErrorMessage(err)}`
         : getErrorMessage(err);
+      logError("sync.reset_run.failed", err, { hasClearedLocalRecords });
       return fail("REMOTE_SYNC_FAILED", message, 502);
     }
   }
@@ -2435,13 +2464,23 @@ export async function route(request: Request): Promise<Response> {
       sourcePaths = body.paths;
     }
 
+    logInfo("import.batch.create.start", {
+      batchId: id,
+      sourceType: contentType.includes("multipart/form-data") ? "multipart" : "paths",
+      sourceCount: sourcePaths.length,
+      autoScreen,
+      hasTemplate: Boolean(templateId),
+    });
+
     let preparedTasks;
     try {
       preparedTasks = await prepareImportTasks(id, sourcePaths);
     } catch (error) {
       if (error instanceof ImportValidationError) {
+        logWarn("import.batch.create.validation_failed", { batchId: id, message: error.message });
         return fail("VALIDATION_ERROR", error.message, 422);
       }
+      logError("import.batch.create.prepare_failed", error, { batchId: id, sourceCount: sourcePaths.length });
       throw error;
     }
     const displayName = buildImportBatchDisplayName(sourcePaths, preparedTasks.length, ts);
@@ -2460,6 +2499,7 @@ export async function route(request: Request): Promise<Response> {
     }
     runImportBatchSerially(queuedTasks, templateId);
     await refreshBatchProgress(id);
+    logInfo("import.batch.create.finish", { batchId: id, totalFiles: preparedTasks.length, queuedCount: queuedTasks.length, autoScreen, hasTemplate: Boolean(templateId) });
     return ok({ id, displayName, status: "processing", totalFiles: preparedTasks.length, autoScreen, createdAt: ts }, { status: 201 });
   }
 
@@ -2468,6 +2508,7 @@ export async function route(request: Request): Promise<Response> {
   const batchRetryMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/retry-failed$/);
   const batchRerunScreeningMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/rerun-screening$/);
   const fileRerunScreeningMatch = path.match(/^\/api\/import\/file-tasks\/([^/]+)\/rerun-screening$/);
+  const fileRetryUniversityMatch = path.match(/^\/api\/import\/file-tasks\/([^/]+)\/retry-university-verification$/);
   if (batchMatch && request.method === "GET") {
     const [row] = await db.select().from(importBatches).where(eq(importBatches.id, batchMatch[1])).limit(1);
     if (!row) return fail("NOT_FOUND", "batch not found", 404);
@@ -2507,7 +2548,10 @@ export async function route(request: Request): Promise<Response> {
 
   if (batchRerunScreeningMatch && request.method === "POST") {
     const id = batchRerunScreeningMatch[1];
-    const body = await parseJson<{ templateId?: string }>(request).catch(() => null);
+    const body = await parseJson<{ templateId?: string }>(request).catch((error) => {
+      logWarn("import.rerun_batch.parse_body_failed", { batchId: id, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    });
     const kickoff = await startRerunImportBatchScreening(id);
     if (kickoff.notFound) return fail("NOT_FOUND", "batch not found", 404);
     if (kickoff.alreadyRunning) {
@@ -2522,7 +2566,10 @@ export async function route(request: Request): Promise<Response> {
         batchId: id,
         error: error instanceof Error ? error.message : String(error),
       });
+      logError("import.rerun_batch.failed", error, { batchId: id });
     });
+
+    logInfo("import.rerun_batch.started", { batchId: id, retriedCount: kickoff.retriedCount, hasTemplate: Boolean(body?.templateId) });
 
     return ok({ id, retriedCount: kickoff.retriedCount, status: "processing" });
   }
@@ -2532,16 +2579,30 @@ export async function route(request: Request): Promise<Response> {
     const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
     if (!task) return fail("NOT_FOUND", "task not found", 404);
 
-    const body = await parseJson<{ templateId?: string }>(request).catch(() => null);
+    const body = await parseJson<{ templateId?: string }>(request).catch((error) => {
+      logWarn("import.rerun_file.parse_body_failed", { taskId, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    });
 
     void rerunFileScreening(taskId, body?.templateId).catch((error) => {
       console.error("[import] rerun file screening failed", {
         taskId,
         error: error instanceof Error ? error.message : String(error),
       });
+      logError("import.rerun_file.failed", error, { taskId });
     });
 
+    logInfo("import.rerun_file.started", { taskId, hasTemplate: Boolean(body?.templateId) });
+
     return ok({ taskId, retried: true, screeningStatus: "running" });
+  }
+
+  if (fileRetryUniversityMatch && request.method === "POST") {
+    const taskId = fileRetryUniversityMatch[1];
+    const result = await retryFileUniversityVerification(taskId);
+    if (!result.retried) return fail("NOT_FOUND", "task or screening result not found", 404);
+    logInfo("import.retry_university.finish", { taskId, verdict: result.universityVerification?.verdict ?? null });
+    return ok({ taskId, ...result });
   }
 
   // Screening export
@@ -2551,7 +2612,20 @@ export async function route(request: Request): Promise<Response> {
       if (!body?.mode) return fail("VALIDATION_ERROR", "mode is required", 422);
       if (!Array.isArray(body.batchIds)) return fail("VALIDATION_ERROR", "batchIds is required", 422);
 
+      logInfo("screening.export.start", {
+        mode: body.mode,
+        batchCount: body.batchIds.length,
+        hasScoreRange: body.scoreMin !== undefined || body.scoreMax !== undefined,
+      });
+
       const { buffer, fileName, contentType } = await exportScreeningResults(body);
+      logInfo("screening.export.finish", {
+        mode: body.mode,
+        batchCount: body.batchIds.length,
+        contentType,
+        bytes: buffer.length,
+        fileExt: fileName.split(".").pop() ?? null,
+      });
       const asciiFileName = fileName.replace(/[^\x20-\x7E]/g, "_");
       const encodedFileName = encodeURIComponent(fileName);
       return new Response(Uint8Array.from(buffer), {
@@ -2564,8 +2638,10 @@ export async function route(request: Request): Promise<Response> {
       });
     } catch (err) {
       if (err instanceof ImportScreeningExportError) {
+        logWarn("screening.export.failed", { code: err.code, status: err.status, message: err.message });
         return fail(err.code, err.message, err.status);
       }
+      logError("screening.export.error", err);
       return fail("INTERNAL_ERROR", err instanceof Error ? err.message : "export failed", 500);
     }
   }
@@ -3846,4 +3922,57 @@ Always be concise and helpful in your responses.`;
   const screeningTemplatesResponse = await screeningTemplatesRoute(request);
   if (screeningTemplatesResponse) return screeningTemplatesResponse;
   return fail("NOT_FOUND", "route not found", 404);
+}
+
+export async function route(request: Request): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return routeInternal(request);
+  }
+
+  const requestId = resolveRequestId(request);
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const startedAt = performance.now();
+  const contentLength = request.headers.get("content-length");
+
+  logInfo("request.start", {
+    requestId,
+    method: request.method,
+    path,
+    contentLength: contentLength ? Number(contentLength) : null,
+  });
+
+  try {
+    const response = await routeInternal(request);
+    const durationMs = Math.round(performance.now() - startedAt);
+    const headers = new Headers(response.headers);
+    headers.set("x-request-id", requestId);
+
+    const event = response.status === 404 ? "request.not_found" : "request.finish";
+    const level = response.status >= 500 ? "error" : response.status >= 400 ? "warn" : "info";
+    if (level === "error") {
+      logError(event, new Error(`HTTP ${response.status}`), { requestId, method: request.method, path, statusCode: response.status, durationMs });
+    } else if (level === "warn") {
+      logWarn(event, { requestId, method: request.method, path, statusCode: response.status, durationMs });
+    } else {
+      logInfo(event, { requestId, method: request.method, path, statusCode: response.status, durationMs });
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } catch (error) {
+    const durationMs = Math.round(performance.now() - startedAt);
+    logError("request.error", error, { requestId, method: request.method, path, durationMs });
+    const response = fail("INTERNAL_ERROR", "Internal server error", 500);
+    const headers = new Headers(response.headers);
+    headers.set("x-request-id", requestId);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
 }

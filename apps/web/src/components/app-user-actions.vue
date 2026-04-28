@@ -55,7 +55,7 @@
           新手引导
         </DropdownMenuItem>
         <DropdownMenuItem @click="handleExportBackendLogs">
-          导出后端日志
+          导出日志
         </DropdownMenuItem>
         <template v-if="props.dangerActionLabel">
           <DropdownMenuSeparator />
@@ -151,13 +151,13 @@ async function handleExportBackendLogs() {
   try {
     const invoke = getTauriInvoker();
     if (!invoke) {
-      notifyError("当前环境不支持导出后端日志");
+      notifyError("当前环境不支持导出日志");
       return;
     }
 
     const exportPath = await invoke<string>("export_current_logs");
     if (exportPath) {
-      notifySuccess("后端日志已导出并定位到文件位置");
+      notifySuccess("日志已导出并定位到文件位置");
       return;
     }
 
@@ -165,8 +165,8 @@ async function handleExportBackendLogs() {
   } catch (error) {
     notifyError(
       reportAppError("app-user-actions/export-backend-logs", error, {
-        title: "导出后端日志失败",
-        fallbackMessage: "未能导出后端日志",
+        title: "导出日志失败",
+        fallbackMessage: "未能导出日志",
       }),
     );
   }

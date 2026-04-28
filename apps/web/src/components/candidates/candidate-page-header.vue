@@ -28,7 +28,7 @@
       </div>
     </div>
 
-    <div class="flex items-center justify-end gap-2 shrink-0">
+    <div class="col-start-3 flex items-center justify-end gap-2 shrink-0">
       <DropdownMenu>
         <DropdownMenuTrigger as-child class="md:hidden">
           <Button variant="ghost" size="icon" class="h-9 w-9">

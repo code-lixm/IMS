@@ -172,6 +172,14 @@ export function useImportBatches() {
     ]);
   }
 
+  async function retryUniversityVerification(taskId: string, batchId: string) {
+    await importApi.retryUniversityVerification(taskId);
+    await Promise.all([
+      refresh(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
+    ]);
+  }
+
   async function cancelBatch(batchId: string) {
     await importApi.cancel(batchId);
     await Promise.all([
@@ -217,6 +225,7 @@ export function useImportBatches() {
     retryFailed,
     rerunScreening,
     rerunFileScreening,
+    retryUniversityVerification,
     cancelBatch,
     deleteBatch,
   };

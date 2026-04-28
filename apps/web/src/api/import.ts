@@ -46,6 +46,7 @@ export const importApi = {
   retryFailed(id: string) { return api<{ retriedCount: number }>(`/api/import/batches/${id}/retry-failed`, { method: "POST" }); },
   rerunScreening(id: string, templateId?: string) { return api<{ id: string; retriedCount: number; status: string }>(`/api/import/batches/${id}/rerun-screening`, { method: "POST", json: templateId ? { templateId } : undefined }); },
   rerunFileScreening(taskId: string, templateId?: string) { return api<{ taskId: string; retried: boolean; screeningStatus: string }>(`/api/import/file-tasks/${taskId}/rerun-screening`, { method: "POST", timeoutMs: 10_000, json: templateId ? { templateId } : undefined }); },
+  retryUniversityVerification(taskId: string) { return api<{ taskId: string; retried: boolean }>(`/api/import/file-tasks/${taskId}/retry-university-verification`, { method: "POST", timeoutMs: 10_000 }); },
   async exportResults(payload: ImportScreeningExportRequest): Promise<ExportedScreeningFile> {
     const response = await requestStream("/api/screening/export", {
       method: "POST",

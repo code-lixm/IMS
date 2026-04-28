@@ -4,34 +4,6 @@
       <AppBrandLink />
       <div class="flex-1" />
       <div class="flex items-center gap-2 shrink-0">
-        <Button
-          variant="outline"
-          class="gap-2 border-primary/25 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary disabled:border-border disabled:bg-transparent disabled:text-muted-foreground"
-          data-onboarding="export-screening"
-          :disabled="exportableBatchCount === 0"
-          @click="exportDialogOpen = true"
-        >
-          <Upload class="h-4 w-4" />
-          导出报告
-        </Button>
-        <div class="relative">
-          <Button
-            class="gap-2"
-            :disabled="isImporting"
-            data-onboarding="new-import"
-            @click="startImport"
-          >
-            <Download class="h-4 w-4" />
-            新建导入
-          </Button>
-          <Badge
-            v-if="importBatches.activeBatchCount.value > 0"
-            variant="default"
-            class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full bg-sky-600 px-1.5 py-0 text-white hover:bg-sky-600"
-          >
-            {{ importBatches.activeBatchCount.value }}
-          </Badge>
-        </div>
         <AppUserActions />
       </div>
     </AppPageHeader>
@@ -86,19 +58,36 @@
               }}
             </div>
             <div v-if="autoScreen" class="space-y-2 pt-2 border-t border-border/40">
-              <p class="text-xs font-medium text-muted-foreground">筛选模板</p>
-              <div v-if="screeningTemplates.templates.value.length > 0" class="flex flex-wrap gap-2">
-                <button
-                  v-for="template in screeningTemplates.templates.value"
-                  :key="template.id"
-                  class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors"
-                  :class="screeningTemplates.selectedId.value === template.id ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background hover:bg-muted/50'"
-                  @click="screeningTemplates.selectTemplate(template.id)"
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-xs font-medium text-muted-foreground">筛选模板</p>
+                <router-link
+                  to="/screening/templates"
+                  class="shrink-0 text-xs text-primary/80 hover:text-primary underline underline-offset-2 transition-colors"
                 >
-                  {{ template.name }}
-                  <Badge v-if="template.isDefault" variant="secondary" class="text-[10px] px-1 py-0">默认</Badge>
-                </button>
+                  管理模板
+                </router-link>
               </div>
+              <Select
+                v-if="screeningTemplates.templates.value.length > 0"
+                :model-value="screeningTemplates.selectedId.value ?? ''"
+                @update:model-value="screeningTemplates.selectTemplate(String($event))"
+              >
+                <SelectTrigger class="h-9 w-full min-w-0 justify-between rounded-lg text-sm">
+                  <SelectValue placeholder="选择筛选模板" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="template in screeningTemplates.templates.value"
+                    :key="template.id"
+                    :value="template.id"
+                  >
+                    <span class="flex min-w-0 items-center gap-2">
+                      <span class="min-w-0 truncate">{{ template.name }}</span>
+                      <Badge v-if="template.isDefault" variant="secondary" class="shrink-0 text-[10px] px-1.5 py-0">默认</Badge>
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
               <p v-else class="text-xs text-muted-foreground">
                 暂无自定义模板，将使用系统默认规则
               </p>
@@ -156,6 +145,44 @@
       />
 
       <div v-else class="space-y-4">
+        <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">导入批次</p>
+            <p class="text-xs text-muted-foreground">
+              管理已导入的简历批次，并导出已完成的初筛报告
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              class="gap-2 border-primary/25 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary disabled:border-border disabled:bg-transparent disabled:text-muted-foreground"
+              data-onboarding="export-screening"
+              :disabled="exportableBatchCount === 0"
+              @click="exportDialogOpen = true"
+            >
+              <Upload class="h-4 w-4" />
+              导出报告
+            </Button>
+            <div class="relative">
+              <Button
+                class="gap-2"
+                :disabled="isImporting"
+                data-onboarding="new-import"
+                @click="startImport"
+              >
+                <Download class="h-4 w-4" />
+                新建导入
+              </Button>
+              <Badge
+                v-if="importBatches.activeBatchCount.value > 0"
+                variant="default"
+                class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full bg-sky-600 px-1.5 py-0 text-white hover:bg-sky-600"
+              >
+                {{ importBatches.activeBatchCount.value }}
+              </Badge>
+            </div>
+          </div>
+        </div>
         <Card
           v-for="b in safeBatches"
           :key="b.id"
@@ -263,10 +290,6 @@
               class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
             >
               <div class="space-y-2">
-                  <Progress
-                    :model-value="batchProgressValue(b)"
-                    :indicator-class="progressIndicatorClass(b.status)"
-                  />
                 <div
                   class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
                 >
@@ -285,10 +308,13 @@
                   >
                 </div>
               </div>
-              <div class="text-right">
-                <p class="text-2xl font-semibold tabular-nums">
-                  {{ batchProgressValue(b) }}%
-                </p>
+              <div class="flex flex-col items-end gap-2 text-right">
+                <CircularProgress
+                  :model-value="batchProgressValue(b)"
+                  :status="batchCircularStatus(b.status)"
+                  :size="72"
+                  :stroke-width="5"
+                />
                 <p class="text-xs text-muted-foreground">
                   {{
                     batchStatusText(b)
@@ -341,9 +367,18 @@
                           f.stage === 'ai_screening' &&
                           !screeningResult(f)?.screeningConclusion
                         "
-                        class="inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                        :class="[
+                          'inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium',
+                          screeningResult(f)?.screeningStatus === 'queued'
+                            ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900 dark:text-amber-300'
+                            : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900 dark:text-blue-300',
+                        ]"
                       >
-                        AI 初筛中
+                        {{
+                          screeningResult(f)?.screeningStatus === 'queued'
+                            ? 'AI 初筛排队中'
+                            : 'AI 初筛中'
+                        }}
                       </span>
                       <span
                         class="min-w-0 flex-1 truncate text-sm font-medium"
@@ -403,9 +438,9 @@
 
                     <p
                       v-if="screeningResult(f)?.screeningError"
-                      class="text-xs text-amber-600"
+                      :class="screeningResult(f)?.screeningStatus === 'failed' ? 'text-xs text-destructive' : 'text-xs text-amber-600'"
                     >
-                      AI 初筛不可用，已回退规则结论：{{
+                      {{ screeningResult(f)?.screeningStatus === 'failed' ? 'AI 初筛失败，未生成规则回退结论：' : 'AI 初筛提示：' }}{{
                         screeningResult(f)?.screeningError
                       }}
                     </p>
@@ -424,21 +459,26 @@
                     <button
                       v-if="parseImportTaskResult(f.resultJson)?.parsedResume"
                       :disabled="
-                        screeningResult(f)?.screeningStatus === 'running'
+                        screeningResult(f)?.screeningStatus === 'running' ||
+                        screeningResult(f)?.screeningStatus === 'queued'
                       "
                       :title="
                         screeningResult(f)?.screeningStatus === 'running'
                           ? '分析中...'
-                          : '重新分析'
+                          : screeningResult(f)?.screeningStatus === 'queued'
+                            ? '等待中...'
+                            : '重新分析'
                       "
                       class="inline-flex items-center gap-1.5 text-sm text-red-500 hover:text-red-400 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        @click.stop="screeningResult(f)?.screeningStatus === 'running' ? null : requestRunFileScreening(f.id, f.batchId)"
+                        @click.stop="(screeningResult(f)?.screeningStatus === 'running' || screeningResult(f)?.screeningStatus === 'queued') ? null : requestRunFileScreening(f.id, f.batchId)"
                     >
                       <RefreshCw class="h-3.5 w-3.5" />
                       {{
-                        screeningResult(f)?.screeningStatus === "running"
-                          ? "分析中"
-                          : "重新分析"
+                        screeningResult(f)?.screeningStatus === 'running'
+                          ? '分析中'
+                          : screeningResult(f)?.screeningStatus === 'queued'
+                            ? '等待中'
+                            : '重新分析'
                       }}
                     </button>
                     <button
@@ -530,6 +570,7 @@
       :has-next="Boolean(nextScreeningFile)"
       @update:open="screeningDialogOpen = $event"
       @run-screening="handleRunFileScreening"
+      @retry-university-verification="handleRetryUniversityVerification"
       @navigate-prev="showAdjacentScreeningDetail(-1)"
       @navigate-next="showAdjacentScreeningDetail(1)"
     />
@@ -617,7 +658,6 @@ import {
   formatImportTimestamp,
   importStageLabel,
   parseImportTaskResult,
-  progressIndicatorClass,
   screeningScoreClass,
   screeningSourceLabel,
   statusLabel,
@@ -626,9 +666,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { CircularProgress } from "@/components/ui/circular-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Dialog,
@@ -680,6 +727,8 @@ const {
 const screeningTemplates = useScreeningTemplates();
 const templateDialogOpen = ref(false);
 const dialogSelectedTemplateId = ref("");
+const FILE_SCREENING_POLL_INTERVAL_MS = 1500;
+const FILE_SCREENING_POLL_ATTEMPTS = 40;
 interface TemplateDialogTarget {
   type: "batch" | "file";
   id: string;
@@ -1107,6 +1156,13 @@ function batchProgressValue(batch: ImportBatchView) {
   return batchScreeningProgress(batch);
 }
 
+function batchCircularStatus(status: string): "processing" | "done" | "error" | "default" {
+  if (status === "completed") return "done";
+  if (status === "failed") return "error";
+  if (status === "processing") return "processing";
+  return "default";
+}
+
 function batchProgressCountText(batch: ImportBatchView) {
   const completed = batchCompletedAnalysisCount(batch);
   const analysable = batchAnalysableCount(batch);
@@ -1133,7 +1189,7 @@ function batchCompletedAnalysisCount(batch: ImportBatchView) {
 
   const files = screenableFiles(batch.id);
   if (files.length > 0) {
-    return files.filter((file) => screeningResult(file)?.screeningStatus === "completed").length;
+    return files.filter((file) => isScreeningTerminal(screeningResult(file)?.screeningStatus)).length;
   }
 
   return 0;
@@ -1156,11 +1212,27 @@ function batchSecondaryMetricCount(batch: ImportBatchView) {
 }
 
 function batchTertiaryMetricLabel(batch: ImportBatchView) {
-  return batchAnalysisRunningFiles(batch) > 0 ? "分析中" : "待分析";
+  const pending = batchAnalysisPendingFiles(batch);
+  const running = batchAnalysisRunningFiles(batch);
+  if (running > 0 && pending > 0) {
+    return '等待中 / 分析中';
+  }
+  if (running > 0) {
+    return '分析中';
+  }
+  return '待分析';
 }
 
 function batchTertiaryMetricCount(batch: ImportBatchView) {
-  return batchAnalysisRunningFiles(batch) > 0 ? batchAnalysisRunningFiles(batch) : batchPendingAnalysisCount(batch);
+  const pending = batchAnalysisPendingFiles(batch);
+  const running = batchAnalysisRunningFiles(batch);
+  if (running > 0 && pending > 0) {
+    return `${pending} / ${running}`;
+  }
+  if (running > 0) {
+    return running;
+  }
+  return batchPendingAnalysisCount(batch);
 }
 
 function batchStatusText(batch: ImportBatchView) {
@@ -1219,12 +1291,16 @@ function batchStatusText(batch: ImportBatchView) {
     return "待分析";
   }
 
-  const running = files.some((file) => screeningResult(file)?.screeningStatus === "running");
+  const running = files.some((file) => screeningResult(file)?.screeningStatus === 'running');
+  const queued = files.some((file) => screeningResult(file)?.screeningStatus === 'queued');
   if (running) {
-    return "AI 初筛进行中";
+    return 'AI 初筛进行中';
+  }
+  if (queued) {
+    return 'AI 初筛等待中';
   }
 
-  const completed = files.filter((file) => screeningResult(file)?.screeningStatus === "completed").length;
+  const completed = files.filter((file) => isScreeningTerminal(screeningResult(file)?.screeningStatus)).length;
   if (completed === 0) {
     return "待分析";
   }
@@ -1232,6 +1308,10 @@ function batchStatusText(batch: ImportBatchView) {
     return `已分析 ${completed}/${files.length}`;
   }
   return "已完成分析";
+}
+
+function isScreeningTerminal(status: string | null | undefined) {
+  return status === "completed" || status === "failed";
 }
 
 function fileNameOf(originalPath: string) {
@@ -1336,6 +1416,30 @@ function showAdjacentScreeningDetail(direction: -1 | 1) {
   showScreeningDetail(target);
 }
 
+function wait(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function refreshSelectedScreeningFile(taskId: string, batchId: string) {
+  await importBatches.refresh();
+  const nextFile = batchFiles.value[batchId]?.find((file) => file.id === taskId) ?? null;
+  if (!nextFile) return null;
+
+  selectedFile.value = nextFile;
+  selectedScreeningData.value = parseImportTaskResult(nextFile.resultJson);
+  return selectedScreeningData.value;
+}
+
+async function waitForFileScreeningResult(taskId: string, batchId: string) {
+  for (let attempt = 0; attempt < FILE_SCREENING_POLL_ATTEMPTS; attempt += 1) {
+    await wait(FILE_SCREENING_POLL_INTERVAL_MS);
+    const result = await refreshSelectedScreeningFile(taskId, batchId);
+    if (isScreeningTerminal(result?.screeningStatus)) {
+      return;
+    }
+  }
+}
+
 async function handleRunFileScreening(taskId: string) {
   if (!(await ensureAutoScreeningReady())) {
     return;
@@ -1361,6 +1465,29 @@ async function requestRunFileScreening(taskId: string, batchId: string) {
   templateDialogTarget.value = { type: "file", id: taskId, batchId };
   dialogSelectedTemplateId.value = "";
   templateDialogOpen.value = true;
+}
+
+async function handleRetryUniversityVerification(taskId: string) {
+  const targetBatchId = selectedFile.value?.batchId
+    ?? Object.entries(batchFiles.value).find(([, files]) => files.some((file) => file.id === taskId))?.[0];
+
+  if (!targetBatchId) {
+    notifyError("无法定位导入批次，暂时不能重试院校认证");
+    return;
+  }
+
+  try {
+    await importBatches.retryUniversityVerification(taskId, targetBatchId);
+    await refreshSelectedScreeningFile(taskId, targetBatchId);
+    notifySuccess("院校认证已重新查询");
+  } catch (error) {
+    notifyError(
+      reportAppError("import/retry-university-verification", error, {
+        title: "院校认证重试失败",
+        fallbackMessage: "第三方院校服务仍不可用，请稍后再试",
+      }),
+    );
+  }
 }
 
 function canRerunBatchScreening(batch: ImportBatchView) {
@@ -1446,6 +1573,7 @@ async function executeTemplateRerun() {
     await executeBatchRerun(target.id, tid);
   } else {
     await importBatches.rerunFileScreening(target.id, target.batchId!, tid);
+    await waitForFileScreeningResult(target.id, target.batchId!);
   }
 }
 </script>

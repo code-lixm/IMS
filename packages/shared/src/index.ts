@@ -34,5 +34,8 @@ export * from "./agent-contract";
 // Workspace-native agent definitions
 export * from "./workspace-agent";
 
+// Changelog display types
+export * from "./changelog";
+
 // Baobao dictionary constants
 export * from "./dictionaries/baobao";

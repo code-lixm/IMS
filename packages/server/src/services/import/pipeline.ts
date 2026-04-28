@@ -12,9 +12,12 @@ import { verifyCandidateSchools } from "../university-verification";
 import { config } from "../../config";
 import { ErrorCodes, type ImportScreeningConclusion, type ImportScreeningExportMode, type ImportScreeningExportRequest, type ImportTaskResultData, type UniversityVerificationResult } from "@ims/shared";
 import { extractPdfEntriesFromZip, MAX_IMPORT_FILE_SIZE_BYTES, ZipPdfError } from "./zip-pdf";
+import { logError, logInfo, logWarn } from "../../utils/logger";
 
-type ImportTaskResultWithConfidence = Omit<ImportTaskResultData, "universityVerification"> & {
+type ImportTaskResultWithConfidence = Omit<ImportTaskResultData, "screeningStatus" | "screeningSource" | "universityVerification"> & {
   extractionConfidence?: number | null;
+  screeningStatus?: ImportTaskResultData["screeningStatus"] | "failed";
+  screeningSource?: ImportTaskResultData["screeningSource"] | "failed" | null;
   universityVerification?: ImportTaskResultData["universityVerification"] | null;
 };
 
@@ -22,6 +25,8 @@ type ImportScreeningConclusionWithMetadata = ImportScreeningConclusion & {
   candidateName?: string | null;
   candidatePosition?: string | null;
   candidateYearsOfExperience?: number | null;
+  candidateEducation?: string[];
+  candidateSchools?: string[];
   screeningBaseUrl?: string | null;
 };
 
@@ -34,6 +39,9 @@ const UNSUPPORTED_IMAGE_SUFFIXES = [".png", ".jpg", ".jpeg", ".webp"];
 const UNIVERSITY_NOT_FOUND_CONCERN = "学校信息异常：未在教育部高校库中查到，建议人工核实";
 const UNIVERSITY_API_UNAVAILABLE_ERROR = "大学库查询暂不可用";
 const UNIVERSITY_REVIEW_WARNING = "学校信息异常，建议优先人工核实";
+const UNIVERSITY_MISSING_EDUCATION_CONCERN = "院校信息缺失：当前简历未解析出教育经历或院校信息，建议人工核实";
+const AI_SCREENING_MAX_ATTEMPTS = 3;
+const AI_SCREENING_RETRY_BASE_DELAY_MS = 1_000;
 
 export class ImportValidationError extends Error {
   constructor(message: string) {
@@ -47,6 +55,57 @@ class ImportCancelledError extends Error {
     super("import cancelled");
     this.name = "ImportCancelledError";
   }
+}
+
+async function generateImportScreeningConclusionWithRetry(
+  input: Parameters<typeof generateImportScreeningConclusionWithAI>[0],
+  context: { taskId: string; candidateId?: string | null },
+): Promise<Awaited<ReturnType<typeof generateImportScreeningConclusionWithAI>>> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= AI_SCREENING_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await generateImportScreeningConclusionWithAI(input);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= AI_SCREENING_MAX_ATTEMPTS) break;
+
+      const delayMs = AI_SCREENING_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+      logWarn("import.ai_screening.retry", {
+        taskId: context.taskId,
+        candidateId: context.candidateId ?? null,
+        attempt,
+        nextAttempt: attempt + 1,
+        delayMs,
+        error: formatErrorMessage(error),
+      });
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "AI 初筛失败"));
+}
+
+function buildAiScreeningFailedResult(
+  result: ImportTaskResultWithConfidence,
+  error: unknown,
+): ImportTaskResultWithConfidence {
+  return {
+    ...result,
+    screeningStatus: "failed",
+    screeningSource: "failed",
+    screeningError: `AI 初筛重试 ${AI_SCREENING_MAX_ATTEMPTS} 次后仍失败：${formatErrorMessage(error)}`,
+    screeningConclusion: null,
+    universityVerification: null,
+  };
+}
+
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || "未知错误");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface PreparedImportTask {
@@ -150,16 +209,20 @@ export async function refreshBatchProgress(batchId: string) {
 
 export async function processFile(taskId: string, filePath: string, fileTypeHint?: FileType, templateId?: string | null): Promise<void> {
   if (await markTaskCancelledIfNeeded(taskId)) {
+    logInfo("import.file.cancelled_before_start", { taskId });
     await updateBatchProgress(taskId);
     return;
   }
 
+  const startedAt = Date.now();
   const fileType = fileTypeHint ?? detectFileType(filePath);
+  logInfo("import.file.start", { taskId, fileType, fileExt: extname(filePath).toLowerCase(), hasTemplate: Boolean(templateId) });
   await updateTask(taskId, { status: "extracting", stage: "extracting", updatedAt: Date.now() });
 
   try {
     const unsupportedMessage = getUnsupportedImportMessage(fileType, filePath);
     if (unsupportedMessage) {
+      logWarn("import.file.unsupported", { taskId, fileType, fileExt: extname(filePath).toLowerCase(), message: unsupportedMessage });
       await updateTask(taskId, { status: "skipped", stage: "classifying", errorCode: ImportErrorCodes.UNSUPPORTED_TYPE, errorMessage: unsupportedMessage, updatedAt: Date.now() });
       await updateBatchProgress(taskId);
       return;
@@ -171,6 +234,7 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
     try {
       extractResult = await extractText(filePath, "pdf");
     } catch (err) {
+      logError("import.file.extract_failed", err, { taskId, fileType, fileExt: extname(filePath).toLowerCase() });
       await updateTask(taskId, { status: "failed", stage: "text_extracting", errorCode: ImportErrorCodes.TEXT_EXTRACT_FAILED, errorMessage: (err as Error).message, updatedAt: Date.now() });
       await updateBatchProgress(taskId);
       return;
@@ -192,6 +256,7 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
     await updateTask(taskId, { status: "matching_candidate", stage: "matching_candidate", updatedAt: Date.now() });
     const candidateMatch = await matchOrCreateCandidate(parsed, taskId);
     const candidateId = candidateMatch.id;
+    logInfo("import.file.candidate_matched", { taskId, candidateId, matchType: candidateMatch.created ? "created" : "existing" });
 
     if (await markTaskCancelledIfNeeded(taskId)) {
       if (candidateMatch.created) {
@@ -258,12 +323,13 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       });
 
       try {
-        const aiConclusion = await generateImportScreeningConclusionWithAI({
+        logInfo("import.file.ai_screening.start", { taskId, candidateId, hasTemplate: Boolean(templateId) });
+        const aiConclusion = await generateImportScreeningConclusionWithRetry({
           parsed,
           confidence: extractResult.confidence,
           fileName: basename(filePath),
           templateId: templateId ?? undefined,
-        });
+        }, { taskId, candidateId });
 
         result = {
           ...result,
@@ -271,17 +337,19 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
           screeningSource: "ai",
           screeningConclusion: aiConclusion,
         };
+        logInfo("import.file.ai_screening.finish", { taskId, candidateId, source: "ai" });
       } catch (error) {
-        result = {
-          ...result,
-          screeningStatus: "completed",
-          screeningSource: "heuristic",
-          screeningError: error instanceof Error ? error.message : "AI 初筛失败，已回退规则结论",
-          screeningConclusion: buildImportScreeningConclusion(parsed, extractResult.confidence),
-        };
+        logWarn("import.file.ai_screening.failed", { taskId, candidateId, error: formatErrorMessage(error) });
+        result = buildAiScreeningFailedResult(result, error);
       }
 
-      result = await attachUniversityVerificationResult(parsed, result);
+      result = result.screeningConclusion ? await attachUniversityVerificationResult(parsed, result) : result;
+      if (result.screeningConclusion) {
+        const schoolName = extractSchoolName(result.screeningConclusion);
+        if (schoolName) {
+          await updateCandidateOrganizationName(candidateId, schoolName);
+        }
+      }
     }
 
     if (await markTaskCancelledIfNeeded(taskId)) {
@@ -295,162 +363,67 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
 
     await updateTask(taskId, { status: "done", stage: "completed", candidateId, resultJson: JSON.stringify(result), updatedAt: Date.now() });
     await updateBatchProgress(taskId);
+    logInfo("import.file.finish", {
+      taskId,
+      candidateId,
+      durationMs: Date.now() - startedAt,
+      screeningStatus: result.screeningStatus,
+      screeningSource: result.screeningSource,
+    });
   } catch (err) {
     if (err instanceof ImportCancelledError) {
+      logWarn("import.file.cancelled", { taskId, durationMs: Date.now() - startedAt });
       await markTaskCancelledIfNeeded(taskId);
       await updateBatchProgress(taskId);
       return;
     }
+    logError("import.file.failed", err, { taskId, fileType, fileExt: extname(filePath).toLowerCase(), durationMs: Date.now() - startedAt });
     await updateTask(taskId, { status: "failed", errorCode: ImportErrorCodes.SAVE_FAILED, errorMessage: (err as Error).message, updatedAt: Date.now() });
     await updateBatchProgress(taskId);
   }
 }
 
-function buildImportScreeningConclusion(parsed: { name: string | null; position: string | null; phone: string | null; email: string | null; yearsOfExperience: number | null; skills: string[]; education: string[]; workHistory: string[]; rawText: string }, confidence: number): import("@ims/shared").ImportScreeningConclusion {
-  let score = 32;
-  const strengths: string[] = [];
-  const concerns: string[] = [];
-
-  if (parsed.phone || parsed.email) {
-    score += 10;
-    strengths.push("联系方式完整，可快速跟进");
-  } else {
-    score -= 15;
-    concerns.push("联系方式缺失，需要人工补充确认");
-  }
-
-  const years = parsed.yearsOfExperience ?? 0;
-  if (years >= 5) {
-    score += 18;
-    strengths.push(`有 ${years} 年以上相关经验`);
-  } else if (years >= 3) {
-    score += 12;
-    strengths.push(`具备 ${years} 年相关经验`);
-  } else if (years >= 1) {
-    score += 6;
-  } else {
-    concerns.push("工作年限信息较弱，需要进一步确认资历");
-  }
-
-  if (parsed.skills.length >= 8) {
-    score += 14;
-    strengths.push(`技能覆盖较广（${parsed.skills.slice(0, 4).join(" / ")}）`);
-  } else if (parsed.skills.length >= 4) {
-    score += 8;
-    strengths.push(`已识别关键技能：${parsed.skills.slice(0, 3).join(" / ")}`);
-  } else if (parsed.skills.length > 0) {
-    score += 3;
-  } else {
-    concerns.push("技能关键词较少，建议人工复核简历内容");
-  }
-
-  if (parsed.workHistory.length >= 2) {
-    score += 6;
-    strengths.push("工作经历描述较完整");
-  } else if (parsed.workHistory.length === 0) {
-    concerns.push("工作经历提取不足，可能需要人工阅读原简历");
-  }
-
-  if (parsed.education.length > 0) {
-    score += 3;
-  }
-
-  if (parsed.rawText.length < 300) {
-    score -= 20;
-    concerns.push("文本提取内容过少，结论可信度较低");
-  } else if (parsed.rawText.length < 800) {
-    score -= 8;
-  }
-
-  if (confidence >= 85) {
-    score += 4;
-  } else if (confidence < 60) {
-    score -= 12;
-    concerns.push("文本提取质量一般，建议人工校验");
-  }
-
-  score = Math.max(0, Math.min(100, score));
-
-  const verdict = score >= 75 ? "pass" : score >= 55 ? "review" : "reject";
-  const label = verdict === "pass" ? "通过" : verdict === "review" ? "待定" : "淘汰";
-  const recommendedAction = verdict === "pass" ? "建议进入后续面试环节" : verdict === "review" ? "建议人工复核后再决定" : "建议暂不进入后续流程";
-  const summary = verdict === "pass"
-    ? "简历关键信息完整，经验与技能匹配度较高，可优先进入下一轮。"
-    : verdict === "review"
-      ? "简历具备一定匹配度，但仍有关键信息需要人工确认。"
-      : "当前提取结果显示匹配度偏弱，不建议直接推进。";
-  const primaryReason = verdict === "reject"
-    ? (concerns[0] ?? summary)
-    : (strengths[0] ?? summary);
-  const wechatConclusion = `${label}：${summary}`;
-  const wechatReason = `原因：${primaryReason}`;
-  const wechatAction = `建议：${recommendedAction}`;
-  const wechatCopyText = [wechatConclusion, wechatReason, wechatAction].join("\n");
-
-  return {
-    verdict,
-    label,
-    score,
-    candidateName: parsed.name,
-    candidatePosition: parsed.position,
-    candidateYearsOfExperience: parsed.yearsOfExperience,
-    screeningBaseUrl: null,
-    summary,
-    strengths: strengths.slice(0, 3),
-    concerns: concerns.slice(0, 3),
-    recommendedAction,
-    wechatConclusion,
-    wechatReason,
-    wechatAction,
-    wechatCopyText,
-  } satisfies ImportScreeningConclusionWithMetadata;
-}
-
 async function attachUniversityVerificationResult(
   parsed: ImportTaskResultData["parsedResume"],
   result: ImportTaskResultWithConfidence,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<ImportTaskResultWithConfidence> {
-  if (!result.screeningConclusion) {
-    return {
-      ...result,
-      universityVerification: null,
-    };
-  }
-
-  const educationList = parsed.education
-    .map(item => item.trim())
-    .filter(Boolean);
-
-  if (educationList.length === 0) {
-    return {
-      ...result,
-      universityVerification: null,
-    };
+  const conclusion = result.screeningConclusion;
+  if (!conclusion) {
+    return { ...result, universityVerification: null };
   }
 
   try {
-    const primaryVerification = (await verifyCandidateSchools(educationList))[0] ?? null;
-    if (!primaryVerification) {
-      return {
-        ...result,
-        universityVerification: null,
-      };
+    // Priority 1: AI 提供了干净学校名 → 直接查询
+    if (conclusion.candidateSchools && conclusion.candidateSchools.length > 0) {
+      const primary = (await verifyCandidateSchools(conclusion.candidateSchools, conclusion.candidateSchools, options))[0] ?? null;
+      if (primary) return wrapVerificationResult(result, primary);
     }
 
-    if (primaryVerification.verdict === "api_failed") {
-      console.warn(
-        `[import] university verification unavailable for ${primaryVerification.schoolName ?? "unknown school"}: ${primaryVerification.detail ?? "unknown reason"}`,
-      );
+    // Priority 2: AI 提供了教育详情 → 从中提取学校名
+    if (conclusion.candidateEducation && conclusion.candidateEducation.length > 0) {
+      const primary = (await verifyCandidateSchools(conclusion.candidateEducation, undefined, options))[0] ?? null;
+      if (primary) return wrapVerificationResult(result, primary);
     }
 
-    return {
-      ...result,
-      screeningError: primaryVerification.verdict === "api_failed"
-        ? appendUniqueMessage(result.screeningError, UNIVERSITY_API_UNAVAILABLE_ERROR)
-        : result.screeningError,
-      screeningConclusion: applyUniversityVerificationToConclusion(result.screeningConclusion, primaryVerification),
-      universityVerification: primaryVerification,
-    };
+    // Priority 3: 规则解析兜底
+    if (parsed.education.length === 0) {
+      if (result.screeningConclusion) {
+        return {
+          ...result,
+          screeningConclusion: {
+            ...result.screeningConclusion,
+            concerns: appendUniqueItem(result.screeningConclusion.concerns, UNIVERSITY_MISSING_EDUCATION_CONCERN),
+          },
+          universityVerification: null,
+        };
+      }
+      return { ...result, universityVerification: null };
+    }
+    const primary = (await verifyCandidateSchools(parsed.education, undefined, options))[0] ?? null;
+    if (primary) return wrapVerificationResult(result, primary);
+
+    return { ...result, universityVerification: null };
   } catch (error) {
     console.warn(`[import] university verification failed: ${error instanceof Error ? error.message : String(error)}`);
     return {
@@ -459,6 +432,23 @@ async function attachUniversityVerificationResult(
       universityVerification: null,
     };
   }
+}
+
+function wrapVerificationResult(
+  result: ImportTaskResultWithConfidence,
+  verification: UniversityVerificationResult,
+): ImportTaskResultWithConfidence {
+  if (verification.verdict === "api_failed") {
+    console.warn(
+      `[import] university verification unavailable for ${verification.schoolName ?? "unknown school"}: ${verification.detail ?? "unknown reason"}`,
+    );
+  }
+  return {
+    ...result,
+    screeningError: result.screeningError,
+    screeningConclusion: applyUniversityVerificationToConclusion(result.screeningConclusion!, verification),
+    universityVerification: verification,
+  };
 }
 
 function applyUniversityVerificationToConclusion(
@@ -530,6 +520,82 @@ function appendUniqueMessage(current: string | null | undefined, nextMessage: st
   }
 
   return base.includes(nextMessage) ? base : `${base}；${nextMessage}`;
+}
+function extractSchoolName(conclusion: ImportScreeningConclusion): string | null {
+  if (conclusion.universityVerification?.schoolName) {
+    return conclusion.universityVerification.schoolName;
+  }
+  if (conclusion.candidateSchools && conclusion.candidateSchools.length > 0) {
+    const first = conclusion.candidateSchools.find(s => s?.trim());
+    if (first) return first.trim();
+  }
+  if (conclusion.candidateEducation && conclusion.candidateEducation.length > 0) {
+    return extractSchoolNamesFromEducation(conclusion.candidateEducation)[0] ?? null;
+  }
+  return null;
+}
+
+function extractSchoolNamesFromEducation(educationItems: string[]): string[] {
+  const seen = new Set<string>();
+  const schools: string[] = [];
+
+  for (const item of educationItems) {
+    const schoolName = extractSchoolNameFromEducation(item);
+    if (!schoolName || seen.has(schoolName)) continue;
+    seen.add(schoolName);
+    schools.push(schoolName);
+    if (schools.length >= 5) break;
+  }
+
+  return schools;
+}
+
+function extractSchoolNameFromEducation(education: string): string | null {
+  const parenthesizedSchool = education.match(/([\u4e00-\u9fa5]{2,30}(?:大学|学院|学校)[（(][^）)]+[）)])/);
+  if (parenthesizedSchool?.[1]?.trim()) {
+    return parenthesizedSchool[1].trim();
+  }
+
+  const normalized = education
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[（）]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+
+  const compact = normalized.replace(/\s+/g, "");
+  const chineseMatches = Array.from(compact.matchAll(/[\u4e00-\u9fa5]{2,30}(?:大学|学院|学校)/g));
+  for (const match of chineseMatches) {
+    const candidate = match[0]
+      .replace(/^(?:教育背景|教育经历|毕业院校|毕业学校|学校名称|学历|院校|毕业于|就读于|我的|本人|是|于|在)+/, "")
+      .trim();
+    if (candidate.length >= 4) return candidate;
+  }
+
+  const englishMatch = normalized.match(/([A-Za-z][A-Za-z·.&\- ]{2,60}(?:University|College|Institute))/i);
+  if (englishMatch?.[1]?.trim()) {
+    return englishMatch[1].trim();
+  }
+
+  return normalized
+    .split(/\s+/)
+    .find((part) => /大学|学院|学校|University|College|Institute/i.test(part))
+    ?.trim() ?? null;
+}
+
+async function updateCandidateOrganizationName(candidateId: string, schoolName: string): Promise<void> {
+  const normalizedSchoolName = schoolName.trim();
+  if (!normalizedSchoolName) return;
+
+  const [candidate] = await db.select({ organizationName: candidates.organizationName })
+    .from(candidates)
+    .where(eq(candidates.id, candidateId))
+    .limit(1);
+  if (candidate && !candidate.organizationName?.trim()) {
+    await db.update(candidates)
+      .set({ organizationName: normalizedSchoolName, updatedAt: Date.now() })
+      .where(eq(candidates.id, candidateId));
+  }
 }
 
 export async function importResumeForCandidate(
@@ -667,7 +733,7 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
     const nextResult: ImportTaskResultWithConfidence = {
       parsedResume: result.parsedResume,
       extractionConfidence: result.extractionConfidence,
-      screeningStatus: "running",
+      screeningStatus: "queued",
       screeningSource: null,
       screeningError: null,
       screeningConclusion: null,
@@ -694,14 +760,31 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
       screeningConclusion: null,
     };
 
+    // Mark this specific task as actively running before AI call
+    const runningResult: ImportTaskResultWithConfidence = {
+      parsedResume: result.parsedResume,
+      extractionConfidence: result.extractionConfidence,
+      screeningStatus: "running",
+      screeningSource: null,
+      screeningError: null,
+      screeningConclusion: null,
+    };
+    await updateTask(task.id, {
+      status: "ai_screening",
+      stage: "ai_screening",
+      resultJson: JSON.stringify(runningResult),
+      updatedAt: Date.now(),
+    });
+    await refreshBatchProgress(batchId);
+
     try {
       const confidence = await resolveTaskConfidence(task, result);
-      const aiConclusion = await generateImportScreeningConclusionWithAI({
+      const aiConclusion = await generateImportScreeningConclusionWithRetry({
         parsed: result.parsedResume,
         confidence,
         fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
         templateId: effectiveTemplateId,
-      });
+      }, { taskId: task.id, candidateId: task.candidateId });
       nextResult = {
         ...nextResult,
         screeningStatus: "completed",
@@ -709,17 +792,16 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
         screeningConclusion: aiConclusion,
       };
     } catch (error) {
-      const fallbackConfidence = inferConfidenceFromRawText(result.parsedResume.rawText ?? "");
-      nextResult = {
-        ...nextResult,
-        screeningStatus: "completed",
-        screeningSource: "heuristic",
-        screeningError: error instanceof Error ? error.message : "AI 初筛失败，已回退规则结论",
-        screeningConclusion: buildImportScreeningConclusion(result.parsedResume, fallbackConfidence),
-      };
+      nextResult = buildAiScreeningFailedResult(nextResult, error);
     }
 
-    nextResult = await attachUniversityVerificationResult(result.parsedResume, nextResult);
+    nextResult = nextResult.screeningConclusion ? await attachUniversityVerificationResult(result.parsedResume, nextResult) : nextResult;
+      if (nextResult.screeningConclusion && task.candidateId) {
+        const schoolName = extractSchoolName(nextResult.screeningConclusion);
+        if (schoolName) {
+          await updateCandidateOrganizationName(task.candidateId, schoolName);
+        }
+      }
 
     await updateTask(task.id, {
       status: "done",
@@ -829,24 +911,28 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
 
   try {
     const confidence = await resolveTaskConfidence(task, result);
-    const aiConclusion = await generateImportScreeningConclusionWithAI({
+    const aiConclusion = await generateImportScreeningConclusionWithRetry({
       parsed: result.parsedResume,
       confidence,
       fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
       templateId: effectiveTemplateId,
-    });
+    }, { taskId, candidateId: task.candidateId });
     nextResult.screeningStatus = "completed";
     nextResult.screeningSource = "ai";
     nextResult.screeningConclusion = aiConclusion;
   } catch (error) {
-    const fallbackConfidence = inferConfidenceFromRawText(result.parsedResume.rawText ?? "");
-    nextResult.screeningStatus = "completed";
-    nextResult.screeningSource = "heuristic";
-    nextResult.screeningError = error instanceof Error ? error.message : "AI 初筛失败，已回退规则结论";
-    nextResult.screeningConclusion = buildImportScreeningConclusion(result.parsedResume, fallbackConfidence);
+    Object.assign(nextResult, buildAiScreeningFailedResult(nextResult, error));
   }
 
-  Object.assign(nextResult, await attachUniversityVerificationResult(result.parsedResume, nextResult));
+  if (nextResult.screeningConclusion) {
+    Object.assign(nextResult, await attachUniversityVerificationResult(result.parsedResume, nextResult));
+  }
+  if (nextResult.screeningConclusion && task.candidateId) {
+    const schoolName = extractSchoolName(nextResult.screeningConclusion);
+    if (schoolName) {
+      await updateCandidateOrganizationName(task.candidateId, schoolName);
+    }
+  }
 
   await updateTask(taskId, {
     status: "done",
@@ -857,7 +943,39 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
 
   await updateBatchProgress(taskId);
 
-  return { retried: true, screeningStatus: nextResult.screeningStatus };
+  return { retried: true, screeningStatus: nextResult.screeningStatus ?? "not_requested" };
+}
+
+export async function retryFileUniversityVerification(taskId: string): Promise<{ retried: boolean; universityVerification: UniversityVerificationResult | null }> {
+  const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
+  if (!task) {
+    return { retried: false, universityVerification: null };
+  }
+
+  const result = parseImportTaskResult(task.resultJson);
+  if (!result?.parsedResume || !result.screeningConclusion) {
+    return { retried: false, universityVerification: null };
+  }
+
+  const nextResult = await attachUniversityVerificationResult(result.parsedResume, result, { forceRefresh: true });
+  if (nextResult.screeningConclusion && task.candidateId) {
+    const schoolName = extractSchoolName(nextResult.screeningConclusion);
+    if (schoolName) {
+      await updateCandidateOrganizationName(task.candidateId, schoolName);
+    }
+  }
+
+  await updateTask(taskId, {
+    resultJson: JSON.stringify(nextResult),
+    updatedAt: Date.now(),
+  });
+
+  await updateBatchProgress(taskId);
+
+  return {
+    retried: true,
+    universityVerification: nextResult.universityVerification ?? null,
+  };
 }
 
 async function markTaskCancelledIfNeeded(taskId: string): Promise<boolean> {

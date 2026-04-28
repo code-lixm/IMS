@@ -59,6 +59,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Extract changelog for current version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          CHANGELOG=$(awk -v ver="## [${VERSION}]" '
+            index($0, ver) { found=1; print; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$CHANGELOG" ]; then
+            echo "ERROR: No changelog entry found for version ${VERSION} in CHANGELOG.md"
+            exit 1
+          fi
+          {
+            echo 'changelog<<CHANGELOG_EOF'
+            echo "$CHANGELOG"
+            echo 'CHANGELOG_EOF'
+          } >> $GITHUB_OUTPUT
+
       - name: Build and release desktop bundles
         uses: tauri-apps/tauri-action@v0
         env:
@@ -69,7 +89,8 @@ jobs:
           projectPath: apps/desktop
           tagName: "v__VERSION__"
           releaseName: "IMS v__VERSION__"
-          releaseBody: "Automated desktop build for IMS v__VERSION__."
+          releaseBody: ${{ steps.changelog.outputs.changelog }}
+          releaseNotes: ${{ steps.changelog.outputs.changelog }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

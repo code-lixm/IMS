@@ -14,7 +14,8 @@ use tauri::{
 use tauri_plugin_updater::UpdaterExt;
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
-const LOG_FILE_SIZE_LIMIT: u64 = 10 * 1024 * 1024;
+// Increase max log size to 20MB and keep 5 rotated files
+const LOG_FILE_SIZE_LIMIT: u64 = 20 * 1024 * 1024;
 const LOG_FILE_COUNT_LIMIT: usize = 5;
 const LOG_EXPORT_COUNT_LIMIT: usize = 10;
 const DESKTOP_SERVER_HOST: &str = "127.0.0.1";
@@ -62,10 +63,10 @@ impl AppLogger {
             return;
         }
 
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+        // Format timestamp as `YYYY-MM-DD HH:mm:ss.mmm`
+        let now = SystemTime::now();
+        let datetime: chrono::DateTime<chrono::Local> = now.into();
+        let timestamp = datetime.format("%Y-%m-%d %H:%M:%S.%3f").to_string();
         let sanitized = message.replace('\n', " ").replace('\r', " ");
         let line = format!("[{}] [{}] [{}] {}\n", timestamp, level, source, sanitized);
 

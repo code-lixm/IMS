@@ -10,6 +10,7 @@ import { BaobaoClient, setBaobaoClient } from "./services/baobao-client";
 import { restorePersistedHttpAuth } from "./services/baobao-http-login";
 import { getDiscovery } from "./services/share/discovery";
 import { syncManager } from "./services/sync-manager";
+import { logError, logInfo, logWarn } from "./utils/logger";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -37,10 +38,13 @@ function buildCookieHeader(cookieJson: string | null): string | null {
     }
 
     return cookies.length ? cookies.join("; ") : null;
-  } catch {
+  } catch (error) {
+    logWarn("auth.cookie.parse_failed", { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
+
+logInfo("server.starting", { host: config.host, port: config.port });
 
 const persistedRemote = await db
   .select()
@@ -59,6 +63,15 @@ const canRestoreClient = Boolean(
 console.log("[auth:start] remote auth snapshot", {
   found: Boolean(restoredRemote),
   username: restoredRemote?.username ?? null,
+  hasToken: Boolean(restoredRemote?.token),
+  tokenExpAt: restoredRemote?.tokenExpAt ?? null,
+  tokenExpired: restoredRemote?.tokenExpAt ? Date.now() > restoredRemote.tokenExpAt : null,
+  hasCookies: Boolean(restoredRemote?.cookieJson),
+  canRestoreClient,
+});
+logInfo("auth.start.snapshot", {
+  found: Boolean(restoredRemote),
+  hasUsername: Boolean(restoredRemote?.username),
   hasToken: Boolean(restoredRemote?.token),
   tokenExpAt: restoredRemote?.tokenExpAt ?? null,
   tokenExpired: restoredRemote?.tokenExpAt ? Date.now() > restoredRemote.tokenExpAt : null,
@@ -103,6 +116,7 @@ if (canRestoreClient && restoredRemote?.token) {
     });
   } else {
     console.log("[auth:start] no recoverable persisted auth for BaobaoClient");
+    logWarn("auth.start.restore_failed", { reason: "no_recoverable_persisted_auth" });
   }
 }
 
@@ -126,13 +140,21 @@ const server = Bun.serve({
 // intentionally left to explicit user-triggered sync endpoints.
 
 const shutdown = async () => {
-  syncManager.stop();
-  server.stop();
-  closeDatabase();
-  process.exit(0);
+  logInfo("server.shutdown.start");
+  try {
+    syncManager.stop();
+    server.stop();
+    closeDatabase();
+    logInfo("server.shutdown.finish");
+    process.exit(0);
+  } catch (error) {
+    logError("server.shutdown.error", error);
+    process.exit(1);
+  }
 };
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 console.log(`Main API: http://${config.host}:${config.port}`);
+logInfo("server.started", { url: `http://${config.host}:${config.port}` });

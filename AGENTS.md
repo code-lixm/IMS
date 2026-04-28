@@ -76,8 +76,18 @@ ims/
 - **采用 changelog 风格** — 记录格式统一为 `scope：description`，例如：`导出：完成 IMR 全量导入导出与 overwrite 覆盖导入`。
 - **只记录已完成事项** — 仅同步已经完成并验证过的任务，不记录进行中或未验证的事项。
 
+## DEBUG / VERIFICATION LESSONS
+
+- **区分代码修复与数据生效** — 修改导入、初筛、同步等后端流水线时，必须说明该改动只影响“后续重新触发的流程”，不会自动补齐旧数据。若用户在页面上看不到效果，先确认是否需要重新导入、重跑 AI 初筛、重新同步或执行补数据脚本。
+- **后端改动后确认服务真实重载** — `pnpm typecheck` 只能证明代码可编译，不代表运行中的 Bun/Tauri 服务已加载新代码。验证前先确认 server 已重启或 dev watcher 已重新加载，再通过 API/DB 验证实际字段。
+- **验证路径要覆盖最终数据源** — UI 不显示时，不要只看前端页面；按“业务流程触发 → API 响应 → DB 字段 → UI 展示”逐层验证。例如院校信息应检查 `candidates.organizationName` 是否真的写入，而不是只确认 `candidateSchools` 或 `universityVerification` 存在于导入任务 JSON。
+- **完成说明必须写清生效条件** — 每次修复后固定交代：是否需要重启服务、是否需要重新触发业务流程、是否影响历史数据、用户应如何验证。避免只说“已修复/typecheck 通过”，导致用户刷新旧页面仍看不到变化。
+
 ## RELEASE / COMMIT LESSONS
 
+- **功能提交必须同步维护 CHANGELOG** — 生成 commit 前先判断本次变更是否面向用户可见；若是，必须先更新 `CHANGELOG.md` 的 `[Unreleased]` 或当前版本条目，再生成 `apps/web/src/assets/whats-new.json`（`pnpm changelog:build`）。不要只提交代码而漏掉 changelog，否则 release notes / updater notes / What's New 弹窗会缺内容。
+- **commit 信息要能反推 changelog 分类** — 提交信息使用清晰 scope + 动词，便于 `git-cliff` 草稿归类；常用映射：`feat`→新增，`fix`→修复，`perf/refactor`→优化，`change`/破坏兼容→变更，`remove`→移除。不要写笼统的 `update stuff`、`misc changes`。
+- **提交前检查 changelog 派生产物** — 与 changelog 相关改动提交前至少执行 `pnpm changelog:build`、`pnpm release:check`、`pnpm typecheck`；涉及 UI 展示时再跑对应 Vitest/E2E。确认 `CHANGELOG.md` 是唯一人工维护源，`whats-new.json`、GitHub Release body、Tauri updater notes 都只从它派生。
 - **发版提交前必须同步所有版本文件** — 不要只改 root `package.json` 和 `apps/desktop/package.json`。发布 tag 前必须确认以下文件版本一致：`package.json`、`apps/web/package.json`、`apps/desktop/package.json`、`packages/server/package.json`、`packages/shared/package.json`、`apps/desktop/Cargo.toml`、`apps/desktop/Cargo.lock`、`apps/desktop/tauri.conf.json`、`apps/desktop/tauri.local.conf.json`。否则 GitHub Actions 虽会被 tag 触发，但构建产物版本可能错误，甚至 release 失败。
 - **发版前先跑检查** — tag/push 前至少执行 `pnpm release:check`、`pnpm typecheck`、`cargo fmt --check && cargo check`、`git diff --check`；涉及 Web 构建时再跑 `pnpm build:web`。`release:check` 的版本一致性必须 PASS。
 - **已推送失败 tag 不要覆盖** — 如果远端 `vX.Y.Z` 已触发失败，优先修复后发新的 patch tag（例如 `v1.0.6`），避免 force 更新已推送 tag。

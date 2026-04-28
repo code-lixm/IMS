@@ -7,6 +7,9 @@ import type {
   ImportScreeningConclusion,
   ScreeningTemplateInfo,
   ScreeningTemplateRenderedInfo,
+  TemplateEvidence,
+  TemplateEvidenceMatchedItem,
+  TemplateEvidenceUnmatchedItem,
 } from "@ims/shared";
 import { screeningTemplatesService, type ScreeningTemplatesService } from "../screening-templates";
 
@@ -14,6 +17,8 @@ type ImportScreeningConclusionWithMetadata = ImportScreeningConclusion & {
   candidateName?: string | null;
   candidatePosition?: string | null;
   candidateYearsOfExperience?: number | null;
+  candidateEducation?: string[];
+  candidateSchools?: string[];
   screeningBaseUrl?: string | null;
 };
 
@@ -33,7 +38,15 @@ const IMPORT_SCREENING_SYSTEM_LINES = [
   "你是批量简历初筛 Agent。",
   "你只输出 JSON，不输出额外解释。",
   "请基于简历解析结果给出明确结论：通过 / 待定 / 淘汰。",
-  "输出 JSON 字段必须严格包含：verdict,label,score,candidateName,candidatePosition,candidateYearsOfExperience,screeningBaseUrl,summary,strengths,concerns,recommendedAction,wechatConclusion,wechatReason,wechatAction,wechatCopyText。",
+  "输出 JSON 字段必须严格包含：verdict,label,score,candidateName,candidatePosition,candidateYearsOfExperience,candidateEducation,candidateSchools,screeningBaseUrl,summary,strengths,concerns,recommendedAction,wechatConclusion,wechatReason,wechatAction,wechatCopyText。",
+  "如果提供了筛选模板，还必须包含 templateEvidence 字段，格式为 { matched: [{item,evidence}], unmatched: [{item,reason}] }。",
+  "templateEvidence.matched 每项的 item 是匹配的筛选标准/关键词，evidence 是简历中对应的具体证据。",
+  "templateEvidence.unmatched 每项的 item 是未匹配的筛选标准/关键词，reason 是未匹配的原因。",
+  "matched 和 unmatched 各最多 6 条，按重要性排序。无模板时省略 templateEvidence 字段。",
+  "item 字段应使用模板原文中的关键词或标准描述，不要改写。",
+  "evidence 和 reason 各为一句简短中文，直接引用或概括简历内容。",
+  "candidateEducation 必须是字符串数组，优先从简历原文识别完整教育经历，每条尽量包含学校、学历/学位、专业、时间；无法识别时返回空数组。",
+  "candidateSchools 必须是字符串数组，从简历中提取每段教育经历对应的完整大学/学院官方全称，例如'清华大学'而非'清华'；保留括号地点或校区信息，例如'华北电力大学（保定）'，但不要附带院系、专业、时间等额外信息；无法识别时返回空数组。",
   "verdict 只能是 pass、review、reject。",
   "label 只能是 通过、待定、淘汰。",
   "score 是 0-100 的整数。",
@@ -73,6 +86,9 @@ interface AiScreeningOutput {
   wechatReason: string;
   wechatAction: string;
   wechatCopyText: string;
+  candidateEducation: string[];
+  candidateSchools: string[];
+  templateEvidence?: TemplateEvidence;
 }
 
 export async function generateImportScreeningConclusionWithAI(input: {
@@ -362,12 +378,28 @@ function normalizeAiScreeningOutput(
   const wechatCopyText = typeof raw.wechatCopyText === "string" && raw.wechatCopyText.trim()
     ? buildWechatCopyText(wechatConclusion, wechatReason, wechatAction, raw.wechatCopyText)
     : buildWechatCopyText(wechatConclusion, wechatReason, wechatAction);
+  const candidateEducation = Array.isArray(raw.candidateEducation)
+    ? raw.candidateEducation
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.replace(/\s+/g, " ").trim())
+      .slice(0, 5)
+    : input.parsed.education;
+  const normalizedCandidateSchools = Array.isArray(raw.candidateSchools)
+    ? raw.candidateSchools
+      .filter((item) => typeof item === "string" && /[\u4e00-\u9fa5a-zA-Z]/.test(item))
+      .map((item) => item.replace(/\s+/g, " ").trim())
+      .slice(0, 5)
+    : [];
+  const candidateSchools = normalizedCandidateSchools.length > 0
+    ? normalizedCandidateSchools
+    : extractSchoolNamesFromEducation(candidateEducation.length > 0 ? candidateEducation : input.parsed.education);
   const templateInfo = raw.templateInfo && typeof raw.renderedPromptSnapshot === "string" && raw.renderedPromptSnapshot.trim()
     ? {
       ...raw.templateInfo,
       renderedPromptSnapshot: raw.renderedPromptSnapshot,
     } satisfies ScreeningTemplateInfo & ScreeningTemplateRenderedInfo
     : undefined;
+  const templateEvidence = normalizeTemplateEvidence(raw.templateEvidence);
 
   return {
     verdict,
@@ -382,6 +414,8 @@ function normalizeAiScreeningOutput(
     candidateYearsOfExperience: Number.isFinite(raw.candidateYearsOfExperience)
       ? Math.max(0, Math.round(raw.candidateYearsOfExperience ?? 0))
       : input.parsed.yearsOfExperience,
+    candidateEducation,
+    candidateSchools,
     screeningBaseUrl: typeof raw.screeningBaseUrl === "string" && raw.screeningBaseUrl.trim()
       ? raw.screeningBaseUrl.trim()
       : baseURL,
@@ -393,8 +427,128 @@ function normalizeAiScreeningOutput(
     wechatReason,
     wechatAction,
     wechatCopyText,
+    templateEvidence,
     templateInfo,
   };
+}
+
+function normalizeTemplateEvidence(
+  raw: unknown,
+): TemplateEvidence | undefined {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  const matched = normalizeMatchedItems(obj.matched);
+  const unmatched = normalizeUnmatchedItems(obj.unmatched);
+
+  if (matched.length === 0 && unmatched.length === 0) {
+    return undefined;
+  }
+
+  return { matched, unmatched };
+}
+
+function normalizeMatchedItems(raw: unknown): TemplateEvidenceMatchedItem[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const result: TemplateEvidenceMatchedItem[] = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const e = entry as Record<string, unknown>;
+    const item = typeof e.item === "string" ? e.item.trim() : "";
+    const evidence = typeof e.evidence === "string" ? e.evidence.trim() : "";
+    if (!item || !evidence) {
+      continue;
+    }
+    result.push({ item, evidence });
+    if (result.length >= 6) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+function normalizeUnmatchedItems(raw: unknown): TemplateEvidenceUnmatchedItem[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const result: TemplateEvidenceUnmatchedItem[] = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const e = entry as Record<string, unknown>;
+    const item = typeof e.item === "string" ? e.item.trim() : "";
+    const reason = typeof e.reason === "string" ? e.reason.trim() : "";
+    if (!item || !reason) {
+      continue;
+    }
+    result.push({ item, reason });
+    if (result.length >= 6) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+function extractSchoolNamesFromEducation(educationItems: string[]): string[] {
+  const seen = new Set<string>();
+  const schools: string[] = [];
+
+  for (const item of educationItems) {
+    const schoolName = extractSchoolNameFromEducation(item);
+    if (!schoolName || seen.has(schoolName)) continue;
+    seen.add(schoolName);
+    schools.push(schoolName);
+    if (schools.length >= 5) break;
+  }
+
+  return schools;
+}
+
+function extractSchoolNameFromEducation(education: string): string | null {
+  const parenthesizedSchool = education.match(/([\u4e00-\u9fa5]{2,30}(?:大学|学院|学校)[（(][^）)]+[）)])/);
+  if (parenthesizedSchool?.[1]?.trim()) {
+    return parenthesizedSchool[1].trim();
+  }
+
+  const normalized = education
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[（）]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+
+  const compact = normalized.replace(/\s+/g, "");
+  const chineseMatches = Array.from(compact.matchAll(/[\u4e00-\u9fa5]{2,30}(?:大学|学院|学校)/g));
+  for (const match of chineseMatches) {
+    const candidate = match[0]
+      .replace(/^(?:教育背景|教育经历|毕业院校|毕业学校|学校名称|学历|院校|毕业于|就读于|我的|本人|是|于|在)+/, "")
+      .trim();
+    if (candidate.length >= 4) return candidate;
+  }
+
+  const englishMatch = normalized.match(/([A-Za-z][A-Za-z·.&\- ]{2,60}(?:University|College|Institute))/i);
+  if (englishMatch?.[1]?.trim()) {
+    return englishMatch[1].trim();
+  }
+
+  return normalized
+    .split(/\s+/)
+    .find((part) => /大学|学院|学校|University|College|Institute/i.test(part))
+    ?.trim() ?? null;
 }
 
 function buildWechatCopyParts(

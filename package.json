@@ -1,6 +1,6 @@
 {
   "name": "ims",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "private": true,
   "scripts": {
     "dev:ui": "pnpm --filter @ims/web dev",
@@ -8,7 +8,7 @@
     "dev:server": "pnpm --filter @ims/server dev",
     "dev:desktop": "pnpm --filter @ims/desktop tauri dev",
     "build:ui": "pnpm --filter @ims/web build",
-    "build:web": "pnpm --filter @ims/shared build && pnpm --filter @ims/server build && pnpm --filter @ims/web build",
+    "build:web": "pnpm changelog:build && pnpm --filter @ims/shared build && pnpm --filter @ims/server build && pnpm --filter @ims/web build",
     "build:desktop": "pnpm build:web && pnpm --filter @ims/desktop tauri build",
     "build:desktop:local": "pnpm build:web && pnpm --filter @ims/desktop tauri build --config tauri.local.conf.json --no-sign",
     "build:server": "pnpm --filter @ims/server build",
@@ -29,7 +29,9 @@
     "desktop:reinstall": "bash ./scripts/reinstall-desktop.sh",
     "desktop:logs:open": "bash ./scripts/reset-desktop-state.sh --open-logs",
     "desktop:update:verify": "node ./scripts/verify-auto-update.mjs",
-    "release:check": "node ./scripts/release-readiness.mjs"
+    "release:check": "node ./scripts/release-readiness.mjs",
+    "changelog:draft": "node ./scripts/changelog-draft.mjs",
+    "changelog:build": "node ./scripts/generate-whats-new.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

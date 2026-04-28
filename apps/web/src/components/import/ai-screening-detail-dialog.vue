@@ -6,23 +6,24 @@
   >
     <template #content>
       <div class="flex-1 grid gap-4 overflow-hidden">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">{{ dialogTitle }}</h2>
-          <Button variant="ghost" size="icon" class="h-8 w-8" @click="emit('update:open', false)">
-            <X class="h-4 w-4" />
-          </Button>
+        <div class="min-w-0 pr-8">
+          <h2 class="truncate text-lg font-semibold leading-none">{{ dialogTitle }}</h2>
         </div>
 
         <Tabs v-model="activeTab" default-value="screening" class="flex-1 flex flex-col min-h-0">
           <div class="flex items-center justify-between border-b pb-2">
             <TabsList>
-              <TabsTrigger value="screening" class="gap-1.5">
-                <Sparkles class="h-3.5 w-3.5" />
-                AI 初筛详情
+              <TabsTrigger value="screening">
+                <span class="inline-flex items-center gap-1.5">
+                  <Sparkles class="h-3.5 w-3.5 shrink-0" />
+                  <span>AI 初筛详情</span>
+                </span>
               </TabsTrigger>
-              <TabsTrigger value="preview" class="gap-1.5">
-                <FileText class="h-3.5 w-3.5" />
-                原件预览
+              <TabsTrigger value="preview">
+                <span class="inline-flex items-center gap-1.5">
+                  <FileText class="h-3.5 w-3.5 shrink-0" />
+                  <span>原件预览</span>
+                </span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -87,13 +88,13 @@
               <!-- 有结论状态 -->
               <template v-else-if="hasScreeningConclusion && screeningData">
                 <!-- Match degree card -->
-                <div class="rounded-lg border p-4 space-y-3">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <p class="text-2xl font-bold" :class="matchDegreeColorClass">{{ score }}%</p>
-                      <p class="text-sm font-medium">{{ matchDegreeLabel }}</p>
+                <div class="rounded-lg border bg-muted/30 p-4">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-3xl font-bold" :class="matchDegreeColorClass">{{ score }}%</span>
+                      <span class="text-sm font-medium text-muted-foreground">{{ matchDegreeLabel }}</span>
                     </div>
-                    <div class="text-right text-xs text-muted-foreground">
+                    <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       <p v-if="templateInfo">模板：{{ screeningTemplateLabel(templateInfo) }}</p>
                       <p>来源：{{ screeningSourceLabel(screeningData.screeningSource) }}</p>
                     </div>
@@ -101,38 +102,94 @@
                 </div>
 
                 <!-- University verification -->
-                <div v-if="universityVerification" class="rounded-lg border p-4 space-y-2">
-                  <h3 class="text-sm font-medium">院校信息</h3>
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-sm">{{ universityVerification.schoolName }}</span>
-                    <Badge v-for="tag in screeningUniversityTags(universityVerification)" :key="tag" variant="secondary">{{ tag }}</Badge>
-                    <Badge v-if="universityVerification.verdict === 'not_found'" variant="destructive">高危</Badge>
-                    <Badge v-else-if="universityVerification.verdict === 'api_failed'" variant="outline">查询失败</Badge>
+                <div class="rounded-lg border bg-muted/30 p-4 space-y-3">
+                  <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">院校信息</h3>
+                  <div class="space-y-2">
+                    <p class="text-base font-semibold">{{ universityDisplayName }}</p>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <template v-if="verdictBadge">
+                        <Badge :variant="verdictBadge.variant" :class="verdictBadge.class">{{ verdictBadge.label }}</Badge>
+                      </template>
+                      <template v-else-if="isMissingUniversityInfo">
+                        <Badge variant="outline" class="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">院校信息缺失</Badge>
+                      </template>
+                      <Badge v-else variant="outline">{{ universityFallbackBadge }}</Badge>
+                      <Badge v-for="tag in universityTags" :key="tag" variant="secondary">{{ tag }}</Badge>
+                    </div>
+                    <div v-if="isUniversityVerificationUnavailable" class="flex flex-wrap items-center gap-2 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                      <span>外部院校验证服务暂不可用，本次结果不计入不匹配统计，可稍后重试。</span>
+                      <Button
+                        v-if="file?.id"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="h-7 gap-1.5 border-amber-200 px-2 text-xs text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20"
+                        @click="emit('retry-university-verification', file.id)"
+                      >
+                        <RefreshCw class="h-3 w-3" />
+                        重试
+                      </Button>
+                    </div>
+                    <p v-else-if="universityDetail" class="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                      {{ universityDetail }}
+                    </p>
+                    <p v-else-if="isMissingUniversityInfo" class="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                      {{ universityFallbackHint }}
+                    </p>
+                    <p v-else class="text-xs text-muted-foreground leading-relaxed">
+                      {{ universityFallbackHint }}
+                    </p>
                   </div>
-                  <p v-if="universityVerification.detail" class="text-xs text-muted-foreground">
-                    {{ universityVerification.detail }}
-                  </p>
                 </div>
 
-                <div class="grid gap-3 md:grid-cols-2">
-                  <div class="rounded-lg border bg-muted/30 px-3 py-2 space-y-1.5">
-                    <div class="text-xs font-medium text-muted-foreground">结果来源</div>
-                    <div class="text-sm font-medium text-foreground">
-                      {{ screeningSourceLabel(screeningData.screeningSource) || "未标记" }}
-                    </div>
-                    <p class="text-xs text-muted-foreground leading-5">
-                      {{ screeningSourceHint }}
-                    </p>
+                <!-- Template Evidence Panel -->
+                <div v-if="hasTemplateEvidence" class="rounded-lg border bg-muted/30 p-4 space-y-4">
+                  <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">模板匹配证据</h3>
+
+                  <!-- Matched -->
+                  <div v-if="templateEvidence?.matched?.length" class="space-y-2">
+                    <h4 class="text-sm font-medium text-green-700 flex items-center gap-1.5">
+                      <Check class="h-4 w-4" />
+                      已匹配 ({{ templateEvidence.matched.length }})
+                    </h4>
+                    <ul class="space-y-2">
+                      <li
+                        v-for="(entry, idx) in templateEvidence.matched"
+                        :key="idx"
+                        class="text-sm flex items-start gap-2"
+                      >
+                        <Check class="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                        <div class="flex-1 min-w-0">
+                          <span class="font-medium text-foreground">{{ entry.item }}</span>
+                          <p v-if="entry.evidence" class="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                            {{ entry.evidence }}
+                          </p>
+                        </div>
+                      </li>
+                    </ul>
                   </div>
 
-                  <div class="rounded-lg border bg-muted/30 px-3 py-2 space-y-1.5">
-                    <div class="text-xs font-medium text-muted-foreground">提取置信度</div>
-                    <div class="text-sm font-medium text-foreground">
-                      {{ extractionConfidenceText }}
-                    </div>
-                    <p class="text-xs text-muted-foreground leading-5">
-                      {{ extractionConfidenceHint }}
-                    </p>
+                  <!-- Unmatched -->
+                  <div v-if="templateEvidence?.unmatched?.length" class="space-y-2">
+                    <h4 class="text-sm font-medium text-amber-700 flex items-center gap-1.5">
+                      <AlertCircle class="h-4 w-4" />
+                      未匹配 ({{ templateEvidence.unmatched.length }})
+                    </h4>
+                    <ul class="space-y-2">
+                      <li
+                        v-for="(entry, idx) in templateEvidence.unmatched"
+                        :key="idx"
+                        class="text-sm flex items-start gap-2"
+                      >
+                        <XCircle class="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        <div class="flex-1 min-w-0">
+                          <span class="font-medium text-foreground">{{ entry.item }}</span>
+                          <p v-if="entry.reason" class="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                            {{ entry.reason }}
+                          </p>
+                        </div>
+                      </li>
+                    </ul>
                   </div>
                 </div>
 
@@ -254,7 +311,7 @@ import { ref, watch, onBeforeUnmount, computed } from "vue";
 import type { ImportTaskResultData } from "@ims/shared/src/api-types";
 import type { ImportFileTask } from "@ims/shared";
 import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates";
-import { AlertCircle, Check, ChevronLeft, ChevronRight, X, Loader2, FileText, ClipboardList, Sparkles } from "lucide-vue-next";
+import { AlertCircle, Check, ChevronLeft, ChevronRight, Loader2, FileText, ClipboardList, Sparkles, RefreshCw, XCircle } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
@@ -262,10 +319,18 @@ import { Tabs } from "@/components/ui/tabs";
 import { TabsList } from "@/components/ui/tabs";
 import { TabsTrigger } from "@/components/ui/tabs";
 import { TabsContent } from "@/components/ui/tabs";
-import { screeningSourceLabel, screeningUniversityTags, screeningTemplateLabel } from "@/composables/import/formatters";
+import { screeningSourceLabel, screeningUniversityTags, screeningUniversityVerdictBadgeProps, screeningTemplateLabel } from "@/composables/import/formatters";
+
+type TemplateEvidence = {
+  matched: { item: string; evidence?: string }[];
+  unmatched: { item: string; reason?: string }[];
+};
 
 type ImportTaskResultWithConfidence = ImportTaskResultData & {
   extractionConfidence?: number | null;
+  screeningConclusion?: (ImportTaskResultData["screeningConclusion"] & {
+    templateEvidence?: TemplateEvidence | null;
+  }) | null;
 };
 
 const props = defineProps<{
@@ -279,6 +344,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:open", value: boolean): void;
   (e: "run-screening", taskId: string): void;
+  (e: "retry-university-verification", taskId: string): void;
   (e: "navigate-prev"): void;
   (e: "navigate-next"): void;
 }>();
@@ -324,44 +390,83 @@ const templateInfo = computed(() => {
 });
 
 const universityVerification = computed(() => {
-  return props.screeningData?.screeningConclusion?.universityVerification ?? null;
+  return props.screeningData?.screeningConclusion?.universityVerification
+    ?? props.screeningData?.universityVerification
+    ?? null;
+});
+
+const parsedEducationItems = computed(() => {
+  return props.screeningData?.parsedResume?.education
+    ?.map(item => item.trim())
+    .filter(Boolean) ?? [];
+});
+
+const universityDisplayName = computed(() => {
+  return universityVerification.value?.schoolName
+    ?? inferredSchoolName.value
+    ?? "待院校认证";
+});
+
+const inferredSchoolName = computed(() => {
+  const education = parsedEducationItems.value[0];
+  if (!education) return null;
+  const normalized = education.replace(/\s+/g, " ").trim();
+  const schoolMatch = normalized.match(/([\u4e00-\u9fa5A-Za-z·.&\- ]{2,40}(?:大学|学院|学校|University|College|Institute))/i);
+  return schoolMatch?.[1]?.trim() ?? null;
+});
+
+const educationPreview = computed(() => {
+  const education = parsedEducationItems.value[0]?.replace(/\s+/g, " ").trim();
+  if (!education) return "";
+  return education.length > 72 ? `${education.slice(0, 72)}…` : education;
+});
+
+const universityTags = computed(() => {
+  return universityVerification.value ? screeningUniversityTags(universityVerification.value) : [];
+});
+
+const universityDetail = computed(() => {
+  return universityVerification.value?.detail?.trim() ?? "";
+});
+
+const isUniversityVerificationUnavailable = computed(() => {
+  return universityVerification.value?.verdict === "api_failed";
+});
+
+const isMissingUniversityInfo = computed(() => {
+  return !universityVerification.value && parsedEducationItems.value.length === 0;
+});
+
+const universityFallbackBadge = computed(() => {
+  return parsedEducationItems.value.length > 0 ? "待重新分析" : "未识别";
+});
+
+const universityFallbackHint = computed(() => {
+  return parsedEducationItems.value.length > 0
+    ? `缺少院校认证结果，请重新分析以触发院校库查询。${educationPreview.value ? `教育经历：${educationPreview.value}` : ""}`
+    : "简历中未识别到教育经历或院校信息，建议人工补充后再判断学历背景。";
+});
+
+const verdictBadge = computed(() => {
+  return screeningUniversityVerdictBadgeProps(universityVerification.value?.verdict);
+});
+
+const templateEvidence = computed(() => {
+  const te = props.screeningData?.screeningConclusion?.templateEvidence;
+  if (!te) return null;
+  return {
+    matched: te.matched ?? [],
+    unmatched: te.unmatched ?? [],
+  };
+});
+
+const hasTemplateEvidence = computed(() => {
+  const te = templateEvidence.value;
+  return !!te && (te.matched.length > 0 || te.unmatched.length > 0);
 });
 
 const isScreeningRunning = computed(() => {
   return props.file?.stage === "ai_screening";
-});
-const extractionConfidenceValue = computed(() => {
-  const raw = props.screeningData?.extractionConfidence;
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-});
-
-const extractionConfidenceText = computed(() => {
-  const value = extractionConfidenceValue.value;
-  return value === null ? "未记录" : `${Math.round(value)} / 100`;
-});
-
-const extractionConfidenceHint = computed(() => {
-  const value = extractionConfidenceValue.value;
-  if (value === null) {
-    return "旧数据可能没有记录该值；系统会在重跑时尝试回查或估算。";
-  }
-  if (value >= 85) {
-    return "文本提取质量较高，本次初筛可更多参考模型或规则输出。";
-  }
-  if (value >= 60) {
-    return "文本提取质量中等，建议结合原件预览做人工复核。";
-  }
-  return "文本提取质量偏弱，当前初筛结论需要谨慎参考。";
-});
-
-const screeningSourceHint = computed(() => {
-  if (props.screeningData?.screeningSource === "ai") {
-    return "本次结论来自模型分析；如果模型失败，系统才会回退到规则评分。";
-  }
-  if (props.screeningData?.screeningSource === "heuristic") {
-    return "本次结论来自规则回退，通常说明模型请求失败或不可用。";
-  }
-  return "当前结果没有明确来源标记。";
 });
 
 const dialogTitle = computed(() => {

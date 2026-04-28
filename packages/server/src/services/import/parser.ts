@@ -4,7 +4,7 @@ const PHONE_PAT = /(?:\+?86)?1[3-9]\d{9}/g;
 const EMAIL_PAT = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 const YEARS_PAT = /(\d{1,2})\s*[年yrs]+[经]?[验]?/gi;
 const NAME_PAT = /^[^\u4e00-\u9fff\u3400-\u4dbf]*([\u4e00-\u9fff\u3400-\u4dbf]{2,4})(?:先生|女士|同学)?/m;
-const SECTION_PAT = /^(?:工作经历|项目经历|教育背景|技能特长|个人简介|联系方式|基本信息)[:：]?/im;
+const SECTION_PAT = /^(?:工作经历|项目经历|教育经历|教育背景|技能特长|个人简介|联系方式|基本信息|其他)[:：]?/im;
 
 const SKILL_KEYWORDS = [
   "JavaScript", "TypeScript", "Python", "Java", "Go", "Rust", "C++", "C#",
@@ -52,7 +52,13 @@ export function parseResumeText(text: string): ParsedResume {
 
   for (const line of lines) {
     if (/工作经历|项目经历/.test(line)) { captureMode = "work"; continue; }
-    if (/教育背景|毕业院校|学历/.test(line)) { captureMode = "edu"; continue; }
+    if (/教育背景|毕业院校|学历|教育经历/.test(line)) {
+      captureMode = "edu";
+      // Also capture content after the header on the same line
+      const content = line.replace(/^(?:教育背景|毕业院校|学历|教育经历)[:：]?\s*/, "").trim();
+      if (content.length > 5) education.push(content);
+      continue;
+    }
     if (SECTION_PAT.test(line)) { captureMode = "none"; continue; }
     if (captureMode === "work" && line.length > 10) workHistory.push(line);
     if (captureMode === "edu" && line.length > 5) education.push(line);

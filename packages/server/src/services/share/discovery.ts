@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { createSocket, type RemoteInfo } from "node:dgram";
+import { logError, logInfo, logWarn } from "../../utils/logger";
 
 const DISCOVERY_PORT = 34567;
 const DEVICE_TTL_MS = 30_000;
@@ -54,10 +55,18 @@ export class DiscoveryService {
     if (this.discovering) return;
     const sock = createSocket({ type: "udp4", reusePort: true });
     sock.on("message", (msg, rinfo) => this.handleMessage(msg, rinfo));
-    sock.on("error", (err) => console.error("[discovery] socket error:", err.message));
+    sock.on("error", (err) => {
+      console.error("[discovery] socket error:", err.message);
+      logError("discovery.socket.error", err, { port: DISCOVERY_PORT });
+    });
     sock.bind(DISCOVERY_PORT, () => {
-      try { sock.setBroadcast(true); } catch {}
+      try {
+        sock.setBroadcast(true);
+      } catch (error) {
+        logWarn("discovery.socket.set_broadcast_failed", { error: error instanceof Error ? error.message : String(error), port: DISCOVERY_PORT });
+      }
       console.log(`[discovery] listening on UDP ${DISCOVERY_PORT}`);
+      logInfo("discovery.start", { port: DISCOVERY_PORT });
     });
     this.socket = sock;
     await this.broadcast();
@@ -74,6 +83,7 @@ export class DiscoveryService {
     this.socket?.close(); this.socket = null;
     this.devices.clear(); this.discovering = false;
     console.log("[discovery] stopped");
+    logInfo("discovery.stop", { port: DISCOVERY_PORT });
   }
 
   private async broadcast() {
@@ -89,7 +99,11 @@ export class DiscoveryService {
       ts: Date.now()
     }));
     for (const addr of ["255.255.255.255", "192.168.1.255", "192.168.0.255"]) {
-      try { this.socket.send(payload, DISCOVERY_PORT, addr); } catch {}
+      try {
+        this.socket.send(payload, DISCOVERY_PORT, addr);
+      } catch (error) {
+        logWarn("discovery.broadcast.send_failed", { address: addr, port: DISCOVERY_PORT, error: error instanceof Error ? error.message : String(error) });
+      }
     }
   }
 
@@ -109,6 +123,7 @@ export class DiscoveryService {
     });
     const displayInfo = data.userDisplayName ? `${data.userDisplayName} (${data.deviceName})` : data.deviceName;
     console.log(`[discovery] found ${displayInfo} at ${rinfo.address}:${data.apiPort}`);
+    logInfo("discovery.device.found", { apiPort: data.apiPort, version: data.version ?? "0.1.0" });
   }
 
   private cleanupStale() {
@@ -118,9 +133,13 @@ export class DiscoveryService {
 
   private static loadOrCreateDeviceId(): string {
     const idFile = join(homedir(), ".interview-manager", "device-id.txt");
-    try { if (existsSync(idFile)) return readFileSync(idFile, "utf-8").trim(); } catch {}
+    try { if (existsSync(idFile)) return readFileSync(idFile, "utf-8").trim(); } catch (error) {
+      logWarn("discovery.device_id.read_failed", { error: error instanceof Error ? error.message : String(error) });
+    }
     const id = `dev_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    try { mkdirSync(dirname(idFile), { recursive: true }); writeFileSync(idFile, id); } catch {}
+    try { mkdirSync(dirname(idFile), { recursive: true }); writeFileSync(idFile, id); } catch (error) {
+      logWarn("discovery.device_id.write_failed", { error: error instanceof Error ? error.message : String(error) });
+    }
     return id;
   }
 }

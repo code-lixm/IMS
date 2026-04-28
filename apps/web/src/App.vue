@@ -3,6 +3,7 @@
     <router-view />
     <OnboardingTourHost />
     <AppNotificationCenter />
+    <WhatsNewDialog :open="whatsNewDialogVisible" @close="dismissWhatsNew" />
 
     <!-- Auth initializing overlay -->
     <Transition name="fade">
@@ -46,9 +47,49 @@ import AppNotificationCenter from "@/components/app-notification-center.vue";
 import OnboardingTourHost from "@/components/onboarding-tour-host.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTheme } from "@/composables/use-theme";
+import WhatsNewDialog from "@/components/changelog/WhatsNewDialog.vue";
+import { useWhatsNew } from "@/composables/use-whats-new";
+import { useOnboardingStore } from "@/stores/onboarding";
 
 const authStore = useAuthStore();
 void useTheme();
+const { shouldShowWhatsNew, dialogVisible: whatsNewDialogVisible, dismissWhatsNew } = useWhatsNew();
+const onboardingStore = useOnboardingStore();
+const pendingWhatsNew = ref(false);
+
+onMounted(() => {
+  // Only show What's New popup in desktop runtime (Tauri environment)
+  const isDesktopRuntime = typeof window !== "undefined"
+    && typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+
+  if (!isDesktopRuntime) return;
+
+  onboardingStore.hydrate();
+
+  if (onboardingStore.completed) {
+    // Onboarding already done, show changelog directly
+    setTimeout(() => {
+      if (shouldShowWhatsNew.value) {
+        whatsNewDialogVisible.value = true;
+      }
+    }, 500);
+  } else {
+    // Wait for onboarding to complete/dismiss first
+    pendingWhatsNew.value = true;
+  }
+});
+
+watch(
+  () => onboardingStore.completed,
+  (completed) => {
+    if (completed && pendingWhatsNew.value && shouldShowWhatsNew.value) {
+      pendingWhatsNew.value = false;
+      setTimeout(() => {
+        whatsNewDialogVisible.value = true;
+      }, 300);
+    }
+  },
+);
 </script>
 
 <style scoped>

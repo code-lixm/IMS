@@ -43,16 +43,25 @@ export async function extractPdfTextFromBuffer(data: Uint8Array | ArrayBuffer): 
 }
 
 function toUint8Array(data: Uint8Array | ArrayBuffer): Uint8Array {
-  return data instanceof Uint8Array ? data : new Uint8Array(data);
+  return Buffer.isBuffer(data) ? new Uint8Array(data) : data instanceof Uint8Array ? data : new Uint8Array(data);
 }
 
 function normalizeExtractedPdfText(value: string | null | undefined): string {
-  return (value ?? "")
+  let text = (value ?? "")
     .split("\0")
     .join("")
     .replace(/^\(null\)$/im, "")
     .replace(/\r\n?/g, "\n")
-    .replace(/[\t\f\v]+/g, " ")
+    .replace(/[\t\f\v]+/g, " ");
+
+  // Insert newlines before known resume section headers that appear mid-text
+  // (PDF extraction may not preserve line breaks)
+  text = text.replace(
+    /(?<=\S)\s*(?=(?:专业技能|工作经历|项目经历|教育经历|教育背景|毕业院校|学历|技能特长|个人简介|联系方式|基本信息|其他)[:：]?(?:\s|$))/g,
+    "\n",
+  );
+
+  return text
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

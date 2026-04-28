@@ -396,7 +396,44 @@ WHERE verdict IS NULL OR (verdict = 'verified' AND found = 0);
 `);
 ensureColumn("import_batches", "template_id", "TEXT");
 export const db = drizzle(sqlite);
+
 export const rawDb = sqlite;
+
+// Seed default screening template if none exists
+(function seedDefaultScreeningTemplate() {
+  try {
+    const existing = rawDb.prepare(
+      "SELECT COUNT(*) as cnt FROM screening_templates WHERE is_default = 1"
+    ).get() as { cnt: number } | undefined;
+    if (existing && existing.cnt > 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const id = `scrntpl_${crypto.randomUUID()}`;
+    const defaultPrompt = [
+      "你是一位资深的互联网行业技术面试官，请根据候选人的简历信息进行初筛评估。",
+      "",
+      "## 评估维度",
+      "1. 工作年限与岗位匹配度（初级1-3年、中级3-5年、高级5-10年、资深10年+）",
+      "2. 技术栈与项目经验的深度和广度",
+      "3. 教育背景和学历水平",
+      "4. 跳槽频率和职业发展路径",
+      "5. 知名公司/项目经验加分",
+      "",
+      "## 输出要求",
+      "- 给出通过/待定/淘汰的结论",
+      "- 简要说明评估依据（不超过100字）",
+      "- 列出关键风险点或亮点",
+    ].join("\n");
+
+    rawDb.prepare(
+      "INSERT INTO screening_templates (id, name, description, prompt, is_default, is_active, version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1, 1, ?, ?)"
+    ).run(id, "默认初筛模板", "系统提供的通用候选人初筛评估模板，适用于多数互联网技术岗位", defaultPrompt, now, now);
+  } catch (error) {
+    console.error("[db] Failed to seed default screening template:", error);
+  }
+})();
 
 let databaseClosed = false;
 

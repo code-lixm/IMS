@@ -158,6 +158,15 @@
               <Power class="h-3.5 w-3.5" />
               立即重启
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="gap-1.5"
+              @click="showWhatsNew"
+            >
+              <FileText class="h-3.5 w-3.5" />
+              查看更新日志
+            </Button>
           </div>
         </div>
       </Card>
@@ -652,6 +661,7 @@
       v-model:open="baobaoLoginDialogOpen"
       @authenticated="handleBaobaoAuthenticated"
     />
+    <WhatsNewDialog :open="whatsNewDialogVisible" @close="dismissWhatsNew" />
   </AppPageShell>
 </template>
 
@@ -660,8 +670,8 @@ import { computed, reactive, ref, onMounted } from "vue";
 import {
   CheckCircle,
   Download,
+  FileText,
   FlaskConical,
-  Loader2,
   Pencil,
   Power,
   Plus,
@@ -675,10 +685,12 @@ import { useLuiStore } from "@/stores/lui";
 import { isBaobaoAuthExpiredError, useSyncStore } from "@/stores/sync";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { useTheme } from "@/composables/use-theme";
+import { useWhatsNew } from "@/composables/use-whats-new";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import BaobaoLoginDialog from "@/components/auth/baobao-login-dialog.vue";
 import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue";
+import WhatsNewDialog from "@/components/changelog/WhatsNewDialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
@@ -737,6 +749,7 @@ const {
   AVAILABLE_COLORS: themeColors,
   AVAILABLE_RADII: themeRadii,
 } = useTheme();
+const { dialogVisible: whatsNewDialogVisible, showWhatsNew, dismissWhatsNew } = useWhatsNew();
 const syncEnabled = ref(false);
 const baobaoLoginDialogOpen = ref(false);
 const pendingBaobaoAction = ref<"run-sync" | "toggle-sync" | null>(null);

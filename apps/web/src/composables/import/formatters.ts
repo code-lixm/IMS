@@ -1,8 +1,8 @@
 import type { ImportBatch, ParsedResume, ScreeningTemplateInfo, ScreeningTemplateRenderedInfo, UniversityVerificationResult } from "@ims/shared";
 
 type ImportScreeningVerdict = "pass" | "review" | "reject";
-type ImportScreeningStatus = "not_requested" | "running" | "completed";
-type ImportScreeningSource = "ai" | "heuristic";
+type ImportScreeningStatus = "not_requested" | "queued" | "running" | "completed" | "failed";
+type ImportScreeningSource = "ai" | "heuristic" | "failed";
 
 interface ImportScreeningConclusion {
   verdict: ImportScreeningVerdict;
@@ -176,6 +176,7 @@ export function screeningScoreClass(score: number | undefined): string {
 export function screeningSourceLabel(source: ImportScreeningSource | null | undefined) {
   if (source === "ai") return "AI Agent";
   if (source === "heuristic") return "规则回退";
+  if (source === "failed") return "AI 初筛失败";
   return "";
 }
 
@@ -189,11 +190,31 @@ export function screeningUniversityTags(result: UniversityVerificationResult | n
   return tags;
 }
 
+export function screeningUniversityVerdictBadgeProps(
+  verdict: "verified" | "not_found" | "api_failed" | null | undefined,
+): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; class?: string } | null {
+  if (verdict === "verified") {
+    return {
+      label: "学历已认证",
+      variant: "outline",
+      class: "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800",
+    };
+  }
+  if (verdict === "not_found") {
+    return { label: "认证失败", variant: "destructive" };
+  }
+  if (verdict === "api_failed") {
+    return {
+      label: "暂未识别（服务异常）",
+      variant: "outline",
+      class: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800",
+    };
+  }
+  return null;
+}
+
 export function screeningUniversityVerdictLabel(verdict: "verified" | "not_found" | "api_failed" | null | undefined): string {
-  if (verdict === "verified") return "已核验";
-  if (verdict === "not_found") return "⚠ 未查到";
-  if (verdict === "api_failed") return "查询失败";
-  return "";
+  return screeningUniversityVerdictBadgeProps(verdict)?.label ?? "";
 }
 
 export function screeningTemplateLabel(info: ScreeningTemplateInfo | null | undefined): string {

@@ -20,7 +20,7 @@
         class="border-r bg-background"
       >
         <div class="flex h-full min-h-0 flex-col">
-          <div class="flex items-center justify-between border-b px-2 py-2">
+          <div class="flex h-16 items-center justify-between border-b px-4">
             <AppBrandLink to="/candidates" />
             <div class="flex items-center gap-2">
               <Button
@@ -102,7 +102,7 @@
         class="min-h-0"
       >
         <main class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-          <div class="flex items-center gap-2 border-b pr-2 py-2">
+          <div class="flex h-16 items-center gap-2 border-b px-4">
             <div class="flex shrink-0 items-center gap-1.5">
               <Button
                 variant="ghost"
