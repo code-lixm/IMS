@@ -1,6 +1,6 @@
 [package]
 name = "interview-manager"
-version = "1.0.11"
+version = "1.0.12"
 description = "Interview Manager desktop client"
 authors = ["interview-manager team"]
 edition = "2021"

@@ -17,6 +17,12 @@
 
 ### 移除
 
+## [1.0.12] - 2026-04-28
+
+### 修复
+
+- 修复 Windows release workflow 在提取 changelog 时误用 PowerShell 解析 Bash 脚本导致构建提前失败的问题
+
 ## [1.0.11] - 2026-04-28
 
 ### 新增
