@@ -53,43 +53,90 @@ import { useOnboardingStore } from "@/stores/onboarding";
 
 const authStore = useAuthStore();
 void useTheme();
-const { shouldShowWhatsNew, dialogVisible: whatsNewDialogVisible, dismissWhatsNew } = useWhatsNew();
+const {
+  shouldShowWhatsNew,
+  dialogVisible: whatsNewDialogVisible,
+  dismissWhatsNew,
+  showWhatsNew,
+} = useWhatsNew();
 const onboardingStore = useOnboardingStore();
-const pendingWhatsNew = ref(false);
+const changelogPendingAuto = ref(false);
+let autoChangelogTimer: number | null = null;
 
-onMounted(() => {
-  // Only show What's New popup in desktop runtime (Tauri environment)
-  const isDesktopRuntime = typeof window !== "undefined"
+function isDesktopRuntime() {
+  return typeof window !== "undefined"
     && typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+}
 
-  if (!isDesktopRuntime) return;
+function clearPendingAutoChangelog() {
+  changelogPendingAuto.value = false;
+
+  if (autoChangelogTimer !== null) {
+    window.clearTimeout(autoChangelogTimer);
+    autoChangelogTimer = null;
+  }
+}
+
+function queueAutoChangelogAfterOnboarding() {
+  changelogPendingAuto.value = shouldShowWhatsNew.value;
+}
+
+function scheduleAutoChangelog(delayMs = 0) {
+  clearPendingAutoChangelog();
+  autoChangelogTimer = window.setTimeout(() => {
+    autoChangelogTimer = null;
+    showWhatsNew();
+  }, delayMs);
+}
+
+function startDesktopLaunchSequence() {
+  if (!isDesktopRuntime()) {
+    return;
+  }
 
   onboardingStore.hydrate();
 
-  if (onboardingStore.completed) {
-    // Onboarding already done, show changelog directly
-    setTimeout(() => {
-      if (shouldShowWhatsNew.value) {
-        whatsNewDialogVisible.value = true;
-      }
-    }, 500);
-  } else {
-    // Wait for onboarding to complete/dismiss first
-    pendingWhatsNew.value = true;
+  if (!shouldShowWhatsNew.value) {
+    clearPendingAutoChangelog();
+    return;
   }
+
+  if (onboardingStore.completed) {
+    scheduleAutoChangelog(500);
+    return;
+  }
+
+  onboardingStore.setRunSource("auto");
+  queueAutoChangelogAfterOnboarding();
+}
+
+onMounted(() => {
+  startDesktopLaunchSequence();
 });
+
+watch(
+  () => onboardingStore.lastRunSource,
+  (source) => {
+    if (source === "manual") {
+      clearPendingAutoChangelog();
+    }
+  },
+);
 
 watch(
   () => onboardingStore.completed,
   (completed) => {
-    if (completed && pendingWhatsNew.value && shouldShowWhatsNew.value) {
-      pendingWhatsNew.value = false;
-      setTimeout(() => {
-        whatsNewDialogVisible.value = true;
-      }, 300);
+    if (
+      completed
+      && changelogPendingAuto.value
+      && onboardingStore.lastRunSource === "auto"
+      && shouldShowWhatsNew.value
+    ) {
+      scheduleAutoChangelog(300);
     }
   },
 );
+
 </script>
 
 <style scoped>

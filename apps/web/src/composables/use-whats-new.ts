@@ -15,7 +15,20 @@ let initialized = false;
 declare global {
   interface Window {
     __test_showWhatsNew?: () => void;
+    __test_enableAutoWhatsNew?: boolean;
   }
+}
+
+function canAutoShowWhatsNew() {
+  if (!import.meta.env.DEV) {
+    return true;
+  }
+
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.__test_enableAutoWhatsNew === true;
 }
 
 export function resolveShouldShowWhatsNew() {
@@ -27,23 +40,7 @@ export function resolveShouldShowWhatsNew() {
   return lastSeenVersion !== currentVersion;
 }
 
-export function initWhatsNew() {
-  if (initialized) {
-    return;
-  }
-
-  const shouldShow = resolveShouldShowWhatsNew();
-  shouldShowWhatsNewState.value = import.meta.env.DEV ? false : shouldShow;
-  dialogVisible.value = shouldShowWhatsNewState.value;
-
-  if (typeof window !== "undefined" && import.meta.env.DEV) {
-    window.__test_showWhatsNew = showWhatsNew;
-  }
-
-  initialized = true;
-}
-
-function showWhatsNew() {
+export function showWhatsNew() {
   dialogVisible.value = true;
 }
 
@@ -54,6 +51,23 @@ function dismissWhatsNew() {
 
   shouldShowWhatsNewState.value = false;
   dialogVisible.value = false;
+}
+
+// Expose only in DEV so E2E can trigger the dialog without leaking globals to production.
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  window.__test_showWhatsNew = showWhatsNew;
+}
+
+export function initWhatsNew() {
+  if (initialized) {
+    return;
+  }
+
+  const shouldShow = resolveShouldShowWhatsNew();
+  shouldShowWhatsNewState.value = canAutoShowWhatsNew() ? shouldShow : false;
+  dialogVisible.value = false;
+
+  initialized = true;
 }
 
 export function useWhatsNew() {

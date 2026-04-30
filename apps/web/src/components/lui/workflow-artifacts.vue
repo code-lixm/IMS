@@ -64,32 +64,35 @@
                 type="button"
                 variant="outline"
                 size="icon"
-                class="h-8 w-8"
+                class="h-8 w-8 rounded-md border-border/60 bg-background text-foreground hover:bg-accent"
                 title="预览"
                 @click="openPreview(artifact)"
               >
                 <Eye class="h-4 w-4" />
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                class="h-8 w-8"
-                title="复制"
-                @click="copyArtifact(artifact)"
-              >
-                <Copy class="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                class="h-8 w-8"
-                title="下载"
-                @click="downloadArtifact(artifact)"
-              >
-                <Download class="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                    title="更多操作"
+                  >
+                    <MoreHorizontal class="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" class="w-36">
+                  <DropdownMenuItem @click="copyArtifact(artifact)">
+                    <Copy class="h-4 w-4" />
+                    <span>复制</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem @click="downloadArtifact(artifact)">
+                    <Download class="h-4 w-4" />
+                    <span>下载</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </article>
@@ -147,7 +150,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Copy, Download, Eye } from "lucide-vue-next";
+import { Copy, Download, Eye, MoreHorizontal } from "lucide-vue-next";
 import { Markdown } from "vue-stream-markdown";
 import "vue-stream-markdown/index.css";
 import type { FileResource, Workflow, WorkflowArtifact } from "@/stores/lui";
@@ -158,6 +161,12 @@ import { DialogDescription } from "@/components/ui/dialog";
 import { DialogFooter } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";
 import { DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { copyTextToClipboard } from "@/lib/clipboard";

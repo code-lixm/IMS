@@ -7,7 +7,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { classifyFileType, ImportErrorCodes, type FileType } from "./types";
 import { extractText } from "./extractor";
 import { parseResumeText } from "./parser";
-import { generateImportScreeningConclusionWithAI } from "./ai-screening";
+import { generateImportScreeningConclusionWithAI, resolveImportScreeningReuseContext } from "./ai-screening";
+import { buildScreeningReuseKey, computeFileHash, findReusableCompletedScreening } from "./hash-reuse";
 import { verifyCandidateSchools } from "../university-verification";
 import { config } from "../../config";
 import { ErrorCodes, type ImportScreeningConclusion, type ImportScreeningExportMode, type ImportScreeningExportRequest, type ImportTaskResultData, type UniversityVerificationResult } from "@ims/shared";
@@ -36,9 +37,8 @@ const STAGE_PRIORITY = ["queued", "extracting", "text_extracting", "ocr_running"
 const SUPPORTED_ARCHIVE_SUFFIXES = [".zip"];
 const UNSUPPORTED_ARCHIVE_SUFFIXES = [".7z", ".rar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar"];
 const UNSUPPORTED_IMAGE_SUFFIXES = [".png", ".jpg", ".jpeg", ".webp"];
-const UNIVERSITY_NOT_FOUND_CONCERN = "学校信息异常：未在教育部高校库中查到，建议人工核实";
+const UNIVERSITY_NOT_FOUND_CONCERN = "院校信息可能异常：未在高校库中查到该院校，建议人工核实";
 const UNIVERSITY_API_UNAVAILABLE_ERROR = "大学库查询暂不可用";
-const UNIVERSITY_REVIEW_WARNING = "学校信息异常，建议优先人工核实";
 const UNIVERSITY_MISSING_EDUCATION_CONCERN = "院校信息缺失：当前简历未解析出教育经历或院校信息，建议人工核实";
 const AI_SCREENING_MAX_ATTEMPTS = 3;
 const AI_SCREENING_RETRY_BASE_DELAY_MS = 1_000;
@@ -106,6 +106,85 @@ function formatErrorMessage(error: unknown): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolveScreeningReuseMetadata(fileHash: string | null, templateId?: string | null) {
+  if (!fileHash) {
+    return {
+      screeningReuseKey: null,
+      templateInfo: undefined,
+    };
+  }
+
+  const reuseContext = await resolveImportScreeningReuseContext(templateId ?? undefined);
+  return {
+    screeningReuseKey: buildScreeningReuseKey({
+      fileHash,
+      promptSnapshot: reuseContext.promptSnapshot,
+      templateId: reuseContext.templateInfo?.templateId,
+      templateVersion: reuseContext.templateInfo?.templateVersion,
+      screeningProviderId: reuseContext.screeningProviderId,
+      screeningModel: reuseContext.screeningModel,
+      normalizedBaseURL: reuseContext.normalizedBaseURL,
+    }),
+    templateInfo: reuseContext.templateInfo,
+  };
+}
+
+function createBaseImportTaskResult(
+  parsedResume: ImportTaskResultData["parsedResume"],
+  extractionConfidence: number | null | undefined,
+  options: {
+    fileHash: string | null;
+    screeningReuseKey?: string | null;
+    templateInfo?: ImportTaskResultData["templateInfo"];
+  },
+): ImportTaskResultWithConfidence {
+  return {
+    parsedResume,
+    extractionConfidence,
+    screeningStatus: "not_requested",
+    screeningSource: null,
+    screeningError: null,
+    screeningConclusion: null,
+    fileHash: options.fileHash,
+    screeningReuseKey: options.screeningReuseKey ?? null,
+    reusedFromTaskId: null,
+    reusedAt: null,
+    templateInfo: options.templateInfo,
+    universityVerification: null,
+  };
+}
+
+function buildCompletedAiScreeningResult(
+  result: ImportTaskResultWithConfidence,
+  aiConclusion: ImportScreeningConclusion,
+): ImportTaskResultWithConfidence {
+  return {
+    ...result,
+    screeningStatus: "completed",
+    screeningSource: "ai",
+    screeningError: null,
+    screeningConclusion: aiConclusion,
+    templateInfo: aiConclusion.templateInfo ?? result.templateInfo,
+  };
+}
+
+function buildReusedScreeningResult(
+  result: ImportTaskResultWithConfidence,
+  reused: { taskId: string; result: ImportTaskResultData },
+): ImportTaskResultWithConfidence {
+  return {
+    ...result,
+    screeningStatus: "completed",
+    screeningSource: "reused",
+    screeningError: null,
+    screeningConclusion: reused.result.screeningConclusion ?? null,
+    templateInfo: reused.result.templateInfo ?? reused.result.screeningConclusion?.templateInfo ?? result.templateInfo,
+    universityVerification: reused.result.universityVerification ?? reused.result.screeningConclusion?.universityVerification ?? null,
+    reusedFromTaskId: reused.taskId,
+    reusedAt: Date.now(),
+  };
 }
 
 export interface PreparedImportTask {
@@ -228,7 +307,9 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       return;
     }
 
-    await updateTask(taskId, { status: "text_extracting", stage: "text_extracting", updatedAt: Date.now() });
+    const fileHash = computeFileHash(filePath);
+
+    await updateTask(taskId, { status: "text_extracting", stage: "text_extracting", fileHash, updatedAt: Date.now() });
 
     let extractResult: Awaited<ReturnType<typeof extractText>>;
     try {
@@ -296,17 +377,15 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       fileSize: readFileSync(destPath).length, filePath: destPath,
       extractedText: extractResult.text,
       parsedDataJson: JSON.stringify(parsed),
-      ocrConfidence: extractResult.confidence, createdAt: Date.now(),
+      ocrConfidence: extractResult.confidence, fileHash, createdAt: Date.now(),
     });
 
-    let result: ImportTaskResultWithConfidence = {
-      parsedResume: parsed,
-      extractionConfidence: extractResult.confidence,
-      screeningStatus: "not_requested",
-      screeningSource: null,
-      screeningError: null,
-      screeningConclusion: null,
-    };
+    const screeningReuseMetadata = await resolveScreeningReuseMetadata(fileHash, templateId ?? undefined);
+    let result = createBaseImportTaskResult(parsed, extractResult.confidence, {
+      fileHash,
+      screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+      templateInfo: screeningReuseMetadata.templateInfo,
+    });
 
     if (await shouldGenerateScreeningConclusion(taskId)) {
       result = {
@@ -323,27 +402,37 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       });
 
       try {
-        logInfo("import.file.ai_screening.start", { taskId, candidateId, hasTemplate: Boolean(templateId) });
-        const aiConclusion = await generateImportScreeningConclusionWithRetry({
-          parsed,
-          confidence: extractResult.confidence,
-          fileName: basename(filePath),
-          templateId: templateId ?? undefined,
-        }, { taskId, candidateId });
+        const reusable = result.screeningReuseKey
+          ? await findReusableCompletedScreening({
+              excludeTaskId: taskId,
+              fileHash,
+              screeningReuseKey: result.screeningReuseKey,
+            })
+          : null;
 
-        result = {
-          ...result,
-          screeningStatus: "completed",
-          screeningSource: "ai",
-          screeningConclusion: aiConclusion,
-        };
-        logInfo("import.file.ai_screening.finish", { taskId, candidateId, source: "ai" });
+        if (reusable) {
+          result = buildReusedScreeningResult(result, reusable);
+          logInfo("import.file.ai_screening.finish", { taskId, candidateId, source: "reused", reusedFromTaskId: reusable.taskId });
+        } else {
+          logInfo("import.file.ai_screening.start", { taskId, candidateId, hasTemplate: Boolean(templateId) });
+          const aiConclusion = await generateImportScreeningConclusionWithRetry({
+            parsed,
+            confidence: extractResult.confidence,
+            fileName: basename(filePath),
+            templateId: templateId ?? undefined,
+          }, { taskId, candidateId });
+
+          result = buildCompletedAiScreeningResult(result, aiConclusion);
+          logInfo("import.file.ai_screening.finish", { taskId, candidateId, source: "ai" });
+        }
       } catch (error) {
         logWarn("import.file.ai_screening.failed", { taskId, candidateId, error: formatErrorMessage(error) });
         result = buildAiScreeningFailedResult(result, error);
       }
 
-      result = result.screeningConclusion ? await attachUniversityVerificationResult(parsed, result) : result;
+      result = result.screeningConclusion && result.screeningSource !== "reused"
+        ? await attachUniversityVerificationResult(parsed, result)
+        : result;
       if (result.screeningConclusion) {
         const schoolName = extractSchoolName(result.screeningConclusion);
         if (schoolName) {
@@ -361,7 +450,7 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       return;
     }
 
-    await updateTask(taskId, { status: "done", stage: "completed", candidateId, resultJson: JSON.stringify(result), updatedAt: Date.now() });
+    await updateTask(taskId, { status: "done", stage: "completed", candidateId, resultJson: JSON.stringify(result), fileHash, updatedAt: Date.now() });
     await updateBatchProgress(taskId);
     logInfo("import.file.finish", {
       taskId,
@@ -462,51 +551,11 @@ function applyUniversityVerificationToConclusion(
     };
   }
 
-  const score = Math.max(0, conclusion.score - 30);
-  const verdict = score < 55
-    ? downgradeVerdict(conclusion.verdict)
-    : conclusion.verdict;
-  const recommendedAction = verdict === conclusion.verdict
-    ? conclusion.recommendedAction
-    : getRecommendedActionByVerdict(verdict);
-
   return {
     ...conclusion,
-    verdict,
-    label: getScreeningLabelByVerdict(verdict),
-    score,
     concerns: appendUniqueItem(conclusion.concerns, UNIVERSITY_NOT_FOUND_CONCERN),
-    recommendedAction: appendUniqueMessage(recommendedAction, UNIVERSITY_REVIEW_WARNING),
     universityVerification: verification,
   };
-}
-
-function downgradeVerdict(verdict: ImportScreeningConclusion["verdict"]): ImportScreeningConclusion["verdict"] {
-  if (verdict === "pass") {
-    return "review";
-  }
-
-  if (verdict === "review") {
-    return "reject";
-  }
-
-  return verdict;
-}
-
-function getScreeningLabelByVerdict(verdict: ImportScreeningConclusion["verdict"]): string {
-  return verdict === "pass"
-    ? "通过"
-    : verdict === "review"
-      ? "待定"
-      : "淘汰";
-}
-
-function getRecommendedActionByVerdict(verdict: ImportScreeningConclusion["verdict"]): string {
-  return verdict === "pass"
-    ? "建议进入后续面试环节"
-    : verdict === "review"
-      ? "建议人工复核后再决定"
-      : "建议暂不进入后续流程";
 }
 
 function appendUniqueItem(items: string[], nextItem: string): string[] {
@@ -612,6 +661,7 @@ export async function importResumeForCandidate(
     throw new Error(unsupportedMessage);
   }
 
+  const fileHash = computeFileHash(filePath);
   const extractResult = await extractText(filePath, "pdf");
   const parsed = parseResumeText(extractResult.text);
 
@@ -631,6 +681,7 @@ export async function importResumeForCandidate(
     extractedText: extractResult.text,
     parsedDataJson: JSON.stringify(parsed),
     ocrConfidence: extractResult.confidence,
+    fileHash,
     createdAt: Date.now(),
   });
 
@@ -676,7 +727,7 @@ function detectFileType(filePath: string): FileType {
   return classifyFileType(extname(filePath));
 }
 
-async function updateTask(taskId: string, updates: Partial<{ status: string; stage: string | null; errorCode: string | null; errorMessage: string | null; candidateId: string | null; resultJson: string | null; updatedAt: number }>) {
+async function updateTask(taskId: string, updates: Partial<{ status: string; stage: string | null; errorCode: string | null; errorMessage: string | null; candidateId: string | null; resultJson: string | null; fileHash: string | null; updatedAt: number }>) {
   await db.update(importFileTasks).set(updates).where(eq(importFileTasks.id, taskId));
 }
 
@@ -730,13 +781,14 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
 
   for (const { task, result } of runnableTasks) {
     if (!result) continue;
+    const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, effectiveTemplateId);
     const nextResult: ImportTaskResultWithConfidence = {
-      parsedResume: result.parsedResume,
-      extractionConfidence: result.extractionConfidence,
+      ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
+        fileHash: task.fileHash,
+        screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+        templateInfo: screeningReuseMetadata.templateInfo,
+      }),
       screeningStatus: "queued",
-      screeningSource: null,
-      screeningError: null,
-      screeningConclusion: null,
     };
 
     await updateTask(task.id, {
@@ -751,23 +803,24 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
 
   for (const { task, result } of runnableTasks) {
     if (!result) continue;
+    const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, effectiveTemplateId);
     let nextResult: ImportTaskResultWithConfidence = {
-      parsedResume: result.parsedResume,
-      extractionConfidence: result.extractionConfidence,
+      ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
+        fileHash: task.fileHash,
+        screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+        templateInfo: screeningReuseMetadata.templateInfo,
+      }),
       screeningStatus: "running",
-      screeningSource: null,
-      screeningError: null,
-      screeningConclusion: null,
     };
 
     // Mark this specific task as actively running before AI call
     const runningResult: ImportTaskResultWithConfidence = {
-      parsedResume: result.parsedResume,
-      extractionConfidence: result.extractionConfidence,
+      ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
+        fileHash: task.fileHash,
+        screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+        templateInfo: screeningReuseMetadata.templateInfo,
+      }),
       screeningStatus: "running",
-      screeningSource: null,
-      screeningError: null,
-      screeningConclusion: null,
     };
     await updateTask(task.id, {
       status: "ai_screening",
@@ -778,30 +831,39 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
     await refreshBatchProgress(batchId);
 
     try {
-      const confidence = await resolveTaskConfidence(task, result);
-      const aiConclusion = await generateImportScreeningConclusionWithRetry({
-        parsed: result.parsedResume,
-        confidence,
-        fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
-        templateId: effectiveTemplateId,
-      }, { taskId: task.id, candidateId: task.candidateId });
-      nextResult = {
-        ...nextResult,
-        screeningStatus: "completed",
-        screeningSource: "ai",
-        screeningConclusion: aiConclusion,
-      };
+      const reusable = task.fileHash && nextResult.screeningReuseKey
+        ? await findReusableCompletedScreening({
+            excludeTaskId: task.id,
+            fileHash: task.fileHash,
+            screeningReuseKey: nextResult.screeningReuseKey,
+          })
+        : null;
+
+      if (reusable) {
+        nextResult = buildReusedScreeningResult(nextResult, reusable);
+      } else {
+        const confidence = await resolveTaskConfidence(task, result);
+        const aiConclusion = await generateImportScreeningConclusionWithRetry({
+          parsed: result.parsedResume,
+          confidence,
+          fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+          templateId: effectiveTemplateId,
+        }, { taskId: task.id, candidateId: task.candidateId });
+        nextResult = buildCompletedAiScreeningResult(nextResult, aiConclusion);
+      }
     } catch (error) {
       nextResult = buildAiScreeningFailedResult(nextResult, error);
     }
 
-    nextResult = nextResult.screeningConclusion ? await attachUniversityVerificationResult(result.parsedResume, nextResult) : nextResult;
-      if (nextResult.screeningConclusion && task.candidateId) {
-        const schoolName = extractSchoolName(nextResult.screeningConclusion);
-        if (schoolName) {
-          await updateCandidateOrganizationName(task.candidateId, schoolName);
-        }
+    nextResult = nextResult.screeningConclusion && nextResult.screeningSource !== "reused"
+      ? await attachUniversityVerificationResult(result.parsedResume, nextResult)
+      : nextResult;
+    if (nextResult.screeningConclusion && task.candidateId) {
+      const schoolName = extractSchoolName(nextResult.screeningConclusion);
+      if (schoolName) {
+        await updateCandidateOrganizationName(task.candidateId, schoolName);
       }
+    }
 
     await updateTask(task.id, {
       status: "done",
@@ -891,13 +953,15 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
     return { retried: false, screeningStatus: "not_requested" };
   }
 
+  const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, effectiveTemplateId);
+
   const nextResult: ImportTaskResultWithConfidence = {
-    parsedResume: result.parsedResume,
-    extractionConfidence: result.extractionConfidence,
+    ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
+      fileHash: task.fileHash,
+      screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+      templateInfo: screeningReuseMetadata.templateInfo,
+    }),
     screeningStatus: "running",
-    screeningSource: null,
-    screeningError: null,
-    screeningConclusion: null,
   };
 
   await updateTask(taskId, {
@@ -910,21 +974,31 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
   await updateBatchProgress(taskId);
 
   try {
-    const confidence = await resolveTaskConfidence(task, result);
-    const aiConclusion = await generateImportScreeningConclusionWithRetry({
-      parsed: result.parsedResume,
-      confidence,
-      fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
-      templateId: effectiveTemplateId,
-    }, { taskId, candidateId: task.candidateId });
-    nextResult.screeningStatus = "completed";
-    nextResult.screeningSource = "ai";
-    nextResult.screeningConclusion = aiConclusion;
+    const reusable = task.fileHash && nextResult.screeningReuseKey
+      ? await findReusableCompletedScreening({
+          excludeTaskId: taskId,
+          fileHash: task.fileHash,
+          screeningReuseKey: nextResult.screeningReuseKey,
+        })
+      : null;
+
+    if (reusable) {
+      Object.assign(nextResult, buildReusedScreeningResult(nextResult, reusable));
+    } else {
+      const confidence = await resolveTaskConfidence(task, result);
+      const aiConclusion = await generateImportScreeningConclusionWithRetry({
+        parsed: result.parsedResume,
+        confidence,
+        fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+        templateId: effectiveTemplateId,
+      }, { taskId, candidateId: task.candidateId });
+      Object.assign(nextResult, buildCompletedAiScreeningResult(nextResult, aiConclusion));
+    }
   } catch (error) {
     Object.assign(nextResult, buildAiScreeningFailedResult(nextResult, error));
   }
 
-  if (nextResult.screeningConclusion) {
+  if (nextResult.screeningConclusion && nextResult.screeningSource !== "reused") {
     Object.assign(nextResult, await attachUniversityVerificationResult(result.parsedResume, nextResult));
   }
   if (nextResult.screeningConclusion && task.candidateId) {

@@ -10,8 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import type { WhatsNewEntry } from "@ims/shared";
+import type { WhatsNewData, WhatsNewEntry } from "@ims/shared";
 import whatsNew from "@/assets/whats-new.json";
 
 const props = defineProps<{
@@ -22,7 +21,18 @@ const emit = defineEmits<{
   (e: "close"): void;
 }>();
 
-const entry = computed<WhatsNewEntry>(() => whatsNew as WhatsNewEntry);
+const whatsNewData = computed<WhatsNewData>(() => whatsNew as WhatsNewData);
+const versions = computed<WhatsNewEntry[]>(() => {
+  const entries = whatsNewData.value.versions?.length
+    ? whatsNewData.value.versions
+    : [{
+      version: whatsNewData.value.version,
+      date: whatsNewData.value.date,
+      sections: whatsNewData.value.sections,
+    }];
+  return entries;
+});
+const latestEntry = computed<WhatsNewEntry>(() => versions.value[0]);
 
 function handleUpdateOpen(open: boolean) {
   if (!open) {
@@ -57,42 +67,71 @@ function renderMarkdown(text: string): string {
   <Dialog :open="props.open" @update:open="handleUpdateOpen">
     <template #content>
       <DialogContent
-        class="w-[600px] max-w-[90vw] max-h-[70vh] flex flex-col"
+        class="w-[760px] max-w-[92vw] max-h-[76vh] flex flex-col"
       >
-        <DialogHeader class="shrink-0">
-          <DialogTitle>🎉 新版本发布</DialogTitle>
+        <DialogHeader class="shrink-0 border-b pb-5">
+          <DialogTitle class="text-2xl font-semibold tracking-tight">
+            更新日志
+          </DialogTitle>
           <DialogDescription>
-            <span class="inline-flex items-center gap-2">
-              <span class="font-medium text-foreground">v{{ entry.version }}</span>
+            <span class="inline-flex flex-wrap items-center gap-2 text-sm">
+              <span>最新版本</span>
+              <span class="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                v{{ latestEntry.version }}
+              </span>
+              <span class="text-muted-foreground">{{ latestEntry.date }}</span>
               <span class="text-muted-foreground">·</span>
-              <span class="text-muted-foreground">{{ entry.date }}</span>
+              <span class="text-muted-foreground">共 {{ versions.length }} 个版本</span>
             </span>
           </DialogDescription>
         </DialogHeader>
 
-        <div class="overflow-y-auto flex-1 min-h-0 pr-1">
-          <div
-            v-for="(section, sIndex) in entry.sections"
-            :key="section.title"
-            class="mb-5 last:mb-0"
-          >
-            <h3
-              class="text-sm font-semibold text-foreground mb-2 sticky top-0 bg-background py-1"
+        <div class="min-h-0 flex-1 overflow-y-auto pr-3 pt-5">
+          <div class="relative space-y-8 pl-7 before:absolute before:left-[7px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-border/70">
+            <article
+              v-for="(versionEntry, versionIndex) in versions"
+              :key="versionEntry.version"
+              class="relative"
             >
-              {{ section.title }}
-            </h3>
-            <ul class="space-y-1.5">
-              <li
-                v-for="(item, iIndex) in section.items"
-                :key="`${sIndex}-${iIndex}`"
-                class="text-sm text-muted-foreground pl-4 relative before:content-['•'] before:absolute before:left-0 before:text-muted-foreground/60"
-                v-html="renderMarkdown(item)"
+              <span
+                :class="[
+                  'absolute -left-[1.75rem] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-background',
+                  versionIndex === 0 ? 'bg-primary' : 'bg-muted-foreground/40',
+                ]"
               />
-            </ul>
-            <Separator
-              v-if="sIndex < entry.sections.length - 1"
-              class="mt-4"
-            />
+              <header class="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span class="text-lg font-semibold tracking-tight text-foreground">
+                  v{{ versionEntry.version }}
+                </span>
+                <span class="text-xs text-muted-foreground">{{ versionEntry.date }}</span>
+                <span
+                  v-if="versionIndex === 0"
+                  class="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+                >
+                  最新
+                </span>
+              </header>
+
+              <div class="space-y-4">
+                <section
+                  v-for="(section, sIndex) in versionEntry.sections"
+                  :key="`${versionEntry.version}-${section.title}`"
+                  class="pl-0"
+                >
+                  <h3 class="mb-2 text-xs font-semibold tracking-[0.18em] text-muted-foreground">
+                    {{ section.title }}
+                  </h3>
+                  <ul class="space-y-1">
+                    <li
+                      v-for="(item, iIndex) in section.items"
+                      :key="`${versionEntry.version}-${sIndex}-${iIndex}`"
+                      class="relative pl-4 text-sm leading-6 text-muted-foreground before:absolute before:left-0 before:text-muted-foreground/50 before:content-['•']"
+                      v-html="renderMarkdown(item)"
+                    />
+                  </ul>
+                </section>
+              </div>
+            </article>
           </div>
         </div>
 

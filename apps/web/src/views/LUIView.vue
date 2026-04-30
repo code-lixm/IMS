@@ -26,7 +26,7 @@
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-8 w-8 shrink-0 rounded-md shadow-none"
+                class="h-8 w-8 shrink-0 rounded-md"
                 title="新建会话"
                 @click="onConversationCreate"
               >
@@ -107,7 +107,7 @@
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-8 w-8 shrink-0 rounded-md shadow-none"
+                class="h-8 w-8 shrink-0 rounded-md"
                 :title="
                   leftPanelRef?.isCollapsed ? '展开会话列表' : '收起会话列表'
                 "
@@ -124,7 +124,7 @@
                 <Button
                   variant="ghost"
                   size="sm"
-                  class="h-8 shrink-0 rounded-md px-2 text-xs font-medium shadow-none"
+                  class="h-8 shrink-0 rounded-md px-2 text-xs font-medium"
                 >
                   <ArrowLeft class="h-4 w-4" />
                   <span class="hidden md:inline">返回</span>

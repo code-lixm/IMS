@@ -25,7 +25,7 @@
               >
             </div>
             <p class="text-sm text-muted-foreground">
-              支持上传单个 PDF，或上传仅包含 PDF 的压缩包（ZIP、RAR、TAR、7Z 等）。开启 AI
+              支持上传单个 PDF，或上传仅包含 PDF 的常见压缩包。开启 AI
               初筛后，会在文本解析完成后追加 Agent 风格结论，并持续刷新状态。
             </p>
           </div>
@@ -194,10 +194,8 @@
           ]"
         >
           <div class="space-y-4 p-5">
-            <div
-              class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
-            >
-              <div class="space-y-2 min-w-0">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1 space-y-2">
                 <div class="flex items-center gap-2 flex-wrap">
                   <Badge :variant="batchPrimaryStatusVariant(b)">{{
                     batchPrimaryStatusLabel(b)
@@ -227,7 +225,7 @@
                 </div>
               </div>
 
-              <div class="flex items-center gap-2 self-start">
+              <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -287,9 +285,9 @@
             </div>
 
             <div
-              class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+              class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end"
             >
-              <div class="space-y-2">
+              <div class="space-y-2 flex-1">
                 <div
                   class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
                 >
@@ -308,7 +306,17 @@
                   >
                 </div>
               </div>
-              <div class="flex flex-col items-end gap-2 text-right">
+              <div
+                class="flex items-center justify-between rounded-xl border border-border/70 bg-muted/30 px-3 py-2 xl:hidden"
+              >
+                <p class="text-xs text-muted-foreground">
+                  {{ batchStatusText(b) }}
+                </p>
+                <p class="text-sm font-semibold tabular-nums text-foreground">
+                  {{ batchProgressValue(b) }}%
+                </p>
+              </div>
+              <div class="hidden flex-col items-end gap-2 text-right xl:flex">
                 <CircularProgress
                   :model-value="batchProgressValue(b)"
                   :status="batchCircularStatus(b.status)"
@@ -345,7 +353,7 @@
               <article
                 v-for="f in batchFiles[b.id]"
                 :key="f.id"
-                class="rounded-xl border bg-background px-4 py-3 shadow-sm cursor-pointer hover:bg-muted/30 transition-colors"
+                class="relative overflow-hidden rounded-xl border bg-background px-4 py-3 pb-14 shadow-sm cursor-pointer hover:bg-muted/30 transition-colors"
                 @click="
                   parseImportTaskResult(f.resultJson)?.parsedResume &&
                   showScreeningDetail(f)
@@ -394,11 +402,6 @@
                         ]"
                       >
                         初筛{{ screeningResult(f)?.screeningConclusion?.label }}
-                        <span class="ml-1 opacity-80"
-                          >{{
-                            screeningResult(f)?.screeningConclusion?.score
-                          }}分</span
-                        >
                       </span>
                     </div>
 
@@ -490,6 +493,27 @@
                       查看详情
                     </button>
                   </div>
+                </div>
+                <div
+                  v-if="screeningResult(f)?.screeningConclusion"
+                  :class="[
+                    'pointer-events-none absolute bottom-3 right-4 flex h-16 w-16 -rotate-12 select-none flex-col items-center justify-center rounded-full border-2 bg-background/70 text-center font-semibold shadow-sm backdrop-blur-[1px]',
+                    screeningScoreStampClass(
+                      screeningResult(f)?.screeningConclusion?.score,
+                      screeningResult(f)?.screeningConclusion?.label,
+                    ),
+                  ]"
+                >
+                  <span class="text-[10px] leading-none tracking-[0.18em]">
+                    {{
+                      screeningScoreStampLabel(
+                        screeningResult(f)?.screeningConclusion?.label,
+                      )
+                    }}
+                  </span>
+                  <span class="mt-1 text-xl leading-none tabular-nums">
+                    {{ screeningResult(f)?.screeningConclusion?.score }}%
+                  </span>
                 </div>
               </article>
             </div>
@@ -586,38 +610,45 @@
         <Separator class="my-4" />
 
         <div class="max-h-[360px] space-y-3 overflow-y-auto pr-1">
-          <Button
-            variant="outline"
-            class="h-auto w-full justify-start px-3 py-2 text-left"
-            :class="{ 'border-primary': dialogSelectedTemplateId === '' }"
-            @click="dialogSelectedTemplateId = ''"
-          >
-            <span class="truncate text-sm">沿用上次模板</span>
-          </Button>
-
           <template v-if="screeningTemplates.templates.value.length > 0">
             <p class="text-xs font-medium text-muted-foreground px-1">
-              自定义模板
+              模板列表
             </p>
             <Button
               v-for="template in screeningTemplates.templates.value"
               :key="template.id"
+              :ref="(el) => setTemplateOptionRef(template.id, el)"
               variant="outline"
               class="h-auto w-full justify-between px-3 py-2 text-left"
               :class="{ 'border-primary': dialogSelectedTemplateId === template.id }"
               @click="dialogSelectedTemplateId = template.id"
             >
               <span class="truncate text-sm">{{ template.name }}</span>
-              <Badge v-if="template.isDefault" variant="secondary" class="text-xs">默认</Badge>
+              <span class="ml-3 flex shrink-0 items-center gap-2">
+                <Badge v-if="template.isDefault" variant="secondary" class="text-xs">默认</Badge>
+                <Check
+                  v-if="dialogSelectedTemplateId === template.id"
+                  class="h-4 w-4 text-primary"
+                />
+              </span>
             </Button>
           </template>
+          <div
+            v-else
+            class="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground"
+          >
+            暂无可用筛选模板，请先到模板管理中创建或恢复默认模板。
+          </div>
         </div>
 
         <DialogFooter class="mt-6 gap-2">
           <Button variant="secondary" @click="templateDialogOpen = false">
             取消
           </Button>
-          <Button @click="executeTemplateRerun">
+          <Button
+            :disabled="!dialogSelectedTemplateId"
+            @click="executeTemplateRerun"
+          >
             开始筛选
           </Button>
         </DialogFooter>
@@ -628,12 +659,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch, type ComponentPublicInstance } from "vue";
 import {
   Upload,
   Download,
   FileSearch,
   Plus,
+  Check,
   ChevronDown,
   RefreshCw,
   Trash2,
@@ -727,6 +759,7 @@ const {
 const screeningTemplates = useScreeningTemplates();
 const templateDialogOpen = ref(false);
 const dialogSelectedTemplateId = ref("");
+const templateOptionRefs = new Map<string, Element>();
 const FILE_SCREENING_POLL_INTERVAL_MS = 1500;
 const FILE_SCREENING_POLL_ATTEMPTS = 40;
 interface TemplateDialogTarget {
@@ -1057,6 +1090,12 @@ watch([
   syncAutoScreenAvailability();
 });
 
+watch(templateDialogOpen, (open) => {
+  if (open) {
+    scrollSelectedTemplateIntoView();
+  }
+});
+
 function startImport() {
   if (!autoScreen.value) {
     proceedImport();
@@ -1086,6 +1125,69 @@ function startImport() {
 
 function screeningResult(file: ImportFileTask) {
   return parseImportTaskResult(file.resultJson);
+}
+
+function initialDialogTemplateId() {
+  const templates = screeningTemplates.templates.value;
+  if (templates.length === 0) return "";
+
+  const selectedId = screeningTemplates.selectedId.value;
+  if (selectedId && templates.some((template) => template.id === selectedId)) {
+    return selectedId;
+  }
+
+  return screeningTemplates.defaultTemplate.value?.id ?? templates[0].id;
+}
+
+function setTemplateOptionRef(templateId: string, el: Element | ComponentPublicInstance | null) {
+  const element = el instanceof Element ? el : el?.$el;
+  if (element instanceof Element) {
+    templateOptionRefs.set(templateId, element);
+  } else {
+    templateOptionRefs.delete(templateId);
+  }
+}
+
+function scrollSelectedTemplateIntoView() {
+  const selectedId = dialogSelectedTemplateId.value;
+  if (!selectedId) return;
+
+  requestAnimationFrame(() => {
+    templateOptionRefs.get(selectedId)?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
+  });
+}
+
+function screeningScoreStampLabel(label?: string | null) {
+  if (label === "淘汰") return "NO MATCH";
+  if (label === "待定") return "REVIEW";
+  return "MATCH";
+}
+
+function screeningScoreStampClass(score?: number | null, label?: string | null) {
+  if (label === "淘汰") {
+    return "border-rose-500/75 text-rose-600 dark:border-rose-400/75 dark:text-rose-300";
+  }
+
+  if (label === "待定") {
+    return "border-amber-500/75 text-amber-600 dark:border-amber-400/75 dark:text-amber-300";
+  }
+
+  if (typeof score !== "number") {
+    return "border-muted-foreground/40 text-muted-foreground/70";
+  }
+
+  if (score >= 80) {
+    return "border-blue-500/70 text-blue-600 dark:border-blue-400/70 dark:text-blue-300";
+  }
+
+  if (score >= 60) {
+    return "border-amber-500/75 text-amber-600 dark:border-amber-400/75 dark:text-amber-300";
+  }
+
+  return "border-rose-500/75 text-rose-600 dark:border-rose-400/75 dark:text-rose-300";
 }
 
 function batchProgress(processed: number, total: number) {
@@ -1449,7 +1551,7 @@ async function handleRunFileScreening(taskId: string) {
     const file = files.find((f) => f.id === taskId);
     if (file) {
       templateDialogTarget.value = { type: "file", id: taskId, batchId };
-      dialogSelectedTemplateId.value = "";
+      dialogSelectedTemplateId.value = initialDialogTemplateId();
       templateDialogOpen.value = true;
       screeningDialogOpen.value = false;
       return;
@@ -1463,7 +1565,7 @@ async function requestRunFileScreening(taskId: string, batchId: string) {
   }
 
   templateDialogTarget.value = { type: "file", id: taskId, batchId };
-  dialogSelectedTemplateId.value = "";
+  dialogSelectedTemplateId.value = initialDialogTemplateId();
   templateDialogOpen.value = true;
 }
 
@@ -1523,7 +1625,7 @@ async function rerunBatchScreening(batchId: string) {
   }
 
   templateDialogTarget.value = { type: "batch", id: batchId };
-  dialogSelectedTemplateId.value = "";
+  dialogSelectedTemplateId.value = initialDialogTemplateId();
   templateDialogOpen.value = true;
 }
 
@@ -1568,6 +1670,9 @@ async function executeTemplateRerun() {
 
   templateDialogOpen.value = false;
   const tid = dialogSelectedTemplateId.value || undefined;
+  if (tid) {
+    screeningTemplates.selectTemplate(tid);
+  }
 
   if (target.type === "batch") {
     await executeBatchRerun(target.id, tid);

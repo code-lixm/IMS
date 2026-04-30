@@ -24,3 +24,17 @@ export interface WhatsNewSection {
   title: string;
   items: string[];
 }
+
+/**
+ * The full changelog data shape bundled into the Web frontend.
+ *
+ * Maintains backward compatibility: top-level version/date/sections reflect
+ * the current (latest) version entry.  The versions array contains all
+ * parsed entries in changelog order (newest first).
+ */
+export interface WhatsNewData {
+  version: string;
+  date: string;
+  sections: WhatsNewSection[];
+  versions: WhatsNewEntry[];
+}

@@ -66,7 +66,8 @@ export function useScreeningTemplates() {
         // Verify selected template still exists
         const stillExists = data.items.some((t) => t.id === state.value.selectedId);
         if (!stillExists && data.items.length > 0) {
-          selectTemplate(data.items[0].id);
+          const defaultTpl = data.items.find((t) => t.isDefault) ?? data.items[0];
+          selectTemplate(defaultTpl.id);
         }
       }
     } finally {

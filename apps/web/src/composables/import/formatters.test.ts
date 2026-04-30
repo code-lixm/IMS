@@ -6,6 +6,7 @@ import {
   parseImportTaskResult,
   screeningScoreClass,
   screeningSourceLabel,
+  screeningUniversityVerdictBadgeProps,
   statusLabel,
   statusVariant,
 } from "./formatters";
@@ -45,6 +46,7 @@ describe("import formatters", () => {
 
   test("formats source labels and timestamps for zh-CN display", () => {
     expect(screeningSourceLabel("ai")).toBe("AI Agent");
+    expect(screeningSourceLabel("reused")).toBe("复用历史初筛");
     expect(screeningSourceLabel("heuristic")).toBe("规则回退");
     expect(screeningSourceLabel("failed")).toBe("AI 初筛失败");
     expect(screeningSourceLabel(null)).toBe("");
@@ -56,6 +58,17 @@ describe("import formatters", () => {
     expect(importStageLabel("partial_success")).toBe("部分成功");
     expect(importStageLabel("failed")).toBe("失败");
     expect(importStageLabel("unknown")).toBe("unknown");
+  });
+
+  test("distinguishes university not-found from service unavailable", () => {
+    expect(screeningUniversityVerdictBadgeProps("not_found")).toEqual(expect.objectContaining({
+      label: "院校信息可能异常",
+      variant: "outline",
+    }));
+    expect(screeningUniversityVerdictBadgeProps("api_failed")).toEqual(expect.objectContaining({
+      label: "暂未识别（服务异常）",
+      variant: "outline",
+    }));
   });
 
   test("formats batch display name with custom name when provided", () => {

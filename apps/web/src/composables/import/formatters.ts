@@ -2,7 +2,7 @@ import type { ImportBatch, ParsedResume, ScreeningTemplateInfo, ScreeningTemplat
 
 type ImportScreeningVerdict = "pass" | "review" | "reject";
 type ImportScreeningStatus = "not_requested" | "queued" | "running" | "completed" | "failed";
-type ImportScreeningSource = "ai" | "heuristic" | "failed";
+type ImportScreeningSource = "ai" | "reused" | "heuristic" | "failed";
 
 interface ImportScreeningConclusion {
   verdict: ImportScreeningVerdict;
@@ -31,6 +31,10 @@ interface ImportTaskResultData {
   screeningSource?: ImportScreeningSource | null;
   screeningError?: string | null;
   screeningConclusion?: ImportScreeningConclusion | null;
+  fileHash?: string | null;
+  screeningReuseKey?: string | null;
+  reusedFromTaskId?: string | null;
+  reusedAt?: number | null;
 }
 
 export function statusVariant(status: string) {
@@ -175,6 +179,7 @@ export function screeningScoreClass(score: number | undefined): string {
 
 export function screeningSourceLabel(source: ImportScreeningSource | null | undefined) {
   if (source === "ai") return "AI Agent";
+  if (source === "reused") return "复用历史初筛";
   if (source === "heuristic") return "规则回退";
   if (source === "failed") return "AI 初筛失败";
   return "";
@@ -201,7 +206,11 @@ export function screeningUniversityVerdictBadgeProps(
     };
   }
   if (verdict === "not_found") {
-    return { label: "认证失败", variant: "destructive" };
+    return {
+      label: "院校信息可能异常",
+      variant: "outline",
+      class: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800",
+    };
   }
   if (verdict === "api_failed") {
     return {

@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, test, mock } from "bun:test";
-import { parseChangelogEntry } from "../generate-whats-new.mjs";
+import { parseChangelogEntry, parseAllChangelogEntries } from "../generate-whats-new.mjs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -218,5 +218,88 @@ describe("parseChangelogEntry", () => {
       "Feature with [a link](https://example.com)",
       "Mixed **bold** and [link](https://test.com) inline",
     ]);
+  });
+});
+
+describe("parseAllChangelogEntries", () => {
+  // 1. 多版本：返回所有条目，按出现顺序排列（ newest first）
+  test("multiple versions: returns all entries in changelog order", () => {
+    const changelog = buildChangelog([
+      wellFormedEntry("2.0.0", "2025-01-01"),
+      wellFormedEntry("1.5.0", "2024-12-01"),
+      wellFormedEntry("1.0.0", "2024-01-01"),
+    ]);
+
+    const entries = parseAllChangelogEntries(changelog);
+
+    expect(entries).toHaveLength(3);
+    expect(entries[0].version).toBe("2.0.0");
+    expect(entries[0].date).toBe("2025-01-01");
+    expect(entries[1].version).toBe("1.5.0");
+    expect(entries[2].version).toBe("1.0.0");
+    expect(entries[0].sections).toHaveLength(2);
+    expect(entries[0].sections[0].items).toEqual(["Feature A", "Feature B"]);
+  });
+
+  // 2. 跳过 Unreleased
+  test("skips Unreleased: does not include Unreleased section", () => {
+    const changelog = [
+      "# Changelog\n",
+      "## [Unreleased]",
+      "\n### 新增\n\n- Not released yet\n",
+      "\n## [1.0.0] - 2024-01-01\n",
+      "\n### 新增\n\n- First release\n",
+    ].join("\n");
+
+    const entries = parseAllChangelogEntries(changelog);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].version).toBe("1.0.0");
+  });
+
+  // 3. 空内容：返回空数组
+  test("empty content: returns empty array", () => {
+    const entries = parseAllChangelogEntries("");
+    expect(entries).toEqual([]);
+  });
+
+  // 4. 仅 Unreleased：返回空数组
+  test("only Unreleased: returns empty array when only Unreleased exists", () => {
+    const changelog = [
+      "# Changelog\n",
+      "## [Unreleased]\n",
+      "\n### 新增\n\n- WIP\n",
+    ].join("\n");
+
+    const entries = parseAllChangelogEntries(changelog);
+    expect(entries).toEqual([]);
+  });
+
+  // 5. 混合条目：有些条目无 categories
+  test("mixed entries: entries without categories have empty sections", () => {
+    const v2Section = ["## [2.0.0] - 2025-01-01", "", "- Only bullets no section"].join("\n");
+    const v1Section = wellFormedEntry("1.0.0", "2024-01-01");
+    const changelog = buildChangelog([v2Section, v1Section]);
+
+    const entries = parseAllChangelogEntries(changelog);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].sections).toEqual([]);
+    expect(entries[1].sections).toHaveLength(2);
+  });
+
+  // 6. versions[0] 等于 current version
+  test("versions[0] matches current version in standard changelog", () => {
+    const changelog = buildChangelog([
+      wellFormedEntry("2.0.0", "2025-01-01"),
+      wellFormedEntry("1.0.0", "2024-01-01"),
+    ]);
+
+    const entries = parseAllChangelogEntries(changelog);
+    const latestEntry = parseChangelogEntry(changelog, "2.0.0");
+
+    expect(entries[0].version).toBe(latestEntry!.version);
+    expect(entries[0].date).toBe(latestEntry!.date);
+    expect(entries[0].sections).toEqual(latestEntry!.sections);
   });
 });

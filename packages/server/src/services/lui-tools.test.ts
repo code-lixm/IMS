@@ -5,6 +5,14 @@ import path from "node:path";
 
 vi.mock("../db", () => ({ db: {} }));
 
+const pdfTextMocks = vi.hoisted(() => ({
+  extractPdfTextFromFile: vi.fn(),
+}));
+
+vi.mock("./pdf-text", () => ({
+  extractPdfTextFromFile: pdfTextMocks.extractPdfTextFromFile,
+}));
+
 let executeScanPdf: typeof import("./lui-tools").executeScanPdf;
 let executeTool: typeof import("./lui-tools").executeTool;
 
@@ -113,14 +121,22 @@ describe("lui-tools aliases", () => {
     const actualPath = path.join(tempDir, fileName);
 
     await writeFile(actualPath, "not-a-real-pdf");
+    pdfTextMocks.extractPdfTextFromFile.mockResolvedValueOnce({
+      text: "候选人 张三 TypeScript Vue Node.js 项目经验 丰富 沟通 清晰 交付 稳定 架构 设计 协作 推进 复盘 总结\n".repeat(8),
+      sufficientText: true,
+      pageCount: 1,
+      info: {},
+    });
 
     try {
       const result = await executeScanPdf({ pdfPath: encodedFileName }, { directory: tempDir });
-      const parsed = JSON.parse(result) as { pdf_path: string; error: string };
+      const parsed = JSON.parse(result) as { ok: boolean; pdf_path: string; error?: string };
 
+      expect(pdfTextMocks.extractPdfTextFromFile).toHaveBeenCalledWith(actualPath);
+      expect(parsed.ok).toBe(true);
       expect(parsed.pdf_path).toBe(actualPath);
-      expect(parsed.error).not.toContain("ENOENT");
-      expect(parsed.error).not.toContain(encodedFileName);
+      expect(parsed.error ?? "").not.toContain("ENOENT");
+      expect(parsed.error ?? "").not.toContain(encodedFileName);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

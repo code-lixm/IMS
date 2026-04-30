@@ -130,6 +130,9 @@
                         重试
                       </Button>
                     </div>
+                    <p v-else-if="isUniversityNotFound" class="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                      {{ universityNotFoundHint }}
+                    </p>
                     <p v-else-if="universityDetail" class="text-xs text-muted-foreground leading-relaxed line-clamp-3">
                       {{ universityDetail }}
                     </p>
@@ -433,6 +436,10 @@ const isUniversityVerificationUnavailable = computed(() => {
   return universityVerification.value?.verdict === "api_failed";
 });
 
+const isUniversityNotFound = computed(() => {
+  return universityVerification.value?.verdict === "not_found";
+});
+
 const isMissingUniversityInfo = computed(() => {
   return !universityVerification.value && parsedEducationItems.value.length === 0;
 });
@@ -445,6 +452,13 @@ const universityFallbackHint = computed(() => {
   return parsedEducationItems.value.length > 0
     ? `缺少院校认证结果，请重新分析以触发院校库查询。${educationPreview.value ? `教育经历：${educationPreview.value}` : ""}`
     : "简历中未识别到教育经历或院校信息，建议人工补充后再判断学历背景。";
+});
+
+const universityNotFoundHint = computed(() => {
+  const detail = universityDetail.value;
+  return detail
+    ? `院校库未找到该院校，可能是院校名称填写异常，建议人工核实。${detail}`
+    : "院校库未找到该院校，可能是院校名称填写异常，建议人工核实。";
 });
 
 const verdictBadge = computed(() => {

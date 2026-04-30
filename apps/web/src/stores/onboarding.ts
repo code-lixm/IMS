@@ -4,6 +4,8 @@ import { defineStore } from "pinia";
 const STORAGE_KEY = "ims-onboarding";
 const TOUR_VERSION = "2026-04-12";
 
+export type OnboardingRunSource = "auto" | "manual";
+
 interface PersistedOnboardingState {
   version: string;
   completed: boolean;
@@ -45,6 +47,7 @@ export const useOnboardingStore = defineStore("onboarding", () => {
   const completedAt = ref<number | null>(null);
   const isActive = ref(false);
   const requestedRunId = ref(0);
+  const lastRunSource = ref<OnboardingRunSource | null>(null);
   const initialSyncReady = ref(false);
 
   function hydrate() {
@@ -74,13 +77,18 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     initialSyncReady.value = value;
   }
 
-  function requestStart(options?: { force?: boolean }) {
+  function setRunSource(value: OnboardingRunSource | null) {
+    lastRunSource.value = value;
+  }
+
+  function requestStart(options?: { force?: boolean; source?: OnboardingRunSource }) {
     if (options?.force) {
       completed.value = false;
       completedAt.value = null;
       save();
     }
 
+    lastRunSource.value = options?.source ?? "manual";
     requestedRunId.value += 1;
   }
 
@@ -95,7 +103,11 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     markCompleted();
   }
 
-  const canAutoStart = computed(() => hydrated.value && !completed.value && initialSyncReady.value);
+  const canAutoStart = computed(() =>
+    hydrated.value
+    && !completed.value
+    && (initialSyncReady.value || lastRunSource.value === "auto"),
+  );
 
   return {
     hydrated,
@@ -103,11 +115,13 @@ export const useOnboardingStore = defineStore("onboarding", () => {
     completedAt,
     isActive,
     requestedRunId,
+    lastRunSource,
     initialSyncReady,
     canAutoStart,
     hydrate,
     setActive,
     setInitialSyncReady,
+    setRunSource,
     requestStart,
     markCompleted,
     dismiss,

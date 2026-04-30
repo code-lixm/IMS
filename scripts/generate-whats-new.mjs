@@ -116,6 +116,63 @@ export function parseChangelogEntry(content, version) {
   return { version, date, sections };
 }
 
+/**
+ * Parse all version entries from a CHANGELOG.md content.
+ *
+ * Returns entries in the order they appear in the file (newest first).
+ * Skips the Unreleased section.
+ */
+export function parseAllChangelogEntries(content) {
+  const lines = content.split("\n");
+  const entries = [];
+
+  // Regex to match any ## [VERSION] - YYYY-MM-DD heading (with date capture)
+  const headingRegex = /^## \[([^\]]+)\] - (\d{4}-\d{2}-\d{2})$/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(headingRegex);
+    if (!m) continue;
+
+    const version = m[1];
+    // Skip Unreleased
+    if (version === "Unreleased") continue;
+
+    const date = m[2];
+    // Find end of this entry: next "## [" heading or EOF
+    let entryEnd = lines.length;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (/^## \[/.test(lines[j])) {
+        entryEnd = j;
+        break;
+      }
+    }
+
+    // Parse categories and items (same logic as parseChangelogEntry)
+    /** @type {{ title: string; items: string[] }[]} */
+    const sections = [];
+    let currentSection = null;
+
+    for (let k = i + 1; k < entryEnd; k++) {
+      const line = lines[k];
+      const headingMatch = line.match(/^### (.+)$/);
+      if (headingMatch) {
+        currentSection = { title: headingMatch[1].trim(), items: [] };
+        sections.push(currentSection);
+        continue;
+      }
+      const bulletMatch = line.match(/^- (.+)$/);
+      if (bulletMatch && currentSection) {
+        currentSection.items.push(bulletMatch[1].trim());
+        continue;
+      }
+    }
+
+    entries.push({ version, date, sections });
+  }
+
+  return entries;
+}
+
 function main() {
   const rootPkg = readJson("package.json");
   const version = rootPkg.version;
@@ -130,10 +187,15 @@ function main() {
       version,
       date: "",
       sections: [],
+      versions: [],
     });
     return;
   }
 
+  // Parse all entries first
+  const allEntries = parseAllChangelogEntries(changelogContent);
+
+  // Find the current version entry
   const entry = parseChangelogEntry(changelogContent, version);
 
   if (!entry) {
@@ -142,12 +204,21 @@ function main() {
       version,
       date: "",
       sections: [],
+      versions: allEntries,
     });
     return;
   }
 
-  writeJson("apps/web/src/assets/whats-new.json", entry);
-  console.log(`[whats-new] Generated whats-new.json for v${entry.version} (${entry.date})`);
+  // Build output: top-level fields for current version + all versions array
+  const output = {
+    version: entry.version,
+    date: entry.date,
+    sections: entry.sections,
+    versions: allEntries,
+  };
+
+  writeJson("apps/web/src/assets/whats-new.json", output);
+  console.log(`[whats-new] Generated whats-new.json for v${entry.version} (${entry.date}) with ${allEntries.length} version(s)`);
   if (entry.sections.length > 0) {
     const sections = entry.sections.map((s) => `${s.title}(${s.items.length})`).join(", ");
     console.log(`[whats-new]   Sections: ${sections}`);

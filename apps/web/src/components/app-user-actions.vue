@@ -17,7 +17,7 @@
       <DropdownMenuTrigger as-child>
         <button
           type="button"
-          class="relative flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-primary/10 text-sm font-semibold text-primary transition-all hover:scale-[1.02] hover:bg-primary/15 hover:shadow-sm dark:border-border/80 dark:bg-primary/20 dark:text-primary-foreground dark:hover:bg-primary/30"
+          class="relative flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-primary/10 text-sm font-semibold text-primary transition-all hover:scale-[1.02] hover:bg-primary/15 dark:border-border/80 dark:bg-primary/20 dark:text-primary-foreground dark:hover:bg-primary/30"
         >
           <img
             v-if="userAvatarUrl"
@@ -51,6 +51,9 @@
           导入任务
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem @click="handleShowChangelog">
+          更新日志
+        </DropdownMenuItem>
         <DropdownMenuItem @click="handleRestartOnboarding">
           新手引导
         </DropdownMenuItem>
@@ -85,6 +88,7 @@ import { MoonStar, SunMedium } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { useTheme } from "@/composables/use-theme";
 import { useAppNotifications } from "@/composables/use-app-notifications";
+import { showWhatsNew } from "@/composables/use-whats-new";
 import { reportAppError } from "@/lib/errors/normalize";
 import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
@@ -139,6 +143,11 @@ const userInitial = computed(() => {
   return source ? source.charAt(source.length - 1).toUpperCase() : "我";
 });
 const userAvatarUrl = computed<string | null>(() => null);
+
+function handleShowChangelog() {
+  menuOpen.value = false;
+  showWhatsNew();
+}
 
 function handleRestartOnboarding() {
   menuOpen.value = false;

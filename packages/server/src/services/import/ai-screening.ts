@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { eq } from "drizzle-orm";
@@ -29,6 +30,14 @@ type AiScreeningOutputWithMetadata = Partial<AiScreeningOutput> & {
 
 interface ScreeningTemplatePromptContext {
   templateInfo: ScreeningTemplateInfo;
+}
+
+export interface ImportScreeningReuseContext {
+  normalizedBaseURL: string;
+  promptSnapshot: string;
+  screeningModel: string;
+  screeningProviderId: string | null;
+  templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
 }
 
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https://ai-gateway.vercel.com/v1";
@@ -248,7 +257,7 @@ async function generateMiniMaxScreeningConclusion(
   );
 }
 
-async function resolveScreeningTemplateContext(
+export async function resolveScreeningTemplateContext(
   templateId: string | undefined,
   templateService: Pick<ScreeningTemplatesService, "getTemplate"> = screeningTemplatesService,
 ): Promise<ScreeningTemplatePromptContext | null> {
@@ -287,12 +296,13 @@ function buildImportScreeningSystemPrompt(templateContext: ScreeningTemplateProm
   ].join("\n");
 }
 
-async function resolveImportAiEndpoint() {
+export async function resolveImportAiEndpoint() {
   if (DEFAULT_OPENAI_COMPATIBLE_API_KEY.trim()) {
     return {
       baseURL: DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
       apiKey: DEFAULT_OPENAI_COMPATIBLE_API_KEY,
       model: DEFAULT_IMPORT_SCREENING_MODEL,
+      providerId: "openai-compatible",
     };
   }
 
@@ -318,7 +328,7 @@ async function resolveImportAiEndpoint() {
       baseURL: customEndpoint.baseURL || DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
       apiKey: customEndpoint.apiKey,
       model: customEndpoint.providerId === "minimax" ? "MiniMax-M2.7" : DEFAULT_IMPORT_SCREENING_MODEL,
-      providerId: customEndpoint.providerId ?? null,
+      providerId: customEndpoint.providerId ?? "openai-compatible",
     };
   }
 
@@ -326,7 +336,26 @@ async function resolveImportAiEndpoint() {
     baseURL: DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
     apiKey: "",
     model: DEFAULT_IMPORT_SCREENING_MODEL,
-    providerId: null,
+    providerId: "openai-compatible",
+  };
+}
+
+export async function resolveImportScreeningReuseContext(templateId: string | undefined): Promise<ImportScreeningReuseContext> {
+  const endpoint = await resolveImportAiEndpoint();
+  const templateContext = await resolveScreeningTemplateContext(templateId);
+  const promptSnapshot = buildImportScreeningSystemPrompt(templateContext);
+
+  return {
+    normalizedBaseURL: normalizeOpenAIBaseURL(endpoint.baseURL),
+    promptSnapshot,
+    screeningModel: endpoint.model,
+    screeningProviderId: endpoint.providerId ?? null,
+    templateInfo: templateContext
+      ? {
+          ...templateContext.templateInfo,
+          renderedPromptSnapshot: promptSnapshot,
+        }
+      : undefined,
   };
 }
 
@@ -645,7 +674,7 @@ function parseRuntimeModelName(modelId: string) {
   return modelId.slice(separatorIndex + 2);
 }
 
-function normalizeOpenAIBaseURL(baseURL: string | null | undefined): string {
+export function normalizeOpenAIBaseURL(baseURL: string | null | undefined): string {
   const trimmed = baseURL?.trim();
   if (!trimmed) {
     return DEFAULT_OPENAI_COMPATIBLE_BASE_URL;
@@ -656,4 +685,8 @@ function normalizeOpenAIBaseURL(baseURL: string | null | undefined): string {
     return withoutOperationPath;
   }
   return `${withoutOperationPath}/v1`;
+}
+
+export function sha256Text(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }

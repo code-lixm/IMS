@@ -661,7 +661,6 @@
       v-model:open="baobaoLoginDialogOpen"
       @authenticated="handleBaobaoAuthenticated"
     />
-    <WhatsNewDialog :open="whatsNewDialogVisible" @close="dismissWhatsNew" />
   </AppPageShell>
 </template>
 
@@ -690,7 +689,6 @@ import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import BaobaoLoginDialog from "@/components/auth/baobao-login-dialog.vue";
 import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue";
-import WhatsNewDialog from "@/components/changelog/WhatsNewDialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
@@ -749,7 +747,7 @@ const {
   AVAILABLE_COLORS: themeColors,
   AVAILABLE_RADII: themeRadii,
 } = useTheme();
-const { dialogVisible: whatsNewDialogVisible, showWhatsNew, dismissWhatsNew } = useWhatsNew();
+const { showWhatsNew } = useWhatsNew();
 const syncEnabled = ref(false);
 const baobaoLoginDialogOpen = ref(false);
 const pendingBaobaoAction = ref<"run-sync" | "toggle-sync" | null>(null);

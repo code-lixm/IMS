@@ -2,7 +2,7 @@
   <section class="flex h-full min-h-0 flex-col gap-3">
     <header class="flex items-center justify-between">
       <h3 class="text-sm font-semibold">文件资源</h3>
-      <Badge variant="outline" class="h-8 rounded-sm gap-1.5 border-border/60 bg-background px-2.5 text-xs font-medium leading-none shadow-none">
+        <Badge variant="outline" class="h-8 rounded-sm gap-1.5 border-border/60 bg-background px-2.5 text-xs font-medium leading-none">
         <FileText class="h-3.5 w-3.5" />
         {{ totalCount }} 个文件
       </Badge>
@@ -57,7 +57,7 @@
                   type="button"
                   variant="outline"
                   size="icon"
-                  class="h-8 w-8 rounded-md border-border/60 bg-background text-foreground shadow-none hover:bg-accent"
+                  class="h-8 w-8 rounded-md border-border/60 bg-background text-foreground hover:bg-accent"
                   title="预览"
                   @click="openPreview(file)"
                 >

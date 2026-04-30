@@ -529,7 +529,7 @@ export interface TemplateEvidence {
 
 export type ImportScreeningStatus = "not_requested" | "queued" | "running" | "completed" | "failed";
 
-export type ImportScreeningSource = "ai" | "heuristic" | "failed";
+export type ImportScreeningSource = "ai" | "reused" | "heuristic" | "failed";
 
 export interface ImportScreeningConclusion {
   verdict: ImportScreeningVerdict;
@@ -562,6 +562,10 @@ export interface ImportTaskResultData {
   screeningConclusion?: ImportScreeningConclusion | null;
   templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
   universityVerification?: UniversityVerificationResult;
+  fileHash?: string | null;
+  screeningReuseKey?: string | null;
+  reusedFromTaskId?: string | null;
+  reusedAt?: number | null;
 }
 
 export interface CreateImportBatchData {

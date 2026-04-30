@@ -8,7 +8,7 @@ import { useRoute, useRouter } from "vue-router";
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import { useAuthStore } from "@/stores/auth";
-import { useOnboardingStore } from "@/stores/onboarding";
+import { useOnboardingStore, type OnboardingRunSource } from "@/stores/onboarding";
 
 interface OnboardingStep {
   title: string;
@@ -142,7 +142,10 @@ watch(
 
     handledRequestRunId = nextRunId;
     autoStartAttempted = true;
-    scheduleStart({ force: true });
+    scheduleStart({
+      force: true,
+      source: onboardingStore.lastRunSource ?? "manual",
+    });
   },
 );
 
@@ -158,7 +161,8 @@ watch(
     }
 
     autoStartAttempted = true;
-    scheduleStart();
+    onboardingStore.setRunSource("auto");
+    scheduleStart({ source: "auto" });
   },
   { immediate: true },
 );
@@ -192,6 +196,11 @@ function destroyTour() {
   tour?.destroy();
   tour = null;
   onboardingStore.setActive(false);
+}
+
+// Test isolation: allow E2E tests to destroy the overlay between tests
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as Window & { __test_destroyDriver?: () => void }).__test_destroyDriver = destroyTour;
 }
 
 function createTour() {
@@ -233,14 +242,14 @@ function createTour() {
   });
 }
 
-function scheduleStart(options?: { force?: boolean }) {
+function scheduleStart(options?: { force?: boolean; source?: OnboardingRunSource }) {
   clearStartTimer();
   startTimer = window.setTimeout(() => {
     void startTour(options);
   }, 420);
 }
 
-async function startTour(options?: { force?: boolean }) {
+async function startTour(options?: { force?: boolean; source?: OnboardingRunSource }) {
   if (!canStartTour()) {
     return;
   }
@@ -250,6 +259,9 @@ async function startTour(options?: { force?: boolean }) {
   }
 
   clearStartTimer();
+  if (options?.source) {
+    onboardingStore.setRunSource(options.source);
+  }
   createTour();
   onboardingStore.setActive(true);
   await nextTick();

@@ -97,7 +97,7 @@
         <Button
           :variant="props.syncError ? 'destructive' : 'outline'"
           size="sm"
-          class="gap-1.5 shadow-none"
+          class="gap-1.5"
           :disabled="props.syncLoading || props.resetSyncLoading"
           @click="emit('sync')"
         >

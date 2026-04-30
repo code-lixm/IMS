@@ -47,6 +47,7 @@ export const resumes = sqliteTable("resumes", {
   extractedText: text("extracted_text"),
   parsedDataJson: text("parsed_data_json"),
   ocrConfidence: integer("ocr_confidence"),
+  fileHash: text("file_hash"),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -173,6 +174,7 @@ export const importFileTasks = sqliteTable("import_file_tasks", {
   candidateId: text("candidate_id").references(() => candidates.id),
   resultJson: text("result_json"),
   retryCount: integer("retry_count").notNull().default(0),
+  fileHash: text("file_hash"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

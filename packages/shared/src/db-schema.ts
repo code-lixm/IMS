@@ -95,6 +95,7 @@ export interface Resume {
   extractedText: string | null;
   parsedDataJson: string | null; // ParsedResume JSON
   ocrConfidence: number | null;
+  fileHash: string | null;
   createdAt: number;
 }
 
@@ -203,6 +204,7 @@ export interface ImportFileTask {
   candidateId: string | null;
   resultJson: string | null;
   retryCount: number;
+  fileHash: string | null;
   createdAt: number;
   updatedAt: number;
 }

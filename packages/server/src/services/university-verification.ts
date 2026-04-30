@@ -20,10 +20,22 @@ const API_UNAVAILABLE_DETAIL = "外部院校验证服务暂不可用，本次未
 interface ApiDaxueResponse {
   code: number;
   msg?: string;
-  data?: {
+  data?: string | {
     intro?: string;
     [key: string]: unknown;
-  };
+  } | null;
+}
+
+export function sanitizeSchoolQueryName(schoolName: string): string {
+  return schoolName.replace(/[\p{P}\p{S}\s]+/gu, "").trim();
+}
+
+function isSchoolNotFoundResponse(parsed: ApiDaxueResponse): boolean {
+  const messageParts = [
+    parsed.msg,
+    typeof parsed.data === "string" ? parsed.data : undefined,
+  ];
+  return parsed.code === 201 && messageParts.some((part) => part?.includes("学校不存在"));
 }
 
 function extractEliteLabels(intro: string): {
@@ -146,8 +158,9 @@ export async function verifySchool(
 
   let rawJson: string;
   try {
+    const queryName = sanitizeSchoolQueryName(schoolName) || schoolName;
     const response = await fetch(
-      `${API_BASE}?daxue=${encodeURIComponent(schoolName)}`,
+      `${API_BASE}?daxue=${encodeURIComponent(queryName)}`,
       { signal: AbortSignal.timeout(TIMEOUT_MS) },
     );
 
@@ -217,6 +230,35 @@ export async function verifySchool(
     };
   }
 
+  if (isSchoolNotFoundResponse(parsed)) {
+    const detail = typeof parsed.data === "string" ? parsed.data : parsed.msg ?? null;
+    const now = Date.now();
+    db.insert(universityCache)
+      .values({
+        id: `cache_${schoolName}`,
+        schoolName,
+        responseJson: rawJson.slice(0, 10_000),
+        is985: 0,
+        is211: 0,
+        isDoubleFirstClass: 0,
+        detail,
+        found: 0,
+        verdict: "not_found",
+        queriedAt: now,
+      })
+      .run();
+
+    return {
+      schoolName,
+      found: false,
+      is985: false,
+      is211: false,
+      isDoubleFirstClass: false,
+      detail,
+      verdict: "not_found",
+    };
+  }
+
   if (parsed.code !== 200) {
     const detail = API_UNAVAILABLE_DETAIL;
     const now = Date.now();
@@ -246,7 +288,7 @@ export async function verifySchool(
     };
   }
 
-  const data = parsed.data;
+  const data = typeof parsed.data === "object" ? parsed.data : null;
   if (!data) {
     const now = Date.now();
     db.insert(universityCache)

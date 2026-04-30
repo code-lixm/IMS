@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS resumes (
   extracted_text TEXT,
   parsed_data_json TEXT,
   ocr_confidence INTEGER,
+  file_hash TEXT,
   created_at INTEGER NOT NULL
 );
 
@@ -156,6 +157,7 @@ CREATE TABLE IF NOT EXISTS import_file_tasks (
   candidate_id TEXT REFERENCES candidates(id),
   result_json TEXT,
   retry_count INTEGER NOT NULL DEFAULT 0,
+  file_hash TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -395,6 +397,8 @@ END
 WHERE verdict IS NULL OR (verdict = 'verified' AND found = 0);
 `);
 ensureColumn("import_batches", "template_id", "TEXT");
+ensureColumn("resumes", "file_hash", "TEXT");
+ensureColumn("import_file_tasks", "file_hash", "TEXT");
 export const db = drizzle(sqlite);
 
 export const rawDb = sqlite;

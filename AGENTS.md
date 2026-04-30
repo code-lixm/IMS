@@ -86,6 +86,7 @@ ims/
 ## RELEASE / COMMIT LESSONS
 
 - **功能提交必须同步维护 CHANGELOG** — 生成 commit 前先判断本次变更是否面向用户可见；若是，必须先更新 `CHANGELOG.md` 的 `[Unreleased]` 或当前版本条目，再生成 `apps/web/src/assets/whats-new.json`（`pnpm changelog:build`）。不要只提交代码而漏掉 changelog，否则 release notes / updater notes / What's New 弹窗会缺内容。
+- **提交前必须完成 changelog 检查** — 任何 commit 前都必须检查本次变更是否需要记录到 `CHANGELOG.md`；用户可见的功能、修复、文案、发布链路、导入/初筛/同步行为变化都必须写入 `[Unreleased]`，并运行 `pnpm changelog:build` 同步 `apps/web/src/assets/whats-new.json`。未完成该检查不得进入 commit 流程。
 - **commit 信息要能反推 changelog 分类** — 提交信息使用清晰 scope + 动词，便于 `git-cliff` 草稿归类；常用映射：`feat`→新增，`fix`→修复，`perf/refactor`→优化，`change`/破坏兼容→变更，`remove`→移除。不要写笼统的 `update stuff`、`misc changes`。
 - **提交前检查 changelog 派生产物** — 与 changelog 相关改动提交前至少执行 `pnpm changelog:build`、`pnpm release:check`、`pnpm typecheck`；涉及 UI 展示时再跑对应 Vitest/E2E。确认 `CHANGELOG.md` 是唯一人工维护源，`whats-new.json`、GitHub Release body、Tauri updater notes 都只从它派生。
 - **发版提交前必须同步所有版本文件** — 不要只改 root `package.json` 和 `apps/desktop/package.json`。发布 tag 前必须确认以下文件版本一致：`package.json`、`apps/web/package.json`、`apps/desktop/package.json`、`packages/server/package.json`、`packages/shared/package.json`、`apps/desktop/Cargo.toml`、`apps/desktop/Cargo.lock`、`apps/desktop/tauri.conf.json`、`apps/desktop/tauri.local.conf.json`。否则 GitHub Actions 虽会被 tag 触发，但构建产物版本可能错误，甚至 release 失败。
