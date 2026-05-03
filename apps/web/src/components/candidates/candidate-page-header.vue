@@ -62,8 +62,11 @@
           variant="secondary"
           size="sm"
           class="gap-2"
+          aria-label="初筛列表"
+          title="初筛列表"
           @click="emit('goto-import')"
         >
+          <Search class="h-4 w-4 lg:hidden" />
           <span class="hidden lg:inline">初筛列表</span>
           <Badge
             v-if="(importActivityCount ?? 0) > 0"
@@ -77,9 +80,12 @@
           variant="secondary"
           size="sm"
           class="gap-1.5"
+          aria-label="导入面试信息"
+          title="导入面试信息"
           :disabled="isImporting"
           @click="emit('import-imr')"
         >
+          <Download class="h-4 w-4 lg:hidden" />
           <span class="hidden lg:inline">导入面试信息</span>
         </Button>
       </div>

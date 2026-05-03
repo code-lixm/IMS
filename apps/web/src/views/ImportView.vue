@@ -351,7 +351,7 @@
             </div>
             <div v-else class="space-y-3">
               <article
-                v-for="f in batchFiles[b.id]"
+                v-for="f in sortedBatchFiles(b.id)"
                 :key="f.id"
                 class="relative overflow-hidden rounded-xl border bg-background px-4 py-3 pb-14 shadow-sm cursor-pointer hover:bg-muted/30 transition-colors"
                 @click="
@@ -590,6 +590,8 @@
       :open="screeningDialogOpen"
       :screening-data="selectedScreeningData"
       :file="selectedFile"
+      :current-position="currentScreeningPosition"
+      :total-positions="currentScreeningTotal"
       :has-prev="Boolean(previousScreeningFile)"
       :has-next="Boolean(nextScreeningFile)"
       @update:open="screeningDialogOpen = $event"
@@ -1127,6 +1129,35 @@ function screeningResult(file: ImportFileTask) {
   return parseImportTaskResult(file.resultJson);
 }
 
+function screeningScoreValue(file: ImportFileTask): number | null {
+  const score = screeningResult(file)?.screeningConclusion?.score;
+  return typeof score === "number" && Number.isFinite(score) ? score : null;
+}
+
+function sortedBatchFiles(batchId: string): ImportFileTask[] {
+  return (batchFiles.value[batchId] ?? [])
+    .map((file, index) => ({ file, index }))
+    .sort((a, b) => {
+      const scoreA = screeningScoreValue(a.file);
+      const scoreB = screeningScoreValue(b.file);
+
+      if (scoreA !== null && scoreB !== null && scoreA !== scoreB) {
+        return scoreB - scoreA;
+      }
+
+      if (scoreA !== null && scoreB === null) {
+        return -1;
+      }
+
+      if (scoreA === null && scoreB !== null) {
+        return 1;
+      }
+
+      return a.index - b.index;
+    })
+    .map(({ file }) => file);
+}
+
 function initialDialogTemplateId() {
   const templates = screeningTemplates.templates.value;
   if (templates.length === 0) return "";
@@ -1480,11 +1511,25 @@ const selectedScreeningData =
 const selectedFile = ref<ImportFileTask | null>(null);
 
 const currentScreeningFiles = computed(() => {
-  const batchId = selectedFile.value?.batchId;
-  if (!batchId) return [] as ImportFileTask[];
-  return (batchFiles.value[batchId] ?? []).filter(
-    (file) => Boolean(parseImportTaskResult(file.resultJson)?.parsedResume),
-  );
+  const currentBatchId = selectedFile.value?.batchId;
+  if (!currentBatchId) return [] as ImportFileTask[];
+
+  return safeBatches.value.reduce<ImportFileTask[]>((files, batch) => {
+    if (!expandedBatches.value.has(batch.id)) {
+      return files;
+    }
+
+    const screenableBatchFiles = sortedBatchFiles(batch.id).filter(
+      (file) => Boolean(parseImportTaskResult(file.resultJson)?.parsedResume),
+    );
+
+    if (screenableBatchFiles.length === 0) {
+      return files;
+    }
+
+    files.push(...screenableBatchFiles);
+    return files;
+  }, []);
 });
 
 const currentScreeningFileIndex = computed(() => {
@@ -1493,14 +1538,33 @@ const currentScreeningFileIndex = computed(() => {
   return currentScreeningFiles.value.findIndex((file) => file.id === currentId);
 });
 
-const previousScreeningFile = computed(() => {
+const currentScreeningPosition = computed(() => {
   const index = currentScreeningFileIndex.value;
-  return index > 0 ? currentScreeningFiles.value[index - 1] ?? null : null;
+  return index >= 0 ? index + 1 : 0;
+});
+
+const currentScreeningTotal = computed(() => {
+  return currentScreeningFiles.value.length;
+});
+
+const previousScreeningFile = computed(() => {
+  const files = currentScreeningFiles.value;
+  const index = currentScreeningFileIndex.value;
+  if (files.length <= 1 || index < 0) {
+    return null;
+  }
+
+  return files[(index - 1 + files.length) % files.length] ?? null;
 });
 
 const nextScreeningFile = computed(() => {
+  const files = currentScreeningFiles.value;
   const index = currentScreeningFileIndex.value;
-  return index >= 0 ? currentScreeningFiles.value[index + 1] ?? null : null;
+  if (files.length <= 1 || index < 0) {
+    return null;
+  }
+
+  return files[(index + 1) % files.length] ?? null;
 });
 
 function showScreeningDetail(file: ImportFileTask) {

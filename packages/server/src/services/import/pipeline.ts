@@ -534,7 +534,9 @@ function wrapVerificationResult(
   }
   return {
     ...result,
-    screeningError: result.screeningError,
+    screeningError: verification.verdict === "api_failed"
+      ? result.screeningError
+      : removeUniqueMessage(result.screeningError, UNIVERSITY_API_UNAVAILABLE_ERROR),
     screeningConclusion: applyUniversityVerificationToConclusion(result.screeningConclusion!, verification),
     universityVerification: verification,
   };
@@ -570,6 +572,21 @@ function appendUniqueMessage(current: string | null | undefined, nextMessage: st
 
   return base.includes(nextMessage) ? base : `${base}；${nextMessage}`;
 }
+
+function removeUniqueMessage(current: string | null | undefined, messageToRemove: string): string | null {
+  const base = current?.trim();
+  if (!base) {
+    return null;
+  }
+
+  const messages = base
+    .split("；")
+    .map((message) => message.trim())
+    .filter((message) => message && message !== messageToRemove);
+
+  return messages.length > 0 ? messages.join("；") : null;
+}
+
 function extractSchoolName(conclusion: ImportScreeningConclusion): string | null {
   if (conclusion.universityVerification?.schoolName) {
     return conclusion.universityVerification.schoolName;

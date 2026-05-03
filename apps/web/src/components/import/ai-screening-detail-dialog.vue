@@ -6,8 +6,16 @@
   >
     <template #content>
       <div class="flex-1 grid gap-4 overflow-hidden">
-        <div class="min-w-0 pr-8">
-          <h2 class="truncate text-lg font-semibold leading-none">{{ dialogTitle }}</h2>
+        <div class="flex items-start justify-between gap-3 pr-8">
+          <div class="min-w-0">
+            <h2 class="truncate text-lg font-semibold leading-none">{{ dialogTitle }}</h2>
+          </div>
+          <span
+            v-if="showPositionIndicator"
+            class="inline-flex shrink-0 items-center rounded-md border border-border/50 bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums"
+          >
+            {{ currentPosition }} / {{ totalPositions }}
+          </span>
         </div>
 
         <Tabs v-model="activeTab" default-value="screening" class="flex-1 flex flex-col min-h-0">
@@ -340,6 +348,8 @@ const props = defineProps<{
   open: boolean;
   screeningData: ImportTaskResultWithConfidence | null;
   file: ImportFileTask | null;
+  currentPosition?: number;
+  totalPositions?: number;
   hasPrev?: boolean;
   hasNext?: boolean;
 }>();
@@ -486,6 +496,18 @@ const isScreeningRunning = computed(() => {
 const dialogTitle = computed(() => {
   const fileName = props.file?.originalPath?.split("#").pop()?.split("/").pop() ?? "文件";
   return fileName;
+});
+
+const currentPosition = computed(() => {
+  return props.currentPosition ?? 0;
+});
+
+const totalPositions = computed(() => {
+  return props.totalPositions ?? 0;
+});
+
+const showPositionIndicator = computed(() => {
+  return totalPositions.value > 0 && currentPosition.value > 0;
 });
 
 const isPdf = computed(() => {

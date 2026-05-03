@@ -320,14 +320,14 @@
       <!-- 分页器：固定在底部 -->
       <div class="shrink-0 border-t bg-background px-4 py-3">
         <div
-          class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
+          class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2"
         >
-          <div class="text-sm text-muted-foreground">
+          <div class="text-sm text-muted-foreground sm:shrink-0">
             共 {{ total }} 位候选人，第 {{ page }} / {{ totalPages }} 页
           </div>
 
           <div
-            class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
+            class="flex flex-col gap-3 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end sm:gap-2"
           >
             <label
               class="flex items-center gap-2 text-sm text-muted-foreground"
