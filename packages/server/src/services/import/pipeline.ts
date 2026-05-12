@@ -2,7 +2,7 @@ import { readFileSync, copyFileSync, existsSync, mkdirSync, unlinkSync, writeFil
 import { join, basename, extname } from "node:path";
 import JSZip from "jszip";
 import { db } from "../../db";
-import { artifacts, candidateWorkspaces, candidates, importBatches, importFileTasks, interviews, resumes } from "../../schema";
+import { artifacts, candidateWorkspaces, candidates, importBatches, importFileTasks, interviews, resumes, screeningScoreFeedbacks } from "../../schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { classifyFileType, ImportErrorCodes, type FileType } from "./types";
 import { extractText } from "./extractor";
@@ -11,9 +11,20 @@ import { generateImportScreeningConclusionWithAI, resolveImportScreeningReuseCon
 import { buildScreeningReuseKey, computeFileHash, findReusableCompletedScreening } from "./hash-reuse";
 import { verifyCandidateSchools } from "../university-verification";
 import { config } from "../../config";
-import { ErrorCodes, type ImportScreeningConclusion, type ImportScreeningExportMode, type ImportScreeningExportRequest, type ImportTaskResultData, type UniversityVerificationResult } from "@ims/shared";
+import { ErrorCodes, type ImportScreeningConclusion as BaseImportScreeningConclusion, type ImportScreeningExportMode, type ImportScreeningExportRequest, type ImportScreeningScoreFeedback as SharedImportScreeningScoreFeedback, type ImportTaskResultData as BaseImportTaskResultData, type ImportTaskScreeningScoreData, type UniversityVerificationResult, type UpdateImportTaskScreeningScoreInput, applyDerivedRecommendationToTaskResult, getEffectiveScreeningScore, normalizeBatchScreeningConfig, validateBatchScreeningConfig } from "@ims/shared";
 import { extractPdfEntriesFromZip, MAX_IMPORT_FILE_SIZE_BYTES, ZipPdfError } from "./zip-pdf";
 import { logError, logInfo, logWarn } from "../../utils/logger";
+
+type ImportScreeningConclusion = BaseImportScreeningConclusion & {
+  matchedTemplateId?: string | null;
+};
+
+type ImportScreeningScoreFeedback = SharedImportScreeningScoreFeedback;
+
+type ImportTaskResultData = Omit<BaseImportTaskResultData, "matchedTemplateId" | "screeningConclusion"> & {
+  matchedTemplateId?: string | null;
+  screeningConclusion?: ImportScreeningConclusion | null;
+};
 
 type ImportTaskResultWithConfidence = Omit<ImportTaskResultData, "screeningStatus" | "screeningSource" | "universityVerification"> & {
   extractionConfidence?: number | null;
@@ -108,26 +119,218 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function resolveScreeningReuseMetadata(fileHash: string | null, templateId?: string | null) {
-  if (!fileHash) {
+interface ImportScreeningOptions {
+  groupId?: string | null;
+  templateId?: string | null;
+  passThreshold?: number;
+  reviewThreshold?: number;
+  learningEnabled?: boolean;
+}
+
+type BatchScreeningConfigSnapshot = ReturnType<typeof normalizeBatchScreeningConfig>;
+
+function normalizeBatchScreeningConfigFromBatch(
+  batch:
+    | {
+        groupId?: string | null;
+        passThreshold?: number | null;
+        reviewThreshold?: number | null;
+        learningEnabled?: boolean | null;
+      }
+    | null
+    | undefined,
+): BatchScreeningConfigSnapshot {
+  return normalizeBatchScreeningConfig({
+    groupId: batch?.groupId ?? null,
+    passThreshold: batch?.passThreshold ?? undefined,
+    reviewThreshold: batch?.reviewThreshold ?? undefined,
+    learningEnabled: batch?.learningEnabled ?? undefined,
+  });
+}
+
+async function loadBatchScreeningConfigByBatchId(batchId: string): Promise<BatchScreeningConfigSnapshot> {
+  const [batch] = await db.select({
+    groupId: importBatches.groupId,
+    passThreshold: importBatches.passThreshold,
+    reviewThreshold: importBatches.reviewThreshold,
+    learningEnabled: importBatches.learningEnabled,
+  }).from(importBatches).where(eq(importBatches.id, batchId)).limit(1);
+
+  return normalizeBatchScreeningConfigFromBatch(batch);
+}
+
+async function loadBatchScreeningConfigForTask(taskId: string): Promise<BatchScreeningConfigSnapshot> {
+  const [row] = await db.select({ batchId: importFileTasks.batchId }).from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
+  if (!row?.batchId) {
+    return normalizeBatchScreeningConfig(null);
+  }
+
+  return loadBatchScreeningConfigByBatchId(row.batchId);
+}
+
+function applyBatchScreeningConfigToResult(
+  result: ImportTaskResultWithConfidence,
+  config: BatchScreeningConfigSnapshot,
+): ImportTaskResultWithConfidence {
+  return applyDerivedRecommendationToTaskResult(result, config) as ImportTaskResultWithConfidence;
+}
+
+function clampScreeningScore(score: number) {
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function normalizeScoreFeedbackReason(reason: string | null | undefined): string | null {
+  const normalized = reason?.trim();
+  return normalized ? normalized : null;
+}
+
+function serializeScoreFeedbackRecord(
+  row: typeof screeningScoreFeedbacks.$inferSelect,
+): ImportScreeningScoreFeedback {
+  return {
+    id: row.id,
+    batchId: row.batchId,
+    fileTaskId: row.fileTaskId,
+    candidateId: row.candidateId ?? null,
+    groupId: row.groupId ?? null,
+    templateId: row.templateId ?? null,
+    matchedTemplateId: row.matchedTemplateId ?? null,
+    originalScore: row.originalScore,
+    overriddenScore: row.overriddenScore,
+    reason: row.reason ?? null,
+    learningEnabledSnapshot: row.learningEnabledSnapshot ?? false,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function attachScoreFeedbackHistoryToResult(
+  result: ImportTaskResultWithConfidence,
+  history: ImportScreeningScoreFeedback[],
+): ImportTaskResultWithConfidence {
+  if (!result.screeningConclusion) {
     return {
-      screeningReuseKey: null,
-      templateInfo: undefined,
+      ...result,
+      scoreFeedbackHistory: history,
     };
   }
 
-  const reuseContext = await resolveImportScreeningReuseContext(templateId ?? undefined);
+  const latest = history[0] ?? null;
   return {
+    ...result,
+    screeningConclusion: {
+      ...result.screeningConclusion,
+      scoreOverride: latest
+        ? {
+            feedbackId: latest.id,
+            originalScore: latest.originalScore,
+            overriddenScore: latest.overriddenScore,
+            reason: latest.reason,
+            learningEnabledSnapshot: latest.learningEnabledSnapshot,
+            createdAt: latest.createdAt,
+            updatedAt: latest.updatedAt,
+          }
+        : null,
+    },
+    scoreFeedbackHistory: history,
+  };
+}
+
+async function loadScoreFeedbackHistoryByTaskIds(taskIds: string[]): Promise<Map<string, ImportScreeningScoreFeedback[]>> {
+  const normalizedTaskIds = Array.from(new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean)));
+  if (normalizedTaskIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await db
+    .select()
+    .from(screeningScoreFeedbacks)
+    .where(inArray(screeningScoreFeedbacks.fileTaskId, normalizedTaskIds))
+    .orderBy(desc(screeningScoreFeedbacks.createdAt));
+
+  const result = new Map<string, ImportScreeningScoreFeedback[]>();
+  for (const row of rows) {
+    const current = result.get(row.fileTaskId) ?? [];
+    current.push(serializeScoreFeedbackRecord(row));
+    result.set(row.fileTaskId, current);
+  }
+
+  return result;
+}
+
+async function attachPersistedScoreFeedbackToResult(
+  taskId: string,
+  result: ImportTaskResultWithConfidence,
+): Promise<ImportTaskResultWithConfidence> {
+  const feedbackMap = await loadScoreFeedbackHistoryByTaskIds([taskId]);
+  return attachScoreFeedbackHistoryToResult(result, feedbackMap.get(taskId) ?? []);
+}
+
+async function buildLearningFeedbackContext(options: {
+  enabled?: boolean | null;
+  groupId?: string | null;
+  matchedTemplateId?: string | null;
+  excludeTaskId?: string | null;
+}): Promise<string[]> {
+  if (!options.enabled || !options.groupId?.trim() || !options.matchedTemplateId?.trim()) {
+    return [];
+  }
+
+  const rows = await db
+    .select()
+    .from(screeningScoreFeedbacks)
+    .where(and(
+      eq(screeningScoreFeedbacks.groupId, options.groupId.trim()),
+      eq(screeningScoreFeedbacks.matchedTemplateId, options.matchedTemplateId.trim()),
+    ))
+    .orderBy(desc(screeningScoreFeedbacks.createdAt));
+
+  return rows
+    .filter((row) => row.fileTaskId !== options.excludeTaskId)
+    .slice(0, 8)
+    .map((row, index) => {
+      const reason = normalizeScoreFeedbackReason(row.reason);
+      return `${index + 1}. 原始分 ${row.originalScore}，人工改为 ${row.overriddenScore}${reason ? `，原因：${reason}` : ""}`;
+    });
+}
+
+async function resolveScreeningReuseMetadata(
+  fileHash: string | null,
+  parsedResume?: ImportTaskResultData["parsedResume"],
+  options?: ImportScreeningOptions,
+) {
+  const reuseContext = await resolveImportScreeningReuseContext({
+    parsed: parsedResume,
+    groupId: options?.groupId,
+    templateId: options?.templateId ?? undefined,
+  });
+
+  if (!fileHash) {
+    return {
+      matchedTemplateId: reuseContext.matchedTemplateId,
+      selectionSource: reuseContext.selectionSource,
+      screeningReuseKey: null,
+      shortlistedTemplateIds: reuseContext.shortlistedTemplateIds,
+      templateInfo: reuseContext.templateInfo,
+      resolvedContext: reuseContext,
+    };
+  }
+
+  return {
+    matchedTemplateId: reuseContext.matchedTemplateId,
+    selectionSource: reuseContext.selectionSource,
     screeningReuseKey: buildScreeningReuseKey({
       fileHash,
       promptSnapshot: reuseContext.promptSnapshot,
-      templateId: reuseContext.templateInfo?.templateId,
+      matchedTemplateId: reuseContext.matchedTemplateId,
       templateVersion: reuseContext.templateInfo?.templateVersion,
       screeningProviderId: reuseContext.screeningProviderId,
       screeningModel: reuseContext.screeningModel,
       normalizedBaseURL: reuseContext.normalizedBaseURL,
     }),
+    shortlistedTemplateIds: reuseContext.shortlistedTemplateIds,
     templateInfo: reuseContext.templateInfo,
+    resolvedContext: reuseContext,
   };
 }
 
@@ -138,6 +341,7 @@ function createBaseImportTaskResult(
     fileHash: string | null;
     screeningReuseKey?: string | null;
     templateInfo?: ImportTaskResultData["templateInfo"];
+    matchedTemplateId?: string | null;
   },
 ): ImportTaskResultWithConfidence {
   return {
@@ -151,6 +355,7 @@ function createBaseImportTaskResult(
     screeningReuseKey: options.screeningReuseKey ?? null,
     reusedFromTaskId: null,
     reusedAt: null,
+    matchedTemplateId: options.matchedTemplateId ?? options.templateInfo?.templateId ?? null,
     templateInfo: options.templateInfo,
     universityVerification: null,
   };
@@ -166,6 +371,7 @@ function buildCompletedAiScreeningResult(
     screeningSource: "ai",
     screeningError: null,
     screeningConclusion: aiConclusion,
+    matchedTemplateId: aiConclusion.matchedTemplateId ?? aiConclusion.templateInfo?.templateId ?? result.matchedTemplateId ?? null,
     templateInfo: aiConclusion.templateInfo ?? result.templateInfo,
   };
 }
@@ -180,6 +386,7 @@ function buildReusedScreeningResult(
     screeningSource: "reused",
     screeningError: null,
     screeningConclusion: reused.result.screeningConclusion ?? null,
+    matchedTemplateId: reused.result.matchedTemplateId ?? reused.result.screeningConclusion?.matchedTemplateId ?? reused.result.screeningConclusion?.templateInfo?.templateId ?? result.matchedTemplateId ?? null,
     templateInfo: reused.result.templateInfo ?? reused.result.screeningConclusion?.templateInfo ?? result.templateInfo,
     universityVerification: reused.result.universityVerification ?? reused.result.screeningConclusion?.universityVerification ?? null,
     reusedFromTaskId: reused.taskId,
@@ -286,7 +493,7 @@ export async function refreshBatchProgress(batchId: string) {
   }).where(eq(importBatches.id, batchId));
 }
 
-export async function processFile(taskId: string, filePath: string, fileTypeHint?: FileType, templateId?: string | null): Promise<void> {
+export async function processFile(taskId: string, filePath: string, fileTypeHint?: FileType, screeningOptions?: ImportScreeningOptions): Promise<void> {
   if (await markTaskCancelledIfNeeded(taskId)) {
     logInfo("import.file.cancelled_before_start", { taskId });
     await updateBatchProgress(taskId);
@@ -295,7 +502,13 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
 
   const startedAt = Date.now();
   const fileType = fileTypeHint ?? detectFileType(filePath);
-  logInfo("import.file.start", { taskId, fileType, fileExt: extname(filePath).toLowerCase(), hasTemplate: Boolean(templateId) });
+  logInfo("import.file.start", {
+    taskId,
+    fileType,
+    fileExt: extname(filePath).toLowerCase(),
+    groupId: screeningOptions?.groupId ?? null,
+    hasTemplate: Boolean(screeningOptions?.templateId),
+  });
   await updateTask(taskId, { status: "extracting", stage: "extracting", updatedAt: Date.now() });
 
   try {
@@ -380,10 +593,11 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       ocrConfidence: extractResult.confidence, fileHash, createdAt: Date.now(),
     });
 
-    const screeningReuseMetadata = await resolveScreeningReuseMetadata(fileHash, templateId ?? undefined);
+    const screeningReuseMetadata = await resolveScreeningReuseMetadata(fileHash, parsed, screeningOptions);
     let result = createBaseImportTaskResult(parsed, extractResult.confidence, {
       fileHash,
       screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+      matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
       templateInfo: screeningReuseMetadata.templateInfo,
     });
 
@@ -397,6 +611,7 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
         status: "ai_screening",
         stage: "ai_screening",
         candidateId,
+        matchedTemplateId: result.matchedTemplateId ?? null,
         resultJson: JSON.stringify(result),
         updatedAt: Date.now(),
       });
@@ -414,12 +629,28 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
           result = buildReusedScreeningResult(result, reusable);
           logInfo("import.file.ai_screening.finish", { taskId, candidateId, source: "reused", reusedFromTaskId: reusable.taskId });
         } else {
-          logInfo("import.file.ai_screening.start", { taskId, candidateId, hasTemplate: Boolean(templateId) });
+          const learningFeedback = await buildLearningFeedbackContext({
+            enabled: screeningOptions?.learningEnabled,
+            groupId: screeningOptions?.groupId ?? null,
+            matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
+            excludeTaskId: taskId,
+          });
+          logInfo("import.file.ai_screening.start", {
+            taskId,
+            candidateId,
+            groupId: screeningOptions?.groupId ?? null,
+            hasTemplate: Boolean(screeningOptions?.templateId),
+            matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
+            selectionSource: screeningReuseMetadata.selectionSource,
+          });
           const aiConclusion = await generateImportScreeningConclusionWithRetry({
             parsed,
             confidence: extractResult.confidence,
             fileName: basename(filePath),
-            templateId: templateId ?? undefined,
+            groupId: screeningOptions?.groupId,
+            templateId: screeningOptions?.templateId ?? undefined,
+            resolvedContext: screeningReuseMetadata.resolvedContext,
+            learningFeedback,
           }, { taskId, candidateId });
 
           result = buildCompletedAiScreeningResult(result, aiConclusion);
@@ -441,6 +672,10 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       }
     }
 
+    result = await attachPersistedScoreFeedbackToResult(taskId, result);
+    const batchScreeningConfig = normalizeBatchScreeningConfig(screeningOptions ?? null);
+    result = applyBatchScreeningConfigToResult(result, batchScreeningConfig);
+
     if (await markTaskCancelledIfNeeded(taskId)) {
       await cleanupImportedResumeIfExists(resumeId);
       if (candidateMatch.created) {
@@ -450,7 +685,7 @@ export async function processFile(taskId: string, filePath: string, fileTypeHint
       return;
     }
 
-    await updateTask(taskId, { status: "done", stage: "completed", candidateId, resultJson: JSON.stringify(result), fileHash, updatedAt: Date.now() });
+    await updateTask(taskId, { status: "done", stage: "completed", candidateId, matchedTemplateId: result.matchedTemplateId ?? null, resultJson: JSON.stringify(result), fileHash, updatedAt: Date.now() });
     await updateBatchProgress(taskId);
     logInfo("import.file.finish", {
       taskId,
@@ -744,7 +979,7 @@ function detectFileType(filePath: string): FileType {
   return classifyFileType(extname(filePath));
 }
 
-async function updateTask(taskId: string, updates: Partial<{ status: string; stage: string | null; errorCode: string | null; errorMessage: string | null; candidateId: string | null; resultJson: string | null; fileHash: string | null; updatedAt: number }>) {
+async function updateTask(taskId: string, updates: Partial<{ status: string; stage: string | null; errorCode: string | null; errorMessage: string | null; candidateId: string | null; matchedTemplateId: string | null; resultJson: string | null; fileHash: string | null; updatedAt: number }>) {
   await db.update(importFileTasks).set(updates).where(eq(importFileTasks.id, taskId));
 }
 
@@ -774,11 +1009,20 @@ export async function cancelImportBatch(batchId: string) {
   await refreshBatchProgress(batchId);
 }
 
-export async function rerunImportBatchScreening(batchId: string, templateId?: string): Promise<{ retriedCount: number }> {
+export async function rerunImportBatchScreening(batchId: string, groupId?: string | null, templateId?: string): Promise<{ retriedCount: number }> {
   const [batch] = await db.select().from(importBatches).where(eq(importBatches.id, batchId)).limit(1);
   if (!batch) {
     return { retriedCount: 0 };
   }
+  const effectiveGroupId = groupId?.trim() || batch.groupId || null;
+  const batchScreeningConfig = normalizeBatchScreeningConfigFromBatch(batch);
+  if (!effectiveGroupId) {
+    return { retriedCount: 0 };
+  }
+  if (batch.groupId !== effectiveGroupId) {
+    await db.update(importBatches).set({ groupId: effectiveGroupId }).where(eq(importBatches.id, batchId));
+  }
+
   const effectiveTemplateId = templateId ?? batch.templateId ?? undefined;
 
   const rows = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchId));
@@ -798,11 +1042,15 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
 
   for (const { task, result } of runnableTasks) {
     if (!result) continue;
-    const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, effectiveTemplateId);
+    const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, result.parsedResume, {
+      groupId: effectiveGroupId,
+      templateId: effectiveTemplateId,
+    });
     const nextResult: ImportTaskResultWithConfidence = {
       ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
         fileHash: task.fileHash,
         screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+        matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
         templateInfo: screeningReuseMetadata.templateInfo,
       }),
       screeningStatus: "queued",
@@ -811,6 +1059,7 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
     await updateTask(task.id, {
       status: "ai_screening",
       stage: "ai_screening",
+      matchedTemplateId: nextResult.matchedTemplateId ?? null,
       resultJson: JSON.stringify(nextResult),
       updatedAt: Date.now(),
     });
@@ -820,11 +1069,15 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
 
   for (const { task, result } of runnableTasks) {
     if (!result) continue;
-    const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, effectiveTemplateId);
+    const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, result.parsedResume, {
+      groupId: effectiveGroupId,
+      templateId: effectiveTemplateId,
+    });
     let nextResult: ImportTaskResultWithConfidence = {
       ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
         fileHash: task.fileHash,
         screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+        matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
         templateInfo: screeningReuseMetadata.templateInfo,
       }),
       screeningStatus: "running",
@@ -835,6 +1088,7 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
       ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
         fileHash: task.fileHash,
         screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+        matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
         templateInfo: screeningReuseMetadata.templateInfo,
       }),
       screeningStatus: "running",
@@ -842,6 +1096,7 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
     await updateTask(task.id, {
       status: "ai_screening",
       stage: "ai_screening",
+      matchedTemplateId: runningResult.matchedTemplateId ?? null,
       resultJson: JSON.stringify(runningResult),
       updatedAt: Date.now(),
     });
@@ -860,11 +1115,20 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
         nextResult = buildReusedScreeningResult(nextResult, reusable);
       } else {
         const confidence = await resolveTaskConfidence(task, result);
+        const learningFeedback = await buildLearningFeedbackContext({
+          enabled: batchScreeningConfig.learningEnabled,
+          groupId: effectiveGroupId,
+          matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
+          excludeTaskId: task.id,
+        });
         const aiConclusion = await generateImportScreeningConclusionWithRetry({
           parsed: result.parsedResume,
           confidence,
           fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+          groupId: effectiveGroupId,
           templateId: effectiveTemplateId,
+          resolvedContext: screeningReuseMetadata.resolvedContext,
+          learningFeedback,
         }, { taskId: task.id, candidateId: task.candidateId });
         nextResult = buildCompletedAiScreeningResult(nextResult, aiConclusion);
       }
@@ -875,16 +1139,22 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
     nextResult = nextResult.screeningConclusion && nextResult.screeningSource !== "reused"
       ? await attachUniversityVerificationResult(result.parsedResume, nextResult)
       : nextResult;
+    nextResult = applyBatchScreeningConfigToResult(nextResult, batchScreeningConfig);
     if (nextResult.screeningConclusion && task.candidateId) {
       const schoolName = extractSchoolName(nextResult.screeningConclusion);
       if (schoolName) {
         await updateCandidateOrganizationName(task.candidateId, schoolName);
       }
     }
+    nextResult = applyBatchScreeningConfigToResult(
+      await attachPersistedScoreFeedbackToResult(task.id, nextResult),
+      batchScreeningConfig,
+    );
 
     await updateTask(task.id, {
       status: "done",
       stage: "completed",
+      matchedTemplateId: nextResult.matchedTemplateId ?? null,
       resultJson: JSON.stringify(nextResult),
       updatedAt: Date.now(),
     });
@@ -895,7 +1165,7 @@ export async function rerunImportBatchScreening(batchId: string, templateId?: st
   return { retriedCount: runnableTasks.length };
 }
 
-export async function startRerunImportBatchScreening(batchId: string): Promise<{
+export async function startRerunImportBatchScreening(batchId: string, groupId?: string | null): Promise<{
   started: boolean;
   retriedCount: number;
   status: string;
@@ -922,6 +1192,21 @@ export async function startRerunImportBatchScreening(batchId: string): Promise<{
         notFound: false,
         alreadyRunning: true,
       };
+    }
+
+    const effectiveGroupId = groupId?.trim() || batch.groupId || null;
+    if (!effectiveGroupId) {
+      return {
+        started: false,
+        retriedCount: 0,
+        status: "missing_group",
+        notFound: false,
+        alreadyRunning: false,
+      };
+    }
+
+    if (groupId?.trim() && batch.groupId !== effectiveGroupId) {
+      await tx.update(importBatches).set({ groupId: effectiveGroupId }).where(eq(importBatches.id, batchId));
     }
 
     const rows = await tx.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchId));
@@ -957,12 +1242,27 @@ export async function startRerunImportBatchScreening(batchId: string): Promise<{
 
 
 
-export async function rerunFileScreening(taskId: string, templateId?: string): Promise<{ retried: boolean; screeningStatus: string }> {
+export async function rerunFileScreening(taskId: string, groupId?: string | null, templateId?: string): Promise<{ retried: boolean; screeningStatus: string }> {
   const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
   if (!task) {
     return { retried: false, screeningStatus: "not_requested" };
   }
-  const [batch] = await db.select({ templateId: importBatches.templateId }).from(importBatches).where(eq(importBatches.id, task.batchId)).limit(1);
+  const [batch] = await db.select({
+    templateId: importBatches.templateId,
+    groupId: importBatches.groupId,
+    passThreshold: importBatches.passThreshold,
+    reviewThreshold: importBatches.reviewThreshold,
+    learningEnabled: importBatches.learningEnabled,
+  }).from(importBatches).where(eq(importBatches.id, task.batchId)).limit(1);
+  const effectiveGroupId = groupId?.trim() || batch?.groupId || null;
+  const batchScreeningConfig = normalizeBatchScreeningConfigFromBatch(batch);
+  if (!effectiveGroupId) {
+    return { retried: false, screeningStatus: "not_requested" };
+  }
+  if (groupId?.trim() && batch?.groupId !== effectiveGroupId) {
+    await db.update(importBatches).set({ groupId: effectiveGroupId }).where(eq(importBatches.id, task.batchId));
+  }
+
   const effectiveTemplateId = templateId ?? batch?.templateId ?? undefined;
 
   const result = parseImportTaskResult(task.resultJson);
@@ -970,23 +1270,28 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
     return { retried: false, screeningStatus: "not_requested" };
   }
 
-  const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, effectiveTemplateId);
+  const screeningReuseMetadata = await resolveScreeningReuseMetadata(task.fileHash, result.parsedResume, {
+    groupId: effectiveGroupId,
+    templateId: effectiveTemplateId,
+  });
 
   const nextResult: ImportTaskResultWithConfidence = {
     ...createBaseImportTaskResult(result.parsedResume, result.extractionConfidence, {
       fileHash: task.fileHash,
       screeningReuseKey: screeningReuseMetadata.screeningReuseKey,
+      matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
       templateInfo: screeningReuseMetadata.templateInfo,
     }),
     screeningStatus: "running",
   };
 
-  await updateTask(taskId, {
-    status: "ai_screening",
-    stage: "ai_screening",
-    resultJson: JSON.stringify(nextResult),
-    updatedAt: Date.now(),
-  });
+    await updateTask(taskId, {
+      status: "ai_screening",
+      stage: "ai_screening",
+      matchedTemplateId: nextResult.matchedTemplateId ?? null,
+      resultJson: JSON.stringify(nextResult),
+      updatedAt: Date.now(),
+    });
 
   await updateBatchProgress(taskId);
 
@@ -1003,11 +1308,20 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
       Object.assign(nextResult, buildReusedScreeningResult(nextResult, reusable));
     } else {
       const confidence = await resolveTaskConfidence(task, result);
+      const learningFeedback = await buildLearningFeedbackContext({
+        enabled: batchScreeningConfig.learningEnabled,
+        groupId: effectiveGroupId,
+        matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
+        excludeTaskId: taskId,
+      });
       const aiConclusion = await generateImportScreeningConclusionWithRetry({
         parsed: result.parsedResume,
         confidence,
         fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+        groupId: effectiveGroupId,
         templateId: effectiveTemplateId,
+        resolvedContext: screeningReuseMetadata.resolvedContext,
+        learningFeedback,
       }, { taskId, candidateId: task.candidateId });
       Object.assign(nextResult, buildCompletedAiScreeningResult(nextResult, aiConclusion));
     }
@@ -1018,19 +1332,28 @@ export async function rerunFileScreening(taskId: string, templateId?: string): P
   if (nextResult.screeningConclusion && nextResult.screeningSource !== "reused") {
     Object.assign(nextResult, await attachUniversityVerificationResult(result.parsedResume, nextResult));
   }
+  Object.assign(nextResult, applyBatchScreeningConfigToResult(nextResult, batchScreeningConfig));
   if (nextResult.screeningConclusion && task.candidateId) {
     const schoolName = extractSchoolName(nextResult.screeningConclusion);
     if (schoolName) {
       await updateCandidateOrganizationName(task.candidateId, schoolName);
     }
   }
+  Object.assign(
+    nextResult,
+    applyBatchScreeningConfigToResult(
+      await attachPersistedScoreFeedbackToResult(taskId, nextResult),
+      batchScreeningConfig,
+    ),
+  );
 
-  await updateTask(taskId, {
-    status: "done",
-    stage: "completed",
-    resultJson: JSON.stringify(nextResult),
-    updatedAt: Date.now(),
-  });
+    await updateTask(taskId, {
+      status: "done",
+      stage: "completed",
+      matchedTemplateId: nextResult.matchedTemplateId ?? null,
+      resultJson: JSON.stringify(nextResult),
+      updatedAt: Date.now(),
+    });
 
   await updateBatchProgress(taskId);
 
@@ -1048,7 +1371,14 @@ export async function retryFileUniversityVerification(taskId: string): Promise<{
     return { retried: false, universityVerification: null };
   }
 
-  const nextResult = await attachUniversityVerificationResult(result.parsedResume, result, { forceRefresh: true });
+  const batchScreeningConfig = await loadBatchScreeningConfigForTask(taskId);
+  const nextResult = applyBatchScreeningConfigToResult(
+    await attachPersistedScoreFeedbackToResult(
+      taskId,
+      await attachUniversityVerificationResult(result.parsedResume, result, { forceRefresh: true }),
+    ),
+    batchScreeningConfig,
+  );
   if (nextResult.screeningConclusion && task.candidateId) {
     const schoolName = extractSchoolName(nextResult.screeningConclusion);
     if (schoolName) {
@@ -1067,6 +1397,153 @@ export async function retryFileUniversityVerification(taskId: string): Promise<{
     retried: true,
     universityVerification: nextResult.universityVerification ?? null,
   };
+}
+
+export async function updateImportTaskScreeningScore(
+  taskId: string,
+  input: UpdateImportTaskScreeningScoreInput,
+): Promise<ImportTaskScreeningScoreData | null> {
+  if (!Number.isInteger(input.score) || input.score < 0 || input.score > 100) {
+    throw new ImportScreeningExportError("VALIDATION_ERROR", "改分必须是 0 到 100 之间的整数", 422);
+  }
+
+  const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
+  if (!task) {
+    return null;
+  }
+
+  const [batch] = await db.select().from(importBatches).where(eq(importBatches.id, task.batchId)).limit(1);
+  if (!batch) {
+    return null;
+  }
+
+  const parsed = parseImportTaskResult(task.resultJson);
+  if (!parsed?.screeningConclusion) {
+    throw new ImportScreeningExportError("VALIDATION_ERROR", "当前文件还没有可改分的 AI 初筛结果", 422);
+  }
+
+  const visibleScore = getEffectiveScreeningScore(parsed.screeningConclusion);
+  if (typeof visibleScore !== "number" || !Number.isFinite(visibleScore)) {
+    throw new ImportScreeningExportError("VALIDATION_ERROR", "当前文件缺少有效评分，无法改分", 422);
+  }
+  const normalizedVisibleScore: number = visibleScore;
+  const originalScore = clampScreeningScore(normalizedVisibleScore);
+
+  const now = Date.now();
+  await db.insert(screeningScoreFeedbacks).values({
+    id: `scorefb_${crypto.randomUUID()}`,
+    batchId: task.batchId,
+    fileTaskId: task.id,
+    candidateId: task.candidateId ?? null,
+    groupId: batch.groupId ?? null,
+    templateId: batch.templateId ?? null,
+    matchedTemplateId:
+      task.matchedTemplateId
+      ?? parsed.matchedTemplateId
+      ?? parsed.screeningConclusion.matchedTemplateId
+      ?? parsed.screeningConclusion.templateInfo?.templateId
+      ?? null,
+    originalScore,
+    overriddenScore: clampScreeningScore(input.score),
+    reason: normalizeScoreFeedbackReason(input.reason),
+    learningEnabledSnapshot: batch.learningEnabled ?? false,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const nextConfig = normalizeBatchScreeningConfigFromBatch(batch);
+  const nextResult = applyBatchScreeningConfigToResult(
+    await attachPersistedScoreFeedbackToResult(taskId, parsed),
+    nextConfig,
+  );
+
+  await updateTask(taskId, {
+    resultJson: JSON.stringify(nextResult),
+    updatedAt: now,
+  });
+
+  return {
+    taskId,
+    batchId: task.batchId,
+    feedbackCount: nextResult.scoreFeedbackHistory?.length ?? 0,
+    currentScore: getEffectiveScreeningScore(nextResult.screeningConclusion),
+    overridden: Boolean(nextResult.screeningConclusion?.scoreOverride),
+  };
+}
+
+export async function clearImportTaskScreeningScoreFeedback(
+  taskId: string,
+): Promise<ImportTaskScreeningScoreData | null> {
+  const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
+  if (!task) {
+    return null;
+  }
+
+  const [batch] = await db.select().from(importBatches).where(eq(importBatches.id, task.batchId)).limit(1);
+  if (!batch) {
+    return null;
+  }
+
+  const parsed = parseImportTaskResult(task.resultJson);
+  if (!parsed?.screeningConclusion) {
+    throw new ImportScreeningExportError("VALIDATION_ERROR", "当前文件还没有可清除的 AI 初筛结果", 422);
+  }
+
+  await db.delete(screeningScoreFeedbacks).where(eq(screeningScoreFeedbacks.fileTaskId, taskId));
+
+  const nextConfig = normalizeBatchScreeningConfigFromBatch(batch);
+  const nextResult = applyBatchScreeningConfigToResult(
+    attachScoreFeedbackHistoryToResult(parsed, []),
+    nextConfig,
+  );
+
+  await updateTask(taskId, {
+    resultJson: JSON.stringify(nextResult),
+    updatedAt: Date.now(),
+  });
+
+  return {
+    taskId,
+    batchId: task.batchId,
+    feedbackCount: 0,
+    currentScore: getEffectiveScreeningScore(nextResult.screeningConclusion),
+    overridden: false,
+  };
+}
+
+export async function clearImportBatchScreeningFeedbacks(
+  batchId: string,
+): Promise<{ batchId: string; clearedCount: number } | null> {
+  const [batch] = await db.select().from(importBatches).where(eq(importBatches.id, batchId)).limit(1);
+  if (!batch) {
+    return null;
+  }
+
+  const tasks = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchId));
+  const feedbackMap = await loadScoreFeedbackHistoryByTaskIds(tasks.map((task) => task.id));
+  const clearedCount = Array.from(feedbackMap.values()).reduce((sum, rows) => sum + rows.length, 0);
+
+  await db.delete(screeningScoreFeedbacks).where(eq(screeningScoreFeedbacks.batchId, batchId));
+
+  const nextConfig = normalizeBatchScreeningConfigFromBatch(batch);
+  const now = Date.now();
+  for (const task of tasks) {
+    const parsed = parseImportTaskResult(task.resultJson);
+    if (!parsed?.screeningConclusion) {
+      continue;
+    }
+
+    const nextResult = applyBatchScreeningConfigToResult(
+      attachScoreFeedbackHistoryToResult(parsed, []),
+      nextConfig,
+    );
+    await updateTask(task.id, {
+      resultJson: JSON.stringify(nextResult),
+      updatedAt: now,
+    });
+  }
+
+  return { batchId, clearedCount };
 }
 
 async function markTaskCancelledIfNeeded(taskId: string): Promise<boolean> {
@@ -1317,6 +1794,20 @@ interface ExportableScreeningEntry {
   result: ImportTaskResultWithConfidence & { screeningConclusion: ImportScreeningConclusion };
   candidate: typeof candidates.$inferSelect | null;
   resume: typeof resumes.$inferSelect | null;
+  batchScreeningConfig: BatchScreeningConfigSnapshot;
+}
+
+function exportRecommendationOf(conclusion: ImportScreeningConclusion) {
+  return conclusion.derivedRecommendation ?? {
+    verdict: conclusion.verdict,
+    label: conclusion.label === "通过" || conclusion.label === "待定" || conclusion.label === "淘汰"
+      ? conclusion.label
+      : conclusion.verdict === "pass"
+        ? "通过"
+        : conclusion.verdict === "reject"
+          ? "淘汰"
+          : "待定",
+  };
 }
 
 export class ImportScreeningExportError extends Error {
@@ -1464,7 +1955,10 @@ function applyExportFilters(
       return false;
     }
 
-    const score = entry.result.screeningConclusion.score;
+    const score = getEffectiveScreeningScore(entry.result.screeningConclusion);
+    if (score === null) {
+      return false;
+    }
     if (scoreMin !== null && score < scoreMin) return false;
     if (scoreMax !== null && score > scoreMax) return false;
     return true;
@@ -1478,8 +1972,11 @@ function applyExportFilters(
 }
 
 async function collectExportableScreeningEntries(batchIds: string[]): Promise<ExportableScreeningEntry[]> {
-  await loadCompletedBatches(batchIds);
+  const completedBatches = await loadCompletedBatches(batchIds);
   const tasks = await db.select().from(importFileTasks).where(inArray(importFileTasks.batchId, batchIds));
+  const batchConfigMap = new Map(
+    completedBatches.map((batch) => [batch.id, normalizeBatchScreeningConfigFromBatch(batch)]),
+  );
 
   const exportableTasks = tasks.filter((task) => {
     if (task.status !== "done") return false;
@@ -1531,12 +2028,13 @@ async function collectExportableScreeningEntries(batchIds: string[]): Promise<Ex
 
     return {
       task,
-      result: {
+      result: applyBatchScreeningConfigToResult({
         ...result,
         screeningConclusion: result.screeningConclusion,
-      },
+      }, batchConfigMap.get(task.batchId) ?? normalizeBatchScreeningConfig(null)) as ImportTaskResultWithConfidence & { screeningConclusion: ImportScreeningConclusion },
       candidate: task.candidateId ? (candidateMap.get(task.candidateId) ?? null) : null,
       resume: preferredResume,
+      batchScreeningConfig: batchConfigMap.get(task.batchId) ?? normalizeBatchScreeningConfig(null),
     };
   });
 }
@@ -1544,6 +2042,7 @@ async function collectExportableScreeningEntries(batchIds: string[]): Promise<Ex
 function buildScreeningReportMarkdown(entry: ExportableScreeningEntry): string {
   const { task, result, candidate } = entry;
   const conclusion = result.screeningConclusion as ImportScreeningConclusionWithMetadata;
+  const recommendation = exportRecommendationOf(conclusion);
   const reportName = conclusion.candidateName ?? result.parsedResume.name ?? candidate?.name ?? "未命名候选人";
   const reportPosition = conclusion.candidatePosition ?? result.parsedResume.position ?? candidate?.position ?? "未填写";
   const reportYears = conclusion.candidateYearsOfExperience ?? result.parsedResume.yearsOfExperience ?? candidate?.yearsOfExperience ?? "未填写";
@@ -1560,10 +2059,12 @@ function buildScreeningReportMarkdown(entry: ExportableScreeningEntry): string {
     `- 批次 ID：${task.batchId}`,
     `- 原始文件：${resolveTaskSourceFileName(task)}`,
     `- 初筛来源：${result.screeningSource ?? "未知"}`,
+    `- 推荐阈值：通过 ≥ ${entry.batchScreeningConfig.passThreshold}，待定 ≥ ${entry.batchScreeningConfig.reviewThreshold}`,
     "",
     "## 初筛结论",
-    `- 结论：${conclusion.label}（${conclusion.score} 分）`,
-    `- verdict：${conclusion.verdict}`,
+    `- 结论：${recommendation.label}（${conclusion.score} 分）`,
+    `- verdict：${recommendation.verdict}`,
+    `- 原始 AI 结论：${conclusion.label} / ${conclusion.verdict}`,
     `- 建议操作：${conclusion.recommendedAction}`,
     "",
     "## 综合评价",
@@ -1604,12 +2105,13 @@ function buildUnifiedPdfStem(entry: ExportableScreeningEntry, sourceFileName: st
 function buildWechatExportText(entries: ExportableScreeningEntry[]): string {
   return entries.map(({ result, candidate }) => {
     const conclusion = result.screeningConclusion as ImportScreeningConclusionWithMetadata;
+    const recommendation = exportRecommendationOf(conclusion);
     const displayName = conclusion.candidateName ?? result.parsedResume.name ?? candidate?.name ?? "未命名候选人";
     const displayPosition = conclusion.candidatePosition ?? result.parsedResume.position ?? candidate?.position ?? "岗位待补充";
     const displayYears = conclusion.candidateYearsOfExperience ?? result.parsedResume.yearsOfExperience ?? "经验未填写";
     const conciseText = [
-      conclusion.wechatConclusion?.trim() || `${conclusion.label}：${conclusion.summary}`,
-      conclusion.wechatReason?.trim() || `原因：${conclusion.verdict === "reject" ? (conclusion.concerns[0] ?? conclusion.summary) : (conclusion.strengths[0] ?? conclusion.summary)}`,
+      conclusion.wechatConclusion?.trim() || `${recommendation.label}：${conclusion.summary}`,
+      conclusion.wechatReason?.trim() || `原因：${recommendation.verdict === "reject" ? (conclusion.concerns[0] ?? conclusion.summary) : (conclusion.strengths[0] ?? conclusion.summary)}`,
       conclusion.wechatAction?.trim() || `建议：${conclusion.recommendedAction}`,
     ].join("\n");
 
@@ -1710,4 +2212,56 @@ export async function exportScreeningResults(request: ImportScreeningExportReque
     default:
       throw new ImportScreeningExportError("VALIDATION_ERROR", "不支持的导出模式", 422);
   }
+}
+
+export async function updateImportBatchScreeningConfig(
+  batchId: string,
+  input: {
+    passThreshold: number;
+    reviewThreshold: number;
+    learningEnabled?: boolean;
+  },
+): Promise<typeof importBatches.$inferSelect | null> {
+  const validationMessage = validateBatchScreeningConfig(input);
+  if (validationMessage) {
+    throw new ImportScreeningExportError("VALIDATION_ERROR", validationMessage, 422);
+  }
+
+  const [existingBatch] = await db.select().from(importBatches).where(eq(importBatches.id, batchId)).limit(1);
+  if (!existingBatch) {
+    return null;
+  }
+
+  const nextConfig = normalizeBatchScreeningConfig({
+    groupId: existingBatch.groupId,
+    passThreshold: input.passThreshold,
+    reviewThreshold: input.reviewThreshold,
+    learningEnabled: input.learningEnabled ?? existingBatch.learningEnabled ?? false,
+  });
+  const now = Date.now();
+
+  await db.transaction(async (tx) => {
+    await tx.update(importBatches).set({
+      passThreshold: nextConfig.passThreshold,
+      reviewThreshold: nextConfig.reviewThreshold,
+      learningEnabled: nextConfig.learningEnabled,
+    }).where(eq(importBatches.id, batchId));
+
+    const tasks = await tx.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchId));
+    for (const task of tasks) {
+      const parsed = parseImportTaskResult(task.resultJson);
+      if (!parsed?.screeningConclusion) {
+        continue;
+      }
+
+      const nextResult = applyBatchScreeningConfigToResult(parsed, nextConfig);
+      await tx.update(importFileTasks).set({
+        resultJson: JSON.stringify(nextResult),
+        updatedAt: now,
+      }).where(eq(importFileTasks.id, task.id));
+    }
+  });
+
+  const [updatedBatch] = await db.select().from(importBatches).where(eq(importBatches.id, batchId)).limit(1);
+  return updatedBatch ?? null;
 }

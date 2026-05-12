@@ -48,9 +48,9 @@
             </Badge>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem :disabled="isImporting" @click="emit('import-imr')">
+          <DropdownMenuItem :disabled="isImporting" @click="emit('open-interview-import')">
             <Download class="mr-2 h-4 w-4" />
-            导入面试信息
+            历史面试数据
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -80,13 +80,13 @@
           variant="secondary"
           size="sm"
           class="gap-1.5"
-          aria-label="导入面试信息"
-          title="导入面试信息"
+          aria-label="历史面试数据"
+          title="历史面试数据"
           :disabled="isImporting"
-          @click="emit('import-imr')"
+          @click="emit('open-interview-import')"
         >
           <Download class="h-4 w-4 lg:hidden" />
-          <span class="hidden lg:inline">导入面试信息</span>
+          <span class="hidden lg:inline">历史面试数据</span>
         </Button>
       </div>
 
@@ -221,7 +221,7 @@ const emit = defineEmits<{
   (e: "update:search", value: string): void;
   (e: "search"): void;
   (e: "import"): void;
-  (e: "import-imr"): void;
+  (e: "open-interview-import"): void;
   (e: "goto-import"): void;
   (e: "sync"): void;
   (e: "reset-sync"): void;

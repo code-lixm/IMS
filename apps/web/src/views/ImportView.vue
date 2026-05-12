@@ -9,127 +9,140 @@
     </AppPageHeader>
 
     <AppPageContent class="space-y-6">
-      <Card
-        class="overflow-hidden border-border/60 bg-gradient-to-br from-card via-card to-muted/30"
-      >
-        <div
-          class="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between"
-        >
-          <div class="space-y-2">
-            <div class="flex items-center gap-2 flex-wrap">
-              <h1 class="text-xl font-semibold tracking-tight">
-                批量导入工作台
-              </h1>
-              <Badge v-if="hasActiveImports" variant="secondary"
-                >{{ importBatches.activeBatchCount }} 个任务进行中</Badge
-              >
-            </div>
-            <p class="text-sm text-muted-foreground">
-              支持上传单个 PDF，或上传仅包含 PDF 的常见压缩包。开启 AI
-              初筛后，会在文本解析完成后追加 Agent 风格结论，并持续刷新状态。
-            </p>
-          </div>
-
+      <div class="space-y-5">
+        <Card class="overflow-hidden border-border/60 bg-card">
           <div
-            data-onboarding="screening-toggle"
-            class="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/80 p-4 md:min-w-[320px]"
+            class="flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between"
           >
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <p class="text-sm font-medium">AI 初筛</p>
-                <p class="text-xs text-muted-foreground">
-                  导入后自动生成通过 / 待定 / 淘汰结论
-                </p>
-              </div>
-              <Switch
-                :model-value="autoScreen"
-                @update:model-value="onAutoScreenChange"
-              />
-            </div>
-            <div class="flex items-center gap-2 text-xs text-muted-foreground">
-              <span
-                class="inline-flex h-2 w-2 rounded-full"
-                :class="autoScreen ? 'bg-green-500' : 'bg-muted-foreground/50'"
-              />
-              {{
-                autoScreen
-                  ? "新建导入默认启用 AI 初筛"
-                  : "新建导入仅做解析，不自动初筛"
-              }}
-            </div>
-            <div v-if="autoScreen" class="space-y-2 pt-2 border-t border-border/40">
-              <div class="flex items-center justify-between gap-3">
-                <p class="text-xs font-medium text-muted-foreground">筛选模板</p>
-                <router-link
-                  to="/screening/templates"
-                  class="shrink-0 text-xs text-primary/80 hover:text-primary underline underline-offset-2 transition-colors"
+            <div class="space-y-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h1 class="text-xl font-semibold tracking-tight">
+                  简历导入
+                </h1>
+                <Badge variant="secondary">AI 初筛</Badge>
+                <Badge v-if="hasActiveResumeImports" variant="secondary"
+                  >{{ resumeActiveBatchCount }} 进行中</Badge
                 >
-                  管理模板
-                </router-link>
               </div>
-              <Select
-                v-if="screeningTemplates.templates.value.length > 0"
-                :model-value="screeningTemplates.selectedId.value ?? ''"
-                @update:model-value="screeningTemplates.selectTemplate(String($event))"
-              >
-                <SelectTrigger class="h-9 w-full min-w-0 justify-between rounded-lg text-sm">
-                  <SelectValue placeholder="选择筛选模板" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    v-for="template in screeningTemplates.templates.value"
-                    :key="template.id"
-                    :value="template.id"
-                  >
-                    <span class="flex min-w-0 items-center gap-2">
-                      <span class="min-w-0 truncate">{{ template.name }}</span>
-                      <Badge v-if="template.isDefault" variant="secondary" class="shrink-0 text-[10px] px-1.5 py-0">默认</Badge>
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p v-else class="text-xs text-muted-foreground">
-                暂无自定义模板，将使用系统默认规则
+              <p class="text-sm text-muted-foreground">
+                上传简历，跟进批次，导出结果。
               </p>
+              <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span class="inline-flex items-center rounded-full bg-muted px-2.5 py-1">
+                  批次 {{ resumeBatches.length }}
+                </span>
+                <span class="inline-flex items-center rounded-full bg-muted px-2.5 py-1">
+                  可导出 {{ exportableBatchCount }}
+                </span>
+                <span
+                  v-if="analysisTotalFiles > 0"
+                  class="inline-flex items-center rounded-full bg-muted px-2.5 py-1"
+                >
+                  已分析 {{ analysisCompletedFiles }}/{{ analysisTotalFiles }}
+                </span>
+                <span
+                  v-if="analysisPendingFiles > 0 || analysisRunningFiles > 0"
+                  class="inline-flex items-center rounded-full bg-muted px-2.5 py-1"
+                >
+                  待分析 {{ analysisPendingFiles }} · 分析中 {{ analysisRunningFiles }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              data-onboarding="screening-toggle"
+              class="flex w-full flex-col gap-3 rounded-xl border border-border/60 bg-muted/10 p-4 md:min-w-[320px] md:max-w-[340px]"
+            >
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium">AI 初筛</p>
+                    <p class="text-xs text-muted-foreground">
+                      导入后自动生成结论
+                    </p>
+                  </div>
+                  <Switch
+                    :model-value="autoScreen"
+                    @update:model-value="onAutoScreenChange"
+                  />
+                </div>
+                <div class="text-xs text-muted-foreground">
+                  {{ autoScreen ? "新导入默认启用" : "新导入仅解析" }}
+                </div>
+                <div class="space-y-2 pt-2 border-t border-border/40">
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-xs font-medium text-muted-foreground">分组</p>
+                    <router-link
+                      to="/screening/template-groups"
+                      class="shrink-0 text-xs text-primary/80 hover:text-primary underline underline-offset-2 transition-colors"
+                    >
+                      管理分组
+                    </router-link>
+                  </div>
+                  <Select
+                    v-if="screeningTemplates.groups.value.length > 0"
+                    :model-value="screeningTemplates.selectedGroupId.value ?? ''"
+                    @update:model-value="handleGroupChange(String($event))"
+                  >
+                    <SelectTrigger class="h-9 w-full min-w-0 justify-between rounded-lg text-sm">
+                      <SelectValue placeholder="选择筛选分组" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem
+                        v-for="group in screeningTemplates.groups.value"
+                        :key="group.id"
+                        :value="group.id"
+                      >
+                        <span class="flex min-w-0 items-center gap-2">
+                          <span class="min-w-0 truncate">{{ group.name }}</span>
+                          <Badge variant="secondary" class="shrink-0 text-[10px] px-1.5 py-0">{{ group.templateCount }} 模板</Badge>
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p v-else class="text-xs text-muted-foreground">
+                    先创建分组
+                  </p>
+                </div>
+                <div v-if="autoScreen" class="space-y-2 pt-2 border-t border-border/40">
+                    <div class="flex items-center justify-between gap-3">
+                      <p class="text-xs font-medium text-muted-foreground">模板</p>
+                      <router-link
+                      to="/screening/templates"
+                      class="shrink-0 text-xs text-primary/80 hover:text-primary underline underline-offset-2 transition-colors"
+                    >
+                      管理模板
+                    </router-link>
+                  </div>
+                  <Select
+                    v-if="screeningTemplates.templates.value.length > 0"
+                    :model-value="screeningTemplates.selectedId.value ?? ''"
+                    @update:model-value="screeningTemplates.selectTemplate(String($event))"
+                  >
+                    <SelectTrigger class="h-9 w-full min-w-0 justify-between rounded-lg text-sm">
+                      <SelectValue placeholder="选择筛选模板" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem
+                        v-for="template in screeningTemplates.templates.value"
+                        :key="template.id"
+                        :value="template.id"
+                      >
+                        <span class="flex min-w-0 items-center gap-2">
+                          <span class="min-w-0 truncate">{{ template.name }}</span>
+                          <Badge v-if="template.isDefault" variant="secondary" class="shrink-0 text-[10px] px-1.5 py-0">默认</Badge>
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p v-else class="text-xs text-muted-foreground">
+                    使用默认模板
+                  </p>
+                </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
 
-      <div class="grid gap-3 md:grid-cols-3">
-        <Card class="p-4 space-y-1.5">
-          <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            批次总数
-          </p>
-          <p class="text-2xl font-semibold">{{ batches.length }}</p>
-          <p class="text-xs text-muted-foreground">
-            含历史导入与当前进行中的批次
-          </p>
-        </Card>
-        <Card class="p-4 space-y-1.5">
-          <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            运行中
-          </p>
-          <p class="text-2xl font-semibold">
-            {{ importBatches.activeBatchCount.value }}
-          </p>
-          <p class="text-xs text-muted-foreground">
-            会每 3 秒自动刷新，无需手动轮询
-          </p>
-        </Card>
-        <Card class="p-4 space-y-1.5">
-          <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            分析进度
-          </p>
-          <p class="text-2xl font-semibold">
-            {{ analysisCompletedFiles }}/{{ analysisTotalFiles }}
-          </p>
-          <p class="text-xs text-muted-foreground">
-            待分析 {{ analysisPendingFiles }} · 分析中 {{ analysisRunningFiles }}
-          </p>
-        </Card>
-      </div>
-
+        <div class="space-y-6">
       <Card v-if="loading" class="p-6 space-y-3">
         <Skeleton class="h-4 w-full rounded-md" />
         <Skeleton class="h-4 w-4/5 rounded-md" />
@@ -137,20 +150,23 @@
       </Card>
 
       <EmptyState
-        v-else-if="!batches.length"
+        v-else-if="!resumeBatches.length"
         scenario="import"
+        description="还没有导入批次，先新建一个。"
         :action-text="'新建导入'"
         :action-icon="Plus"
         :action-handler="startImport"
       />
 
       <div v-else class="space-y-4">
-        <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/70 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/70 p-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">
-            <p class="text-sm font-medium">导入批次</p>
-            <p class="text-xs text-muted-foreground">
-              管理已导入的简历批次，并导出已完成的初筛报告
-            </p>
+            <p class="text-sm font-medium">简历批次</p>
+            <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{{ resumeBatches.length }} 个批次</span>
+              <span v-if="resumeActiveBatchCount > 0">· {{ resumeActiveBatchCount }} 个处理中</span>
+              <span v-if="exportableBatchCount > 0">· {{ exportableBatchCount }} 个可导出</span>
+            </div>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <Button
@@ -174,17 +190,17 @@
                 新建导入
               </Button>
               <Badge
-                v-if="importBatches.activeBatchCount.value > 0"
+                v-if="resumeActiveBatchCount > 0"
                 variant="default"
                 class="absolute -right-2 -top-2 min-w-5 justify-center rounded-full bg-sky-600 px-1.5 py-0 text-white hover:bg-sky-600"
               >
-                {{ importBatches.activeBatchCount.value }}
+                {{ resumeActiveBatchCount }}
               </Badge>
             </div>
           </div>
         </div>
         <Card
-          v-for="b in safeBatches"
+          v-for="b in resumeBatches"
           :key="b.id"
           :class="[
             'overflow-hidden border-border/70 shadow-sm',
@@ -218,6 +234,8 @@
                   class="flex items-center gap-2 flex-wrap text-xs text-muted-foreground"
                 >
                   <span>{{ formatImportBatchDisplayName(b) }}</span>
+                  <span>·</span>
+                  <span>{{ batchThresholdSummary(b) }}</span>
                   <template v-if="b.status === 'processing' || b.status === 'queued'">
                     <span>·</span>
                     <span>当前阶段：{{ importStageLabel(b.currentStage) }}</span>
@@ -226,6 +244,16 @@
               </div>
 
               <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 gap-1.5 text-xs"
+                  :disabled="b.status === 'processing' || b.status === 'queued'"
+                  @click="openBatchThresholdDialog(b)"
+                >
+                  <SlidersHorizontal class="h-3.5 w-3.5" />
+                  调整阈值
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -397,11 +425,12 @@
                         :class="[
                           'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
                           screeningScoreClass(
-                            screeningResult(f)?.screeningConclusion?.score,
+                            screeningDisplayScore(f),
+                            screeningRecommendationVerdict(f),
                           ),
                         ]"
                       >
-                        初筛{{ screeningResult(f)?.screeningConclusion?.label }}
+                        初筛{{ screeningRecommendationLabel(f) }}
                       </span>
                     </div>
 
@@ -417,6 +446,29 @@
                           )
                         }}</span
                       >
+                    </div>
+
+                    <div class="rounded-xl border border-border/60 bg-muted/20 p-3">
+                      <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div
+                          v-for="item in screeningCandidateOverviewItems(f)"
+                          :key="item.label"
+                          class="min-w-0 space-y-1"
+                        >
+                          <dt class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                            {{ item.label }}
+                          </dt>
+                          <dd
+                            :class="[
+                              item.label === '学历/学校'
+                                ? 'line-clamp-2 break-words text-sm font-medium leading-relaxed'
+                                : 'truncate text-sm font-medium leading-relaxed',
+                            ]"
+                          >
+                            {{ item.value }}
+                          </dd>
+                        </div>
+                      </dl>
                     </div>
 
                     <p
@@ -498,21 +550,18 @@
                   v-if="screeningResult(f)?.screeningConclusion"
                   :class="[
                     'pointer-events-none absolute bottom-3 right-4 flex h-16 w-16 -rotate-12 select-none flex-col items-center justify-center rounded-full border-2 bg-background/70 text-center font-semibold shadow-sm backdrop-blur-[1px]',
-                    screeningScoreStampClass(
-                      screeningResult(f)?.screeningConclusion?.score,
-                      screeningResult(f)?.screeningConclusion?.label,
-                    ),
+                    screeningScoreStampClass(screeningRecommendationVerdict(f)),
                   ]"
                 >
                   <span class="text-[10px] leading-none tracking-[0.18em]">
                     {{
                       screeningScoreStampLabel(
-                        screeningResult(f)?.screeningConclusion?.label,
+                        screeningRecommendationVerdict(f),
                       )
                     }}
                   </span>
                   <span class="mt-1 text-xl leading-none tabular-nums">
-                    {{ screeningResult(f)?.screeningConclusion?.score }}%
+                    {{ screeningDisplayScore(f) }}%
                   </span>
                 </div>
               </article>
@@ -520,7 +569,171 @@
           </div>
         </Card>
       </div>
-      <ExportScreeningDialog v-model:open="exportDialogOpen" :batches="batches" />
+        </div>
+
+        <Collapsible v-slot="{ open }" :default-open="false" class="rounded-xl border border-border/60 bg-card/70">
+          <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <p class="text-sm font-medium">历史面试导入</p>
+              <p class="text-xs text-muted-foreground">
+                从候选人页发起的面试导入会汇总在这里。
+              </p>
+            </div>
+            <CollapsibleTrigger class="group inline-flex items-center gap-2 self-start rounded-lg border border-border/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 sm:self-auto">
+              <span>{{ interviewBatches.length }} 个批次</span>
+              <span v-if="interviewActiveBatchCount > 0">· {{ interviewActiveBatchCount }} 个处理中</span>
+              <ChevronDown :class="['h-3.5 w-3.5 transition-transform', open ? 'rotate-180' : '']" />
+            </CollapsibleTrigger>
+          </div>
+
+          <CollapsibleContent>
+            <div class="space-y-4 border-t border-border/60 p-4">
+          <Card v-if="!interviewBatches.length" class="rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+            暂无历史记录，请从候选人页发起导入。
+          </Card>
+
+          <template v-else>
+            <Card
+              v-for="b in interviewBatches"
+              :key="b.id"
+              class="overflow-hidden border-border/70 shadow-sm"
+            >
+              <div class="space-y-4 p-5">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div class="min-w-0 flex-1 space-y-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <Badge :variant="statusVariant(b.status)">{{ interviewBatchStatusLabel(b) }}</Badge>
+                      <Badge variant="outline">{{ interviewImportSourceTypeLabel(b.sourceType) }}</Badge>
+                      <span class="text-sm font-medium text-foreground/90">{{ formatImportBatchDisplayName(b) }}</span>
+                      <span class="text-xs text-muted-foreground">{{ formatImportTimestamp(b.createdAt) }}</span>
+                    </div>
+
+                    <p class="text-sm text-muted-foreground">
+                      {{ interviewBatchStatusDescription(b) }}
+                    </p>
+
+                    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                      <div
+                        v-for="item in interviewBatchOverviewItems(b)"
+                        :key="`${b.id}-${item.label}`"
+                        class="rounded-xl border border-border/60 bg-muted/20 p-3"
+                      >
+                        <p class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{{ item.label }}</p>
+                        <p class="mt-1 text-sm font-semibold text-foreground">{{ item.value }}</p>
+                        <p class="mt-1 text-xs text-muted-foreground">{{ item.hint }}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex shrink-0 flex-wrap items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-8 gap-1.5 text-xs"
+                      @click="toggleFiles(b.id)"
+                    >
+                      <ChevronDown
+                        :class="[
+                          'h-3.5 w-3.5 transition-transform',
+                          expandedBatches.has(b.id) ? 'rotate-180' : '',
+                        ]"
+                      />
+                      {{ expandedBatches.has(b.id) ? '收起详情' : '查看详情' }}
+                    </Button>
+                    <Button
+                      v-if="b.status === 'processing' || b.status === 'queued'"
+                      variant="ghost"
+                      size="sm"
+                      class="h-8 gap-1.5 text-xs"
+                      @click="cancelBatch(b.id)"
+                    >
+                      <X class="h-3.5 w-3.5" />
+                      取消
+                    </Button>
+                    <Button
+                      v-else
+                      variant="ghost"
+                      size="sm"
+                      class="h-8 gap-1.5 text-xs text-destructive/70 hover:text-destructive"
+                      @click="removeBatch(b.id)"
+                    >
+                      <Trash2 class="h-3.5 w-3.5" />
+                      删除
+                    </Button>
+                  </div>
+                </div>
+
+                <div v-if="b.summary?.errors?.length" class="rounded-xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+                  <p class="text-sm font-medium text-amber-900 dark:text-amber-200">处理提示</p>
+                  <ul class="mt-2 space-y-1 text-sm text-amber-800 dark:text-amber-300">
+                    <li v-for="item in b.summary.errors" :key="`${b.id}-${item}`">• {{ item }}</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div
+                v-if="expandedBatches.has(b.id)"
+                class="border-t bg-muted/20 px-5 py-4"
+              >
+                <div v-if="loadingFiles[b.id]" class="space-y-2">
+                  <Skeleton
+                    class="h-24 w-full rounded-xl"
+                    v-for="i in 2"
+                    :key="i"
+                  />
+                </div>
+
+                <div
+                  v-else-if="!batchFiles[b.id]?.length"
+                  class="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground"
+                >
+                  暂无任务明细
+                </div>
+
+                <div v-else class="space-y-3">
+                  <article
+                    v-for="task in interviewBatchFilesInDisplayOrder(b.id)"
+                    :key="task.id"
+                    class="rounded-xl border border-border/60 bg-background px-4 py-4 shadow-sm"
+                  >
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div class="min-w-0 flex-1 space-y-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <Badge :variant="statusVariant(task.status)">{{ interviewTaskStatusLabel(task) }}</Badge>
+                          <span class="truncate text-sm font-medium text-foreground">{{ fileNameOf(task.originalPath) }}</span>
+                        </div>
+                        <p class="text-sm text-muted-foreground">{{ interviewTaskStatusDescription(task) }}</p>
+
+                        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                          <div
+                            v-for="item in interviewTaskOverviewItems(task)"
+                            :key="`${task.id}-${item.label}`"
+                            class="rounded-xl border border-border/60 bg-muted/20 p-3"
+                          >
+                            <p class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{{ item.label }}</p>
+                            <p class="mt-1 text-sm font-semibold text-foreground">{{ item.value }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">{{ item.hint }}</p>
+                          </div>
+                        </div>
+
+                        <p v-if="task.errorMessage" class="text-xs text-destructive break-all">{{ task.errorMessage }}</p>
+                      </div>
+
+                      <div class="shrink-0 text-xs text-muted-foreground">
+                        当前阶段：{{ interviewImportStageLabel(task.stage ?? task.status) }}
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </Card>
+          </template>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
+        <ExportScreeningDialog v-model:open="exportDialogOpen" :batches="resumeBatches" />
+      </div>
     </AppPageContent>
 
     <GatewayEndpointDialog
@@ -590,6 +803,8 @@
       :open="screeningDialogOpen"
       :screening-data="selectedScreeningData"
       :file="selectedFile"
+      :batch-screening-config="selectedBatchScreeningConfig"
+      :score-action-pending="scoreActionPending"
       :current-position="currentScreeningPosition"
       :total-positions="currentScreeningTotal"
       :has-prev="Boolean(previousScreeningFile)"
@@ -597,24 +812,112 @@
       @update:open="screeningDialogOpen = $event"
       @run-screening="handleRunFileScreening"
       @retry-university-verification="handleRetryUniversityVerification"
+      @override-score="handleOverrideScreeningScore"
+      @clear-score-override="handleClearScreeningScore"
       @navigate-prev="showAdjacentScreeningDetail(-1)"
       @navigate-next="showAdjacentScreeningDetail(1)"
     />
+    <Dialog v-model:open="thresholdDialogOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>调整推荐阈值</DialogTitle>
+          <DialogDescription>
+            {{ thresholdDialogBatch ? `当前批次：${formatImportBatchDisplayName(thresholdDialogBatch)}` : '调整当前批次的通过 / 待定 / 淘汰推荐规则' }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="grid gap-4 py-2 md:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="batch-pass-threshold">通过阈值</Label>
+            <Input id="batch-pass-threshold" v-model="thresholdPassInput" inputmode="numeric" placeholder="例如 80" />
+          </div>
+          <div class="space-y-2">
+            <Label for="batch-review-threshold">待定阈值</Label>
+            <Input id="batch-review-threshold" v-model="thresholdReviewInput" inputmode="numeric" placeholder="例如 70" />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+          <div>
+            <p class="text-sm font-medium text-foreground">本地学习反馈</p>
+            <p class="mt-1 text-xs text-muted-foreground">开启后，后续同分组/同模板的 AI 初筛会参考本地人工改分样本。</p>
+          </div>
+          <Switch :model-value="thresholdLearningEnabled" @update:model-value="thresholdLearningEnabled = Boolean($event)" />
+        </div>
+
+        <div class="rounded-xl border border-border/60 bg-muted/20 px-4 py-3 text-sm">
+          <p class="font-medium text-foreground">分段预览</p>
+          <p v-if="thresholdPreviewText" class="mt-1 text-muted-foreground">{{ thresholdPreviewText }}</p>
+          <p v-else class="mt-1 text-muted-foreground">请输入两个整数阈值后查看预览</p>
+        </div>
+
+        <div class="flex items-center justify-between rounded-xl border border-dashed border-border/60 px-4 py-3 text-sm">
+          <div>
+            <p class="font-medium text-foreground">清空本批次改分记录</p>
+            <p class="mt-1 text-xs text-muted-foreground">会移除本批次所有人工改分覆盖层，但不会改动原始 AI 结果。</p>
+          </div>
+          <Button variant="outline" :disabled="thresholdSaving" @click="clearBatchFeedbacks">
+            清空记录
+          </Button>
+        </div>
+
+        <p v-if="thresholdValidationMessage" class="text-sm text-destructive">
+          {{ thresholdValidationMessage }}
+        </p>
+
+        <DialogFooter class="mt-2 gap-2">
+          <Button variant="secondary" :disabled="thresholdSaving" @click="thresholdDialogOpen = false">
+            取消
+          </Button>
+          <Button :disabled="Boolean(thresholdValidationMessage) || thresholdSaving" @click="saveBatchThresholdConfig">
+            {{ thresholdSaving ? "保存中..." : "保存阈值" }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Dialog v-model:open="templateDialogOpen">
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>选择筛选模板</DialogTitle>
+          <DialogTitle>选择筛选分组与模板</DialogTitle>
           <DialogDescription>
-            选择本次重跑使用的 AI 筛选模板
+            选择本次重跑使用的筛选分组和模板
           </DialogDescription>
         </DialogHeader>
 
         <Separator class="my-4" />
 
+        <div class="space-y-2 pb-4">
+          <p class="text-xs font-medium text-muted-foreground px-1">筛选分组</p>
+          <Select
+            v-if="screeningTemplates.groups.value.length > 0"
+            :model-value="dialogSelectedGroupId"
+            @update:model-value="onDialogGroupChange(String($event))"
+          >
+            <SelectTrigger class="h-9 w-full min-w-0 justify-between rounded-lg text-sm">
+              <SelectValue placeholder="选择筛选分组" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="group in screeningTemplates.groups.value"
+                :key="group.id"
+                :value="group.id"
+              >
+                <span class="flex min-w-0 items-center gap-2">
+                  <span class="min-w-0 truncate">{{ group.name }}</span>
+                  <Badge variant="secondary" class="shrink-0 text-[10px] px-1.5 py-0">{{ group.templateCount }} 模板</Badge>
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p v-if="screeningTemplates.selectedGroupBatchScreeningConfig.value" class="text-xs text-muted-foreground px-1">
+            推荐阈值：通过 ≥ {{ screeningTemplates.selectedGroupBatchScreeningConfig.value.passThreshold }}，待定 ≥ {{ screeningTemplates.selectedGroupBatchScreeningConfig.value.reviewThreshold }}。
+          </p>
+        </div>
+
         <div class="max-h-[360px] space-y-3 overflow-y-auto pr-1">
           <template v-if="screeningTemplates.templates.value.length > 0">
             <p class="text-xs font-medium text-muted-foreground px-1">
-              模板列表
+              分组内模板
             </p>
             <Button
               v-for="template in screeningTemplates.templates.value"
@@ -648,7 +951,7 @@
             取消
           </Button>
           <Button
-            :disabled="!dialogSelectedTemplateId"
+            :disabled="!dialogSelectedGroupId || !dialogSelectedTemplateId"
             @click="executeTemplateRerun"
           >
             开始筛选
@@ -670,6 +973,7 @@ import {
   Check,
   ChevronDown,
   RefreshCw,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-vue-next";
@@ -686,6 +990,7 @@ import { useScreeningTemplates } from "@/composables/import/use-screening-templa
 import { useImportFileSelection } from "@/composables/import/use-import-file-selection";
 import { useImportPreferences } from "@/composables/import/use-import-preferences";
 import {
+  extractImportOriginalFileName,
   fileStatusLabel,
   fileStatusVariant,
   formatImportBatchDisplayName,
@@ -697,12 +1002,29 @@ import {
   statusLabel,
   statusVariant,
 } from "@/composables/import/formatters";
+import {
+  buildInterviewImportOverviewItems,
+  interviewImportSourceTypeLabel,
+  interviewImportStageLabel,
+  interviewImportStatusDescription,
+  interviewImportStatusLabel,
+  isInterviewImportSourceType,
+  resolveInterviewImportBatchSummary,
+} from "@/composables/import/interview-import-formatters";
+import { buildScreeningCandidateOverviewItems } from "@/composables/import/screening-summary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CircularProgress } from "@/components/ui/circular-progress";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -727,13 +1049,28 @@ import { PRESET_PROVIDER_BASE_URLS, type GatewayEndpoint } from "@/lib/ai-gatewa
 import { reportAppError } from "@/lib/errors/normalize";
 import { useLuiStore } from "@/stores/lui";
 import type { ModelProvider } from "@/stores/lui";
-import type { ImportBatchListItem, ImportFileTask } from "@ims/shared";
+import {
+  deriveScreeningRecommendation,
+  formatScreeningThresholdSummary,
+  getEffectiveScreeningScore,
+  type InterviewImportBatchSummary,
+  normalizeBatchScreeningConfig,
+  validateBatchScreeningConfig,
+} from "@ims/shared";
+import type { BatchScreeningConfig, ImportBatchListItem, ImportFileTask } from "@ims/shared";
 
 interface PresetProvider {
   id: string;
   name: string;
   icon: string;
   baseURL: string;
+}
+
+interface ImportBatchView extends ImportBatchListItem {
+  groupId: string | null;
+  batchScreeningConfig: BatchScreeningConfig;
+  summaryJson: string | null;
+  summary: InterviewImportBatchSummary | null;
 }
 
 const importBatches = useImportBatches();
@@ -754,6 +1091,10 @@ const {
   toggleFiles,
   retryFailed,
   rerunScreening,
+  updateBatchScreeningConfig,
+  updateTaskScreeningScore,
+  clearTaskScreeningScore,
+  clearBatchScoreFeedbacks,
   cancelBatch,
   deleteBatch,
 } = importBatches;
@@ -761,6 +1102,7 @@ const {
 const screeningTemplates = useScreeningTemplates();
 const templateDialogOpen = ref(false);
 const dialogSelectedTemplateId = ref("");
+const dialogSelectedGroupId = ref("");
 const templateOptionRefs = new Map<string, Element>();
 const FILE_SCREENING_POLL_INTERVAL_MS = 1500;
 const FILE_SCREENING_POLL_ATTEMPTS = 40;
@@ -770,14 +1112,56 @@ interface TemplateDialogTarget {
   batchId?: string;
 }
 const templateDialogTarget = ref<TemplateDialogTarget | null>(null);
-const hasActiveImports = computed(
-  () => importBatches.activeBatchCount.value > 0,
-);
-const exportableBatchCount = computed(
-  () => batches.value.filter((batch) => batch.status === "completed" || batch.status === "partial_success").length,
-);
+const thresholdDialogOpen = ref(false);
+const thresholdDialogBatchId = ref("");
+const thresholdPassInput = ref("");
+const thresholdReviewInput = ref("");
+const thresholdLearningEnabled = ref(false);
+const thresholdSaving = ref(false);
+const scoreActionPending = ref(false);
 
-type ImportBatchView = ImportBatchListItem;
+const thresholdDialogBatch = computed(() => (
+  thresholdDialogBatchId.value
+    ? batchById.value.get(thresholdDialogBatchId.value) ?? null
+    : null
+));
+
+function parseThresholdInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed);
+}
+
+const thresholdValidationMessage = computed(() => {
+  const passThreshold = parseThresholdInput(thresholdPassInput.value);
+  const reviewThreshold = parseThresholdInput(thresholdReviewInput.value);
+  if (passThreshold === null || reviewThreshold === null) {
+    return "请填写两个整数阈值";
+  }
+
+  return validateBatchScreeningConfig({
+    passThreshold,
+    reviewThreshold,
+    learningEnabled: thresholdLearningEnabled.value,
+  });
+});
+
+const thresholdPreviewText = computed(() => {
+  const passThreshold = parseThresholdInput(thresholdPassInput.value);
+  const reviewThreshold = parseThresholdInput(thresholdReviewInput.value);
+  if (passThreshold === null || reviewThreshold === null) {
+    return "";
+  }
+
+  return formatScreeningThresholdSummary({
+    groupId: thresholdDialogBatch.value?.groupId ?? null,
+    passThreshold,
+    reviewThreshold,
+    learningEnabled: thresholdLearningEnabled.value,
+  });
+});
 
 function analysisMetric(value: number | null | undefined): number {
   return Number.isFinite(value) ? Number(value) : 0;
@@ -800,6 +1184,11 @@ function batchAnalysisRunningFiles(batch: ImportBatchView) {
 }
 
 function normalizeImportBatch(batch: (typeof batches.value)[number]): ImportBatchView {
+  const summary = resolveInterviewImportBatchSummary({
+    summary: batch?.summary ?? null,
+    summaryJson: batch?.summaryJson ?? null,
+  });
+
   return {
     id: batch?.id ?? "unknown-batch",
     displayName: batch?.displayName ?? null,
@@ -811,7 +1200,19 @@ function normalizeImportBatch(batch: (typeof batches.value)[number]): ImportBatc
     successFiles: batch?.successFiles ?? 0,
     failedFiles: batch?.failedFiles ?? 0,
     autoScreen: batch?.autoScreen ?? false,
+    groupId: batch?.groupId ?? null,
     templateId: batch?.templateId ?? null,
+    passThreshold: batch?.passThreshold ?? null,
+    reviewThreshold: batch?.reviewThreshold ?? null,
+    learningEnabled: batch?.learningEnabled ?? null,
+    summaryJson: batch?.summaryJson ?? null,
+    summary,
+    batchScreeningConfig: normalizeBatchScreeningConfig(batch?.batchScreeningConfig ?? {
+      groupId: batch?.groupId ?? null,
+      passThreshold: 80,
+      reviewThreshold: 70,
+      learningEnabled: false,
+    }),
     createdAt: batch?.createdAt ?? 0,
     startedAt: batch?.startedAt ?? null,
     completedAt: batch?.completedAt ?? null,
@@ -825,18 +1226,65 @@ function normalizeImportBatch(batch: (typeof batches.value)[number]): ImportBatc
 const safeBatches = computed<ImportBatchView[]>(() =>
   batches.value.map((batch) => normalizeImportBatch(batch)),
 );
+const resumeBatches = computed(() => safeBatches.value.filter((batch) => !isInterviewImportSourceType(batch.sourceType)));
+const interviewBatches = computed(() => safeBatches.value.filter((batch) => isInterviewImportSourceType(batch.sourceType)));
+const batchById = computed(() => new Map(safeBatches.value.map((batch) => [batch.id, batch])));
+const hasActiveResumeImports = computed(() => resumeBatches.value.some((batch) => batch.status === "processing" || batch.status === "queued"));
+const resumeActiveBatchCount = computed(() => resumeBatches.value.filter((batch) => batch.status === "processing" || batch.status === "queued").length);
+const interviewActiveBatchCount = computed(() => interviewBatches.value.filter((batch) => batch.status === "processing" || batch.status === "queued").length);
+const exportableBatchCount = computed(
+  () => resumeBatches.value.filter((batch) => batch.status === "completed" || batch.status === "partial_success").length,
+);
+
+function batchScreeningConfigOf(batchId: string | null | undefined): BatchScreeningConfig {
+  if (!batchId) {
+    return normalizeBatchScreeningConfig(null);
+  }
+
+  return normalizeBatchScreeningConfig(batchById.value.get(batchId)?.batchScreeningConfig ?? null);
+}
+
+function screeningRecommendationOf(file: ImportFileTask) {
+  const conclusion = screeningResult(file)?.screeningConclusion;
+  if (!conclusion) {
+    return null;
+  }
+
+  return conclusion.derivedRecommendation
+    ?? deriveScreeningRecommendation(getEffectiveScreeningScore(conclusion), batchScreeningConfigOf(file.batchId));
+}
+
+function screeningDisplayScore(file: ImportFileTask) {
+  return getEffectiveScreeningScore(screeningResult(file)?.screeningConclusion ?? null) ?? 0;
+}
+
+function screeningRecommendationLabel(file: ImportFileTask) {
+  return screeningRecommendationOf(file)?.label
+    ?? screeningResult(file)?.screeningConclusion?.label
+    ?? "";
+}
+
+function screeningRecommendationVerdict(file: ImportFileTask) {
+  return screeningRecommendationOf(file)?.verdict
+    ?? screeningResult(file)?.screeningConclusion?.derivedRecommendation?.verdict
+    ?? screeningResult(file)?.screeningConclusion?.verdict;
+}
+
+function batchThresholdSummary(batch: ImportBatchView) {
+  return formatScreeningThresholdSummary(batch.batchScreeningConfig);
+}
 
 const analysisTotalFiles = computed(() =>
-  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisTotalFiles(batch), 0),
+  resumeBatches.value.reduce((sum, batch) => sum + batchAnalysisTotalFiles(batch), 0),
 );
 const analysisCompletedFiles = computed(() =>
-  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisCompletedFiles(batch), 0),
+  resumeBatches.value.reduce((sum, batch) => sum + batchAnalysisCompletedFiles(batch), 0),
 );
 const analysisPendingFiles = computed(() =>
-  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisPendingFiles(batch), 0),
+  resumeBatches.value.reduce((sum, batch) => sum + batchAnalysisPendingFiles(batch), 0),
 );
 const analysisRunningFiles = computed(() =>
-  safeBatches.value.reduce((sum, batch) => sum + batchAnalysisRunningFiles(batch), 0),
+  resumeBatches.value.reduce((sum, batch) => sum + batchAnalysisRunningFiles(batch), 0),
 );
 
 const gatewaySetupDialogOpen = ref(false);
@@ -1073,8 +1521,16 @@ async function ensureAutoScreeningReady() {
 
 function proceedImport() {
   pendingImportRequest.value = false;
+  const groupId = screeningTemplates.selectedGroupId.value || undefined;
+  if (!groupId) {
+    notifyError("请先选择筛选分组", {
+      title: "无法开始导入",
+      fallbackMessage: "新建导入需要先选择筛选分组",
+    });
+    return;
+  }
   const templateId = autoScreen.value ? (screeningTemplates.selectedId.value || undefined) : undefined;
-  void fileImport.triggerImport({ autoScreen: autoScreen.value, templateId });
+  void fileImport.triggerImport({ autoScreen: autoScreen.value, groupId, templateId });
 }
 
 onMounted(() => {
@@ -1129,9 +1585,64 @@ function screeningResult(file: ImportFileTask) {
   return parseImportTaskResult(file.resultJson);
 }
 
+function screeningCandidateOverviewItems(file: ImportFileTask) {
+  return buildScreeningCandidateOverviewItems(screeningResult(file));
+}
+
 function screeningScoreValue(file: ImportFileTask): number | null {
-  const score = screeningResult(file)?.screeningConclusion?.score;
-  return typeof score === "number" && Number.isFinite(score) ? score : null;
+  const conclusion = screeningResult(file)?.screeningConclusion;
+  if (!conclusion) {
+    return null;
+  }
+  return getEffectiveScreeningScore(conclusion);
+}
+
+function interviewBatchStatusLabel(batch: ImportBatchView) {
+  return interviewImportStatusLabel({
+    status: batch.status,
+    currentStage: batch.currentStage,
+    summary: batch.summary,
+  });
+}
+
+function interviewBatchStatusDescription(batch: ImportBatchView) {
+  return interviewImportStatusDescription({
+    status: batch.status,
+    currentStage: batch.currentStage,
+    summary: batch.summary,
+  });
+}
+
+function interviewBatchOverviewItems(batch: ImportBatchView) {
+  return buildInterviewImportOverviewItems(batch.summary);
+}
+
+function interviewBatchFilesInDisplayOrder(batchId: string) {
+  return [...(batchFiles.value[batchId] ?? [])].sort((left, right) => right.createdAt - left.createdAt);
+}
+
+function interviewTaskSummary(task: ImportFileTask) {
+  return resolveInterviewImportBatchSummary({ resultJson: task.resultJson });
+}
+
+function interviewTaskStatusLabel(task: ImportFileTask) {
+  return interviewImportStatusLabel({
+    status: task.status,
+    currentStage: task.stage,
+    summary: interviewTaskSummary(task),
+  });
+}
+
+function interviewTaskStatusDescription(task: ImportFileTask) {
+  return interviewImportStatusDescription({
+    status: task.status,
+    currentStage: task.stage,
+    summary: interviewTaskSummary(task),
+  });
+}
+
+function interviewTaskOverviewItems(task: ImportFileTask) {
+  return buildInterviewImportOverviewItems(interviewTaskSummary(task));
 }
 
 function sortedBatchFiles(batchId: string): ImportFileTask[] {
@@ -1170,6 +1681,29 @@ function initialDialogTemplateId() {
   return screeningTemplates.defaultTemplate.value?.id ?? templates[0].id;
 }
 
+function initialDialogGroupId(batchId?: string) {
+  if (batchId) {
+    const batch = safeBatches.value.find((item) => item.id === batchId);
+    if (batch?.groupId) {
+      return batch.groupId;
+    }
+  }
+
+  return screeningTemplates.selectedGroupId.value ?? screeningTemplates.groups.value[0]?.id ?? "";
+}
+
+async function handleGroupChange(groupId: string) {
+  if (!groupId) return;
+  await screeningTemplates.selectGroup(groupId);
+}
+
+async function onDialogGroupChange(groupId: string) {
+  if (!groupId) return;
+  dialogSelectedGroupId.value = groupId;
+  await screeningTemplates.selectGroup(groupId);
+  dialogSelectedTemplateId.value = initialDialogTemplateId();
+}
+
 function setTemplateOptionRef(templateId: string, el: Element | ComponentPublicInstance | null) {
   const element = el instanceof Element ? el : el?.$el;
   if (element instanceof Element) {
@@ -1191,34 +1725,26 @@ function scrollSelectedTemplateIntoView() {
   });
 }
 
-function screeningScoreStampLabel(label?: string | null) {
-  if (label === "淘汰") return "NO MATCH";
-  if (label === "待定") return "REVIEW";
+function screeningScoreStampLabel(verdict?: string | null) {
+  if (verdict === "reject") return "NO MATCH";
+  if (verdict === "review") return "REVIEW";
   return "MATCH";
 }
 
-function screeningScoreStampClass(score?: number | null, label?: string | null) {
-  if (label === "淘汰") {
+function screeningScoreStampClass(verdict?: string | null) {
+  if (verdict === "reject") {
     return "border-rose-500/75 text-rose-600 dark:border-rose-400/75 dark:text-rose-300";
   }
 
-  if (label === "待定") {
+  if (verdict === "review") {
     return "border-amber-500/75 text-amber-600 dark:border-amber-400/75 dark:text-amber-300";
   }
 
-  if (typeof score !== "number") {
-    return "border-muted-foreground/40 text-muted-foreground/70";
-  }
-
-  if (score >= 80) {
+  if (verdict === "pass") {
     return "border-blue-500/70 text-blue-600 dark:border-blue-400/70 dark:text-blue-300";
   }
 
-  if (score >= 60) {
-    return "border-amber-500/75 text-amber-600 dark:border-amber-400/75 dark:text-amber-300";
-  }
-
-  return "border-rose-500/75 text-rose-600 dark:border-rose-400/75 dark:text-rose-300";
+  return "border-muted-foreground/40 text-muted-foreground/70";
 }
 
 function batchProgress(processed: number, total: number) {
@@ -1233,7 +1759,7 @@ function screenableFiles(batchId: string) {
   });
 }
 
-function batchScreeningProgress(batch: (typeof batches.value)[number]) {
+function batchScreeningProgress(batch: ImportBatchView) {
   return batchProgress(batchAnalysisCompletedFiles(batch), batchAnalysableCount(batch));
 }
 
@@ -1448,7 +1974,7 @@ function isScreeningTerminal(status: string | null | undefined) {
 }
 
 function fileNameOf(originalPath: string) {
-  return originalPath.split("#").pop()?.split("/").pop() ?? originalPath;
+  return extractImportOriginalFileName(originalPath, originalPath);
 }
 
 function syncAutoScreenAvailability() {
@@ -1503,12 +2029,94 @@ async function removeBatch(batchId: string) {
   await deleteBatch(batchId);
 }
 
+function openBatchThresholdDialog(batch: ImportBatchView) {
+  thresholdDialogBatchId.value = batch.id;
+  thresholdPassInput.value = String(batch.batchScreeningConfig.passThreshold);
+  thresholdReviewInput.value = String(batch.batchScreeningConfig.reviewThreshold);
+  thresholdLearningEnabled.value = batch.batchScreeningConfig.learningEnabled;
+  thresholdDialogOpen.value = true;
+}
+
+async function saveBatchThresholdConfig() {
+  const batch = thresholdDialogBatch.value;
+  if (!batch || thresholdSaving.value) {
+    return;
+  }
+
+  const passThreshold = parseThresholdInput(thresholdPassInput.value);
+  const reviewThreshold = parseThresholdInput(thresholdReviewInput.value);
+  if (passThreshold === null || reviewThreshold === null) {
+    notifyError("请填写有效的整数阈值");
+    return;
+  }
+
+  if (thresholdValidationMessage.value) {
+    notifyError(thresholdValidationMessage.value);
+    return;
+  }
+
+  thresholdSaving.value = true;
+  try {
+    await updateBatchScreeningConfig(batch.id, {
+      passThreshold,
+      reviewThreshold,
+      learningEnabled: thresholdLearningEnabled.value,
+    });
+
+    if (selectedFile.value?.batchId === batch.id) {
+      await refreshSelectedScreeningFile(selectedFile.value.id, batch.id);
+    }
+
+    notifySuccess("推荐阈值已保存");
+    thresholdDialogOpen.value = false;
+  } catch (error) {
+    notifyError(
+      reportAppError("import/save-batch-threshold-config", error, {
+        title: "保存推荐阈值失败",
+        fallbackMessage: "请稍后重试",
+      }),
+    );
+  } finally {
+    thresholdSaving.value = false;
+  }
+}
+
+async function clearBatchFeedbacks() {
+  const batch = thresholdDialogBatch.value;
+  if (!batch || thresholdSaving.value) {
+    return;
+  }
+
+  if (!window.confirm(`确认清空批次「${formatImportBatchDisplayName(batch)}」的所有人工改分记录吗？`)) {
+    return;
+  }
+
+  thresholdSaving.value = true;
+  try {
+    const result = await clearBatchScoreFeedbacks(batch.id);
+    if (selectedFile.value?.batchId === batch.id) {
+      await refreshSelectedScreeningFile(selectedFile.value.id, batch.id);
+    }
+    notifySuccess(`已清空 ${result.clearedCount} 条人工改分记录`);
+  } catch (error) {
+    notifyError(
+      reportAppError("import/clear-batch-score-feedbacks", error, {
+        title: "清空人工改分记录失败",
+        fallbackMessage: "请稍后重试",
+      }),
+    );
+  } finally {
+    thresholdSaving.value = false;
+  }
+}
+
 // AI Screening detail dialog
 const exportDialogOpen = ref(false);
 const screeningDialogOpen = ref(false);
 const selectedScreeningData =
   ref<ReturnType<typeof parseImportTaskResult>>(null);
 const selectedFile = ref<ImportFileTask | null>(null);
+const selectedBatchScreeningConfig = computed(() => batchScreeningConfigOf(selectedFile.value?.batchId));
 
 const currentScreeningFiles = computed(() => {
   const currentBatchId = selectedFile.value?.batchId;
@@ -1615,6 +2223,10 @@ async function handleRunFileScreening(taskId: string) {
     const file = files.find((f) => f.id === taskId);
     if (file) {
       templateDialogTarget.value = { type: "file", id: taskId, batchId };
+      dialogSelectedGroupId.value = initialDialogGroupId(batchId);
+      if (dialogSelectedGroupId.value) {
+        await screeningTemplates.selectGroup(dialogSelectedGroupId.value);
+      }
       dialogSelectedTemplateId.value = initialDialogTemplateId();
       templateDialogOpen.value = true;
       screeningDialogOpen.value = false;
@@ -1629,6 +2241,10 @@ async function requestRunFileScreening(taskId: string, batchId: string) {
   }
 
   templateDialogTarget.value = { type: "file", id: taskId, batchId };
+  dialogSelectedGroupId.value = initialDialogGroupId(batchId);
+  if (dialogSelectedGroupId.value) {
+    await screeningTemplates.selectGroup(dialogSelectedGroupId.value);
+  }
   dialogSelectedTemplateId.value = initialDialogTemplateId();
   templateDialogOpen.value = true;
 }
@@ -1653,6 +2269,58 @@ async function handleRetryUniversityVerification(taskId: string) {
         fallbackMessage: "第三方院校服务仍不可用，请稍后再试",
       }),
     );
+  }
+}
+
+async function handleOverrideScreeningScore(payload: { taskId: string; score: number; reason?: string | null }) {
+  const batchId = selectedFile.value?.batchId
+    ?? Object.entries(batchFiles.value).find(([, files]) => files.some((file) => file.id === payload.taskId))?.[0];
+  if (!batchId || scoreActionPending.value) {
+    return;
+  }
+
+  scoreActionPending.value = true;
+  try {
+    await updateTaskScreeningScore(payload.taskId, batchId, payload.score, payload.reason ?? null);
+    await refreshSelectedScreeningFile(payload.taskId, batchId);
+    notifySuccess("人工改分已保存");
+  } catch (error) {
+    notifyError(
+      reportAppError("import/override-screening-score", error, {
+        title: "保存人工改分失败",
+        fallbackMessage: "请稍后重试",
+      }),
+    );
+  } finally {
+    scoreActionPending.value = false;
+  }
+}
+
+async function handleClearScreeningScore(taskId: string) {
+  const batchId = selectedFile.value?.batchId
+    ?? Object.entries(batchFiles.value).find(([, files]) => files.some((file) => file.id === taskId))?.[0];
+  if (!batchId || scoreActionPending.value) {
+    return;
+  }
+
+  if (!window.confirm("确认清除这份简历的人工改分记录吗？")) {
+    return;
+  }
+
+  scoreActionPending.value = true;
+  try {
+    await clearTaskScreeningScore(taskId, batchId);
+    await refreshSelectedScreeningFile(taskId, batchId);
+    notifySuccess("人工改分已清除");
+  } catch (error) {
+    notifyError(
+      reportAppError("import/clear-screening-score", error, {
+        title: "清除人工改分失败",
+        fallbackMessage: "请稍后重试",
+      }),
+    );
+  } finally {
+    scoreActionPending.value = false;
   }
 }
 
@@ -1689,15 +2357,19 @@ async function rerunBatchScreening(batchId: string) {
   }
 
   templateDialogTarget.value = { type: "batch", id: batchId };
+  dialogSelectedGroupId.value = initialDialogGroupId(batchId);
+  if (dialogSelectedGroupId.value) {
+    await screeningTemplates.selectGroup(dialogSelectedGroupId.value);
+  }
   dialogSelectedTemplateId.value = initialDialogTemplateId();
   templateDialogOpen.value = true;
 }
 
-async function executeBatchRerun(batchId: string, templateId?: string) {
+async function executeBatchRerun(batchId: string, groupId?: string, templateId?: string) {
   markBatchScreeningPending(batchId, true);
 
   try {
-    const result = await rerunScreening(batchId, templateId);
+    const result = await rerunScreening(batchId, groupId, templateId);
     if (result.status === "processing") {
       notifySuccess(`已开始 AI 初筛，本批次共 ${result.retriedCount} 个文件`, {
         title: "任务已启动",
@@ -1733,15 +2405,16 @@ async function executeTemplateRerun() {
   if (!target) return;
 
   templateDialogOpen.value = false;
+  const groupId = dialogSelectedGroupId.value || undefined;
   const tid = dialogSelectedTemplateId.value || undefined;
   if (tid) {
     screeningTemplates.selectTemplate(tid);
   }
 
   if (target.type === "batch") {
-    await executeBatchRerun(target.id, tid);
+    await executeBatchRerun(target.id, groupId, tid);
   } else {
-    await importBatches.rerunFileScreening(target.id, target.batchId!, tid);
+    await importBatches.rerunFileScreening(target.id, target.batchId!, groupId, tid);
     await waitForFileScreeningResult(target.id, target.batchId!);
   }
 }

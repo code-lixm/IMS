@@ -5,14 +5,24 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { providerCredentials, users } from "../../schema";
 import type {
-  ImportScreeningConclusion,
+  ImportScreeningConclusion as BaseImportScreeningConclusion,
+  MatchingTemplate,
   ScreeningTemplateInfo,
   ScreeningTemplateRenderedInfo,
   TemplateEvidence,
   TemplateEvidenceMatchedItem,
   TemplateEvidenceUnmatchedItem,
-} from "@ims/shared";
-import { screeningTemplatesService, type ScreeningTemplatesService } from "../screening-templates";
+} from "../../../../shared/src/api-types";
+import {
+  screeningTemplatesService,
+  shortlistScreeningTemplatesByResume,
+  type ScreeningTemplateShortlistItem,
+  type ScreeningTemplatesService,
+} from "../screening-templates";
+
+type ImportScreeningConclusion = BaseImportScreeningConclusion & {
+  matchedTemplateId?: string | null;
+};
 
 type ImportScreeningConclusionWithMetadata = ImportScreeningConclusion & {
   candidateName?: string | null;
@@ -30,15 +40,23 @@ type AiScreeningOutputWithMetadata = Partial<AiScreeningOutput> & {
 
 interface ScreeningTemplatePromptContext {
   templateInfo: ScreeningTemplateInfo;
+  matchedTemplateId: string;
+  selectionSource: "direct_template" | "group_explicit" | "group_default" | "group_shortlist" | "group_ai";
+  shortlistedTemplateIds: string[];
 }
 
 export interface ImportScreeningReuseContext {
+  matchedTemplateId: string | null;
   normalizedBaseURL: string;
   promptSnapshot: string;
+  shortlistedTemplateIds: string[];
   screeningModel: string;
   screeningProviderId: string | null;
+  selectionSource: "none" | ScreeningTemplatePromptContext["selectionSource"];
   templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
 }
+
+interface ResolvedImportScreeningRunContext extends ImportScreeningReuseContext {}
 
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https://ai-gateway.vercel.com/v1";
 const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.env.VERCEL_AI_GATEWAY_TOKEN || "";
@@ -63,6 +81,15 @@ const IMPORT_SCREENING_SYSTEM_LINES = [
   "recommendedAction 返回一句中文建议动作。",
   "wechatConclusion、wechatReason、wechatAction 都必须是单句中文，分别对应结论、原因、建议，不能带编号。",
   "wechatCopyText 必须严格由这三句按换行拼成：第1行为 wechatConclusion，第2行为 wechatReason，第3行为 wechatAction。不要输出额外句子。",
+] as const;
+
+const TEMPLATE_SELECTION_SYSTEM_LINES = [
+  "你是简历模板路由助手。",
+  "你只能从候选 shortlist 中选择 1 个最合适的模板。",
+  "只输出 JSON，不输出额外解释。",
+  '输出格式必须严格为：{"templateId":"候选模板ID","reason":"一句中文理由"}。',
+  "templateId 必须来自输入中的 shortlist。",
+  "如果多个模板都能匹配，优先选择与候选人岗位、技能、经历最贴近的那个。",
 ] as const;
 
 let screeningQueue: Promise<void> = Promise.resolve();
@@ -104,33 +131,31 @@ export async function generateImportScreeningConclusionWithAI(input: {
   parsed: ParsedResumeInput;
   confidence: number;
   fileName: string;
+  groupId?: string | null;
   templateId?: string;
+  resolvedContext?: ResolvedImportScreeningRunContext;
+  learningFeedback?: string[];
 }): Promise<ImportScreeningConclusion> {
   return runScreeningSerially(async () => {
+    const resolvedContext = input.resolvedContext ?? await resolveImportScreeningReuseContext({
+      parsed: input.parsed,
+      groupId: input.groupId,
+      templateId: input.templateId,
+    });
     const endpoint = await resolveImportAiEndpoint();
-    const templateContext = await resolveScreeningTemplateContext(input.templateId);
 
     if (!endpoint.apiKey.trim()) {
       throw new Error("AI screening is not configured");
     }
-
-    if (endpoint.providerId === "minimax") {
-      return generateMiniMaxScreeningConclusion(input, endpoint, templateContext);
-    }
-
-    const provider = createOpenAI({
-      name: endpoint.providerId || "import-screening-openai-compatible",
-      baseURL: normalizeOpenAIBaseURL(endpoint.baseURL),
-      apiKey: endpoint.apiKey,
-    });
-    const systemPrompt = buildImportScreeningSystemPrompt(templateContext);
+    const templateContext = buildPromptContextFromReuseContext(resolvedContext);
+    const systemPrompt = input.learningFeedback && input.learningFeedback.length > 0
+      ? buildImportScreeningSystemPrompt(templateContext, input.learningFeedback)
+      : resolvedContext.promptSnapshot || buildImportScreeningSystemPrompt(templateContext, input.learningFeedback);
 
     try {
-      const result = await generateText({
-        model: provider.chat(parseRuntimeModelName(endpoint.model)),
-        temperature: 0.1,
-        abortSignal: AbortSignal.timeout(45_000),
-        system: systemPrompt,
+      const content = await requestImportAiText({
+        endpoint,
+        systemPrompt,
         prompt: JSON.stringify({
           fileName: input.fileName,
           extractionConfidence: input.confidence,
@@ -148,13 +173,9 @@ export async function generateImportScreeningConclusionWithAI(input: {
         }),
       });
 
-      if (!result.text?.trim()) {
-        throw new Error("AI screening returned empty content");
-      }
-
       return normalizeAiScreeningOutput(
         {
-          ...(JSON.parse(stripAssistantFormatting(result.text)) as Partial<AiScreeningOutput>),
+          ...(JSON.parse(stripAssistantFormatting(content)) as Partial<AiScreeningOutput>),
           templateInfo: templateContext?.templateInfo,
           renderedPromptSnapshot: templateContext ? systemPrompt : undefined,
         },
@@ -183,44 +204,58 @@ async function runScreeningSerially<T>(job: () => Promise<T>): Promise<T> {
   }
 }
 
-async function generateMiniMaxScreeningConclusion(
-  input: { parsed: ParsedResumeInput; confidence: number; fileName: string; templateId?: string },
-  endpoint: { baseURL: string; apiKey: string; model: string; providerId?: string | null },
-  templateContext: ScreeningTemplatePromptContext | null,
-): Promise<ImportScreeningConclusion> {
-  const systemPrompt = buildImportScreeningSystemPrompt(templateContext);
+async function requestImportAiText(input: {
+  endpoint: { baseURL: string; apiKey: string; model: string; providerId?: string | null };
+  systemPrompt: string;
+  prompt: string;
+}): Promise<string> {
+  if (input.endpoint.providerId === "minimax") {
+    return requestMiniMaxText(input);
+  }
 
-  const response = await fetch(`${normalizeOpenAIBaseURL(endpoint.baseURL)}/text/chatcompletion_v2`, {
+  const provider = createOpenAI({
+    name: input.endpoint.providerId || "import-screening-openai-compatible",
+    baseURL: normalizeOpenAIBaseURL(input.endpoint.baseURL),
+    apiKey: input.endpoint.apiKey,
+  });
+
+  const result = await generateText({
+    model: provider.chat(parseRuntimeModelName(input.endpoint.model)),
+    temperature: 0.1,
+    abortSignal: AbortSignal.timeout(45_000),
+    system: input.systemPrompt,
+    prompt: input.prompt,
+  });
+
+  if (!result.text?.trim()) {
+    throw new Error("AI screening returned empty content");
+  }
+
+  return result.text;
+}
+
+async function requestMiniMaxText(input: {
+  endpoint: { baseURL: string; apiKey: string; model: string; providerId?: string | null };
+  systemPrompt: string;
+  prompt: string;
+}): Promise<string> {
+  const response = await fetch(`${normalizeOpenAIBaseURL(input.endpoint.baseURL)}/text/chatcompletion_v2`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${endpoint.apiKey}`,
+      Authorization: `Bearer ${input.endpoint.apiKey}`,
     },
     body: JSON.stringify({
-      model: parseRuntimeModelName(endpoint.model),
+      model: parseRuntimeModelName(input.endpoint.model),
       temperature: 0.1,
       messages: [
         {
           role: "system",
-          content: systemPrompt,
+          content: input.systemPrompt,
         },
         {
           role: "user",
-          content: JSON.stringify({
-            fileName: input.fileName,
-            extractionConfidence: input.confidence,
-            candidate: {
-              name: input.parsed.name,
-              phone: input.parsed.phone,
-              email: input.parsed.email,
-              position: input.parsed.position,
-              yearsOfExperience: input.parsed.yearsOfExperience,
-              skills: input.parsed.skills,
-              education: input.parsed.education,
-              workHistory: input.parsed.workHistory,
-              rawTextPreview: input.parsed.rawText.slice(0, 6000),
-            },
-          }),
+          content: input.prompt,
         },
       ],
     }),
@@ -246,15 +281,7 @@ async function generateMiniMaxScreeningConclusion(
     throw new Error("AI screening returned empty content");
   }
 
-  return normalizeAiScreeningOutput(
-    {
-      ...(JSON.parse(stripAssistantFormatting(content)) as Partial<AiScreeningOutput>),
-      templateInfo: templateContext?.templateInfo,
-      renderedPromptSnapshot: templateContext ? systemPrompt : undefined,
-    },
-    input,
-    endpoint.baseURL,
-  );
+  return content;
 }
 
 export async function resolveScreeningTemplateContext(
@@ -278,12 +305,27 @@ export async function resolveScreeningTemplateContext(
       templateVersion: template.version,
       promptSnapshot: template.prompt,
     },
+    matchedTemplateId: template.id,
+    selectionSource: "direct_template",
+    shortlistedTemplateIds: [template.id],
   };
 }
 
-function buildImportScreeningSystemPrompt(templateContext: ScreeningTemplatePromptContext | null): string {
+function buildImportScreeningSystemPrompt(
+  templateContext: ScreeningTemplatePromptContext | null,
+  learningFeedback?: string[],
+): string {
+  const feedbackBlock = learningFeedback && learningFeedback.length > 0
+    ? [
+        "---",
+        "【本地人工反馈样本】",
+        "以下是同分组/同模板下最近的人工改分记录，仅作为评分尺度校准参考，不能替代简历事实本身：",
+        ...learningFeedback,
+      ]
+    : [];
+
   if (!templateContext) {
-    return IMPORT_SCREENING_SYSTEM_LINES.join("\n");
+    return [...feedbackBlock, ...IMPORT_SCREENING_SYSTEM_LINES].join("\n");
   }
 
   return [
@@ -292,6 +334,7 @@ function buildImportScreeningSystemPrompt(templateContext: ScreeningTemplateProm
     "【筛选标准】",
     templateContext.templateInfo.promptSnapshot,
     "---",
+    ...feedbackBlock,
     ...IMPORT_SCREENING_SYSTEM_LINES,
   ].join("\n");
 }
@@ -340,16 +383,41 @@ export async function resolveImportAiEndpoint() {
   };
 }
 
-export async function resolveImportScreeningReuseContext(templateId: string | undefined): Promise<ImportScreeningReuseContext> {
+export async function resolveImportScreeningReuseContext(
+  input: string | undefined | { parsed?: ParsedResumeInput; groupId?: string | null; templateId?: string },
+): Promise<ImportScreeningReuseContext> {
+  if (typeof input === "string" || typeof input === "undefined") {
+    return resolveImportScreeningReuseContextFromInput({ templateId: input });
+  }
+
+  return resolveImportScreeningReuseContextFromInput(input);
+
+}
+
+export async function resolveImportScreeningReuseContextFromInput(input: {
+  parsed?: ParsedResumeInput;
+  groupId?: string | null;
+  templateId?: string;
+}): Promise<ImportScreeningReuseContext> {
   const endpoint = await resolveImportAiEndpoint();
-  const templateContext = await resolveScreeningTemplateContext(templateId);
+  const templateContext = input.groupId?.trim()
+    ? await resolveGroupedScreeningTemplateContext({
+        endpoint,
+        parsed: input.parsed,
+        groupId: input.groupId,
+        templateId: input.templateId,
+      })
+    : await resolveScreeningTemplateContext(input.templateId);
   const promptSnapshot = buildImportScreeningSystemPrompt(templateContext);
 
   return {
+    matchedTemplateId: templateContext?.matchedTemplateId ?? null,
     normalizedBaseURL: normalizeOpenAIBaseURL(endpoint.baseURL),
     promptSnapshot,
+    shortlistedTemplateIds: templateContext?.shortlistedTemplateIds ?? [],
     screeningModel: endpoint.model,
     screeningProviderId: endpoint.providerId ?? null,
+    selectionSource: templateContext?.selectionSource ?? "none",
     templateInfo: templateContext
       ? {
           ...templateContext.templateInfo,
@@ -357,6 +425,127 @@ export async function resolveImportScreeningReuseContext(templateId: string | un
         }
       : undefined,
   };
+}
+
+async function resolveGroupedScreeningTemplateContext(input: {
+  endpoint: { baseURL: string; apiKey: string; model: string; providerId?: string | null };
+  parsed?: ParsedResumeInput;
+  groupId: string;
+  templateId?: string;
+  templateService?: Pick<ScreeningTemplatesService, "getGroup">;
+}): Promise<ScreeningTemplatePromptContext | null> {
+  const templateService = input.templateService ?? screeningTemplatesService;
+  const group = await templateService.getGroup(input.groupId.trim());
+  if (!group) {
+    throw new Error(`Screening template group not found: ${input.groupId}`);
+  }
+
+  const explicitTemplateId = input.templateId?.trim();
+  if (explicitTemplateId) {
+    const explicitTemplate = group.templates.find((template) => template.id === explicitTemplateId) ?? null;
+    if (!explicitTemplate) {
+      throw new Error(`Selected screening template ${explicitTemplateId} does not belong to group ${group.group.id}`);
+    }
+    return buildTemplatePromptContext(explicitTemplate, "group_explicit", [explicitTemplate.id]);
+  }
+
+  const shortlist = input.parsed
+    ? shortlistScreeningTemplatesByResume(group.templates, input.parsed)
+    : [];
+
+  if (shortlist.length === 0) {
+    if (!group.defaultTemplate) {
+      throw new Error(`No matched screening templates for group ${group.group.id} and no default template configured`);
+    }
+    return buildTemplatePromptContext(group.defaultTemplate, "group_default", []);
+  }
+
+  if (shortlist.length === 1) {
+    return buildTemplatePromptContext(shortlist[0].template, "group_shortlist", shortlist.map((item) => item.template.id));
+  }
+
+  if (!input.endpoint.apiKey.trim()) {
+    throw new Error("AI screening is not configured");
+  }
+
+  const selectedTemplate = await chooseTemplateFromShortlistWithAI({
+    endpoint: input.endpoint,
+    parsed: input.parsed,
+    shortlist,
+  });
+
+  return buildTemplatePromptContext(selectedTemplate, "group_ai", shortlist.map((item) => item.template.id));
+}
+
+function buildTemplatePromptContext(
+  template: MatchingTemplate,
+  selectionSource: ScreeningTemplatePromptContext["selectionSource"],
+  shortlistedTemplateIds: string[],
+): ScreeningTemplatePromptContext {
+  return {
+    templateInfo: {
+      templateId: template.id,
+      templateName: template.name,
+      templateVersion: template.version,
+      promptSnapshot: template.prompt,
+    },
+    matchedTemplateId: template.id,
+    selectionSource,
+    shortlistedTemplateIds,
+  };
+}
+
+function buildPromptContextFromReuseContext(
+  input: ImportScreeningReuseContext,
+): ScreeningTemplatePromptContext | null {
+  if (!input.templateInfo) {
+    return null;
+  }
+
+  return {
+    templateInfo: input.templateInfo,
+    matchedTemplateId: input.matchedTemplateId ?? input.templateInfo.templateId,
+    selectionSource: input.selectionSource === "none" ? "direct_template" : input.selectionSource,
+    shortlistedTemplateIds: input.shortlistedTemplateIds,
+  };
+}
+
+async function chooseTemplateFromShortlistWithAI(input: {
+  endpoint: { baseURL: string; apiKey: string; model: string; providerId?: string | null };
+  parsed?: ParsedResumeInput;
+  shortlist: ScreeningTemplateShortlistItem[];
+}): Promise<MatchingTemplate> {
+  const content = await requestImportAiText({
+    endpoint: input.endpoint,
+    systemPrompt: TEMPLATE_SELECTION_SYSTEM_LINES.join("\n"),
+    prompt: JSON.stringify({
+      candidate: {
+        name: input.parsed?.name,
+        position: input.parsed?.position,
+        yearsOfExperience: input.parsed?.yearsOfExperience,
+        skills: input.parsed?.skills ?? [],
+        education: input.parsed?.education ?? [],
+        workHistory: input.parsed?.workHistory ?? [],
+        rawTextPreview: input.parsed?.rawText?.slice(0, 3000) ?? "",
+      },
+      shortlist: input.shortlist.map((item) => ({
+        templateId: item.template.id,
+        templateName: item.template.name,
+        description: item.template.description,
+        matchedHints: item.matchedHints,
+        matchedKeywords: item.matchedKeywords,
+        matchedTerms: item.matchedTerms,
+      })),
+    }),
+  });
+
+  const parsed = JSON.parse(stripAssistantFormatting(content)) as { templateId?: unknown };
+  const selectedTemplateId = typeof parsed.templateId === "string" ? parsed.templateId.trim() : "";
+  const matched = input.shortlist.find((item) => item.template.id === selectedTemplateId)?.template;
+  if (!matched) {
+    throw new Error(`AI template chooser returned invalid templateId: ${selectedTemplateId || "<empty>"}`);
+  }
+  return matched;
 }
 
 function normalizeAiScreeningOutput(
@@ -456,6 +645,7 @@ function normalizeAiScreeningOutput(
     wechatReason,
     wechatAction,
     wechatCopyText,
+    matchedTemplateId: raw.templateInfo?.templateId ?? null,
     templateEvidence,
     templateInfo,
   };

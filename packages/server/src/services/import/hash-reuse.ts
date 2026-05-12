@@ -8,7 +8,7 @@ import { importFileTasks } from "../../schema";
 export interface ScreeningReuseKeyInput {
   fileHash: string;
   promptSnapshot: string;
-  templateId?: string | null;
+  matchedTemplateId?: string | null;
   templateVersion?: number | null;
   screeningProviderId?: string | null;
   screeningModel: string;
@@ -40,7 +40,7 @@ export function buildScreeningReuseKey(input: ScreeningReuseKeyInput): string | 
 
   const payload = JSON.stringify({
     fileHash,
-    templateId: input.templateId?.trim() || "__none__",
+    matchedTemplateId: input.matchedTemplateId?.trim() || "__none__",
     templateVersion: input.templateVersion ?? 0,
     promptSnapshotHash: sha256Hex(promptSnapshot),
     screeningProviderId: input.screeningProviderId?.trim() || "openai-compatible",

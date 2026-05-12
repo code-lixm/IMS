@@ -13,6 +13,8 @@ use tauri::{
 };
 use tauri_plugin_updater::UpdaterExt;
 
+mod recorder;
+
 static QUITTING: AtomicBool = AtomicBool::new(false);
 // Increase max log size to 20MB and keep 5 rotated files
 const LOG_FILE_SIZE_LIMIT: u64 = 20 * 1024 * 1024;
@@ -918,6 +920,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
             "quit" => {
                 QUITTING.store(true, Ordering::SeqCst);
+                let _ = recorder::cleanup_recorder(app);
                 // Kill the managed server before exiting
                 stop_managed_server(app);
                 app.exit(0);
@@ -1198,8 +1201,16 @@ pub fn run() {
         }))
         .setup(|app| {
             let log_dir = app.path().app_data_dir()?.join("logs");
+            let recorder_runtime_dir = app
+                .path()
+                .app_data_dir()?
+                .join("runtime")
+                .join("recordings");
             let logger = AppLogger::new(log_dir)?;
             app.manage(Mutex::new(logger));
+            let recorder_manager = recorder::RecorderManager::new(recorder_runtime_dir)
+                .map_err(|err| -> Box<dyn std::error::Error> { err.into() })?;
+            app.manage(recorder_manager);
             log_event(
                 app.handle(),
                 "INFO",
@@ -1286,11 +1297,14 @@ pub fn run() {
             // On close button, hide to tray instead of quitting
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if !QUITTING.load(Ordering::SeqCst) {
+                    let app_handle = window.app_handle();
+                    let _ = recorder::cleanup_recorder(&app_handle);
                     api.prevent_close();
                     let _ = window.hide();
                 } else {
                     // Actually quitting - kill the managed server
                     let app_handle = window.app_handle();
+                    let _ = recorder::cleanup_recorder(&app_handle);
                     stop_managed_server(&app_handle);
                 }
             }
@@ -1305,6 +1319,9 @@ pub fn run() {
             check_for_app_update,
             install_app_update,
             restart_desktop_app,
+            recorder::start_recording,
+            recorder::stop_recording,
+            recorder::get_recorder_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -1314,6 +1331,7 @@ pub fn run() {
             event,
             tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
         ) {
+            let _ = recorder::cleanup_recorder(app_handle);
             stop_managed_server(app_handle);
         }
     });

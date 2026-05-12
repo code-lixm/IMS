@@ -1,12 +1,23 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import type { MatchingTemplate } from "../../../shared/src/api-types";
-import { screeningTemplatesService } from "./screening-templates";
+import type { MatchingTemplate as BaseMatchingTemplate } from "../../../shared/src/api-types";
+import { screeningTemplatesService, shortlistScreeningTemplatesByResume } from "./screening-templates";
+
+type MatchingTemplate = BaseMatchingTemplate & {
+  sourceType: string;
+  isReadonly: boolean;
+  matchHintsJson: string | null;
+  keywordsJson: string | null;
+};
 
 type ScreeningTemplateRow = {
   id: string;
   name: string;
   description: string | null;
   prompt: string;
+  sourceType: string;
+  isReadonly: boolean;
+  matchHintsJson: string | null;
+  keywordsJson: string | null;
   isDefault: boolean;
   isActive: boolean;
   version: number;
@@ -73,6 +84,10 @@ const buildCustom = (overrides: Partial<MatchingTemplate>): ScreeningTemplateRow
   name: overrides.name ?? "自定义模板 A",
   description: overrides.description ?? "用于测试的自定义模板",
   prompt: overrides.prompt ?? "你是招聘官",
+  sourceType: overrides.sourceType ?? "custom",
+  isReadonly: overrides.isReadonly ?? false,
+  matchHintsJson: overrides.matchHintsJson ?? null,
+  keywordsJson: overrides.keywordsJson ?? null,
   isDefault: overrides.isDefault ?? false,
   isActive: overrides.isActive ?? true,
   version: overrides.version ?? 1,
@@ -156,14 +171,6 @@ describe("screening-templates service", () => {
   });
 
   test("getTemplate returns custom template and keeps builtin template default flag disabled when DB has default", async () => {
-    const dbDefault = buildCustom({
-      id: "scrntpl_db_default_2",
-      name: "数据库默认模板",
-      prompt: "db default template",
-      isDefault: true,
-      createdAt: 111,
-    });
-
     const customTemplate = buildCustom({
       id: "scrntpl_custom_detail",
       name: "自定义详情模板",
@@ -174,7 +181,18 @@ describe("screening-templates service", () => {
       createdAt: 150,
     });
 
-    enqueueSelectRows([[customTemplate], [dbDefault]]);
+    const builtinTemplate = buildCustom({
+      id: "builtin:ai:screener:hr-admin-v1",
+      name: "人力/行政筛选（流程与合规）",
+      description: "偏重组织协同、流程执行与风控意识",
+      prompt: "你是人力与行政岗位筛选官，请评估候选人是否适配该类支撑与规范导向岗位。",
+      sourceType: "builtin",
+      isReadonly: true,
+      isDefault: false,
+      createdAt: 160,
+    });
+
+    enqueueSelectRows([[customTemplate], [builtinTemplate]]);
 
     const custom = await screeningTemplatesService.getTemplate(customTemplate.id);
     expect(custom).toEqual(expect.objectContaining({
@@ -193,5 +211,58 @@ describe("screening-templates service", () => {
         version: 1,
       }),
     );
+  });
+
+  test("shortlistScreeningTemplatesByResume only returns templates matched by hints or keywords", () => {
+    const shortlist = shortlistScreeningTemplatesByResume(
+      [
+        buildCustom({
+          id: "template-tech",
+          name: "技术模板",
+          matchHintsJson: JSON.stringify(["vue", "前端"]),
+          keywordsJson: JSON.stringify(["typescript"]),
+        }),
+        buildCustom({
+          id: "template-sales",
+          name: "销售模板",
+          matchHintsJson: JSON.stringify(["客户", "成交"]),
+          keywordsJson: JSON.stringify(["gmv"]),
+        }),
+      ],
+      {
+        position: "前端工程师",
+        skills: ["Vue", "TypeScript"],
+        workHistory: ["负责前端开发与组件封装"],
+        rawText: "参与 Vue 项目开发并维护 TypeScript 工程",
+      },
+    );
+
+    expect(shortlist.map((item) => item.template.id)).toEqual(["template-tech"]);
+    expect(shortlist[0]?.matchedHints).toEqual(["前端", "vue"]);
+    expect(shortlist[0]?.matchedKeywords).toEqual(["typescript"]);
+  });
+
+  test("shortlistScreeningTemplatesByResume tolerates nested json and invalid matcher json", () => {
+    const shortlist = shortlistScreeningTemplatesByResume(
+      [
+        buildCustom({
+          id: "template-nested",
+          matchHintsJson: JSON.stringify({ primary: ["中后台", "低代码"] }),
+          keywordsJson: JSON.stringify({ skills: ["vue"] }),
+        }),
+        buildCustom({
+          id: "template-invalid",
+          matchHintsJson: "{bad json",
+          keywordsJson: null,
+        }),
+      ],
+      {
+        skills: ["Vue"],
+        workHistory: ["负责低代码平台和中后台系统"],
+      },
+    );
+
+    expect(shortlist.map((item) => item.template.id)).toEqual(["template-nested"]);
+    expect(shortlist[0]?.matchedTerms).toEqual(["低代码", "中后台", "vue"]);
   });
 });

@@ -37,6 +37,8 @@
     "targets": [
       "dmg",
       "app",
+      "deb",
+      "appimage",
       "nsis"
     ],
     "icon": [
@@ -65,7 +67,7 @@
     "longDescription": "面试管理工具 — 候选人工作台，支持简历导入、AI工作台、局域网共享",
     "macOS": {
       "minimumSystemVersion": "10.15",
-      "entitlements": null,
+      "entitlements": "entitlements/microphone.plist",
       "exceptionDomain": null
     },
     "windows": {

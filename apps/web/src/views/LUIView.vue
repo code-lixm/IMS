@@ -540,18 +540,31 @@
           </DialogHeader>
 
           <div class="min-h-0 flex-1 overflow-hidden bg-background">
+            <div
+              v-if="sourcePreviewLoading"
+              class="flex h-full items-center justify-center px-6 text-sm text-muted-foreground"
+            >
+              <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+              正在加载原件预览…
+            </div>
+            <div
+              v-else-if="sourcePreviewError"
+              class="flex h-full items-center justify-center px-6 text-sm text-destructive"
+            >
+              {{ sourcePreviewError }}
+            </div>
             <iframe
-              v-if="sourcePreviewUrl && isSourceDocumentPdf"
-              :src="sourcePreviewUrl"
+              v-else-if="sourcePreviewObjectUrl && isSourceDocumentPdf"
+              :src="sourcePreviewObjectUrl"
               class="h-full w-full bg-background"
               title="PDF 源文档预览"
             />
             <div
-              v-else-if="sourcePreviewUrl && isSourceDocumentImage"
+              v-else-if="sourcePreviewObjectUrl && isSourceDocumentImage"
               class="flex h-full items-center justify-center bg-background p-4"
             >
               <img
-                :src="sourcePreviewUrl"
+                :src="sourcePreviewObjectUrl"
                 :alt="currentSourceResumeDisplayName"
                 class="max-h-full max-w-full rounded-md object-contain"
               />
@@ -778,6 +791,10 @@ const leftTopPaneSize = ref(readStoredPanelSize(
 ));
 const isWorkspaceReady = ref(false);
 const sourceDocumentPreviewOpen = ref(false);
+const sourcePreviewObjectUrl = ref<string | null>(null);
+const sourcePreviewLoading = ref(false);
+const sourcePreviewError = ref<string | null>(null);
+const sourcePreviewRequestToken = ref(0);
 
 const activeSuggestionAgent = computed(() => {
   return store.selectedAgent ?? store.defaultAgent ?? null;
@@ -875,11 +892,6 @@ const showAssessmentReminder = computed(() => {
 });
 const currentSourceResumeDisplayName = computed(() => {
   return decodeDisplayFileName(currentSourceResume.value?.fileName ?? "源文档");
-});
-const sourcePreviewUrl = computed(() => {
-  return currentSourceResume.value
-    ? candidatesApi.getResumePreviewUrl(currentSourceResume.value.id)
-    : null;
 });
 const sourcePreviewContentType = computed(() => {
   return resolveResumePreviewContentType(
@@ -1101,6 +1113,29 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => [sourceDocumentPreviewOpen.value, currentSourceResume.value?.id] as const,
+  ([open, resumeId], [, previousResumeId]) => {
+    if (!open) {
+      return;
+    }
+
+    if (!resumeId) {
+      sourcePreviewError.value = "当前候选人暂无可预览的简历原件";
+      return;
+    }
+
+    if (resumeId === previousResumeId && sourcePreviewObjectUrl.value) {
+      return;
+    }
+
+    const resume = currentSourceResume.value;
+    if (resume) {
+      void loadSourceDocumentPreview(resume);
+    }
+  },
+);
+
 watch(inputText, (value) => {
   if (value !== promptInput.textInput.value) {
     promptInput.setTextInput(value);
@@ -1192,10 +1227,60 @@ function openSourceDocumentPreview() {
   }
 
   sourceDocumentPreviewOpen.value = true;
+  void loadSourceDocumentPreview(currentSourceResume.value);
 }
 
 function handleSourceDocumentPreviewOpenChange(open: boolean) {
   sourceDocumentPreviewOpen.value = open;
+  if (!open) {
+    cleanupSourceDocumentPreview();
+  }
+}
+
+async function loadSourceDocumentPreview(resume: CandidateResume) {
+  const requestToken = ++sourcePreviewRequestToken.value;
+  sourcePreviewLoading.value = true;
+  sourcePreviewError.value = null;
+  revokeSourcePreviewObjectUrl();
+
+  try {
+    const preview = await candidatesApi.loadResumePreviewSource(resume.id);
+    if (!sourceDocumentPreviewOpen.value || currentSourceResume.value?.id !== resume.id || requestToken !== sourcePreviewRequestToken.value) {
+      URL.revokeObjectURL(preview.objectUrl);
+      return;
+    }
+
+    sourcePreviewObjectUrl.value = preview.objectUrl;
+  } catch (error) {
+    if (requestToken !== sourcePreviewRequestToken.value) {
+      return;
+    }
+
+    sourcePreviewError.value = error instanceof Error ? error.message : "原件预览加载失败";
+  } finally {
+    if (requestToken === sourcePreviewRequestToken.value) {
+      sourcePreviewLoading.value = false;
+    }
+  }
+}
+
+function revokeSourcePreviewObjectUrl() {
+  if (!sourcePreviewObjectUrl.value) {
+    return;
+  }
+
+  if (sourcePreviewObjectUrl.value.startsWith("blob:")) {
+    URL.revokeObjectURL(sourcePreviewObjectUrl.value);
+  }
+
+  sourcePreviewObjectUrl.value = null;
+}
+
+function cleanupSourceDocumentPreview() {
+  sourcePreviewRequestToken.value += 1;
+  revokeSourcePreviewObjectUrl();
+  sourcePreviewLoading.value = false;
+  sourcePreviewError.value = null;
 }
 
 async function downloadSourceDocument() {
@@ -2025,6 +2110,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  cleanupSourceDocumentPreview();
   window.removeEventListener("beforeunload", handleStreamingBeforeUnload);
 });
 </script>

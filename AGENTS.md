@@ -81,6 +81,7 @@ ims/
 - **区分代码修复与数据生效** — 修改导入、初筛、同步等后端流水线时，必须说明该改动只影响“后续重新触发的流程”，不会自动补齐旧数据。若用户在页面上看不到效果，先确认是否需要重新导入、重跑 AI 初筛、重新同步或执行补数据脚本。
 - **后端改动后确认服务真实重载** — `pnpm typecheck` 只能证明代码可编译，不代表运行中的 Bun/Tauri 服务已加载新代码。验证前先确认 server 已重启或 dev watcher 已重新加载，再通过 API/DB 验证实际字段。
 - **验证路径要覆盖最终数据源** — UI 不显示时，不要只看前端页面；按“业务流程触发 → API 响应 → DB 字段 → UI 展示”逐层验证。例如院校信息应检查 `candidates.organizationName` 是否真的写入，而不是只确认 `candidateSchools` 或 `universityVerification` 存在于导入任务 JSON。
+- **优先用日志验证改动是否真的生效** — 遇到“看起来没反应”“点击无效”“页面没更新”这类问题时，优先补最小必要日志确认事件链、状态变化和渲染分支是否真的走到；前端优先用 `cmux` 观察页面日志，若当前环境无法直接看到日志，则让开发者提供对应日志后再判断代码是否生效。
 - **完成说明必须写清生效条件** — 每次修复后固定交代：是否需要重启服务、是否需要重新触发业务流程、是否影响历史数据、用户应如何验证。避免只说“已修复/typecheck 通过”，导致用户刷新旧页面仍看不到变化。
 
 ## RELEASE / COMMIT LESSONS
@@ -115,41 +116,6 @@ pnpm check            # typecheck + build (跳过 desktop)
 # 清理
 pnpm clean            # Turbo clean + rm node_modules
 ```
-
-## DOCUMENTATION
-
-所有功能文档位于 `.spec-workflow/` 目录下，采用 Spec 驱动开发工作流。
-
-### Spec 索引
-
-| Spec | 说明 | 状态 |
-|------|------|------|
-| `steering/product.md` | 产品全景图（愿景、用户、核心功能） | 现行 |
-| `specs/lui-ai-gateway/` | LUI AI Gateway（Vercel AI SDK 集成） | 进行中 |
-| `specs/local-ai-workbench/` | 本地 AI 工作台 | 进行中 |
-| `specs/web-frontend-architecture-hardening/` | 前端架构加固 | 进行中 |
-| `specs/imr-format/` | IMR 包格式规范（共享单位格式） | 大部分完成 |
-| `specs/local-api/` | 本地 API 规范（全部业务接口） | 后端完成 |
-| `specs/import-pipeline/` | 导入流水线规范（简历导入流程） | 后端完成 |
-| `specs/embedded-opencode-service/` | 内置 OpenCode 服务设计（AI 工作台） | 后端完成 |
-
-### Spec 开发流程
-
-1. **Requirements** — 定义需求（用户故事 + 验收标准）
-2. **Design** — 技术设计（架构、接口、数据结构）
-3. **Tasks** — 任务分解（原子任务 + 文件路径 + 进度追踪）
-4. **Implementation** — 实现（使用 `spec-status` 检查进度）
-
-### 历史文档
-
-已归档到 `.spec-workflow/archive/`：
-- `PRD.md` — 原产品需求文档 → `steering/product.md`
-- `IMR-Spec.md` → `specs/imr-format/design.md`
-- `Local-API-Spec.md` → `specs/local-api/design.md`
-- `Import-Pipeline-Spec.md` → `specs/import-pipeline/design.md`
-- `Embedded-OpenCode-Service-Spec.md` → `specs/embedded-opencode-service/design.md`
-- `Monorepo-Migration-Spec.md` — 已完成迁移
-- `STATUS.md` — 废弃，由各 spec 的 `tasks.md` 替代
 
 ## ENTRY POINTS
 

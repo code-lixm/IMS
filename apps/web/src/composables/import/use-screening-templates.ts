@@ -1,7 +1,47 @@
 import { computed, onMounted, ref } from "vue";
 import { api } from "@/api/client";
 import { screeningTemplatesApi } from "@/api/screening-templates";
-import type { MatchingTemplate, MatchingTemplateListData, CreateMatchingTemplateInput, UpdateMatchingTemplateInput } from "@ims/shared";
+import type {
+  CreateMatchingTemplateInput,
+  MatchingTemplate,
+  MatchingTemplateListData,
+  UpdateMatchingTemplateInput,
+} from "@ims/shared";
+
+interface BatchScreeningConfig {
+  groupId: string | null;
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled: boolean;
+}
+
+interface ScreeningTemplateGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface ScreeningTemplateGroupListItem extends ScreeningTemplateGroup {
+  templateCount: number;
+  defaultTemplateId: string | null;
+}
+
+interface ScreeningTemplateGroupListData {
+  items: ScreeningTemplateGroupListItem[];
+}
+
+interface ScreeningTemplateGroupDetailData {
+  group: ScreeningTemplateGroup;
+  templates: MatchingTemplate[];
+  defaultTemplate: MatchingTemplate | null;
+  links: Array<{ id: string; groupId: string; templateId: string; isDefault: boolean; createdAt: number; updatedAt: number }>;
+  batchScreeningConfig: BatchScreeningConfig;
+}
 
 const STORAGE_KEY = "ims.screening.selected-template";
 
@@ -10,6 +50,10 @@ interface TemplateState {
   selectedId: string | null;
   loading: boolean;
   defaultTemplateId: string | null;
+  groups: ScreeningTemplateGroupListData["items"];
+  selectedGroupId: string | null;
+  groupLoading: boolean;
+  selectedGroupBatchScreeningConfig: BatchScreeningConfig | null;
 }
 
 const state = ref<TemplateState>({
@@ -17,9 +61,14 @@ const state = ref<TemplateState>({
   selectedId: null,
   loading: false,
   defaultTemplateId: null,
+  groups: [],
+  selectedGroupId: null,
+  groupLoading: false,
+  selectedGroupBatchScreeningConfig: null,
 });
 
 let hydrated = false;
+let hydratedGroup = false;
 
 function hydrate() {
   if (hydrated || typeof window === "undefined") {
@@ -29,6 +78,17 @@ function hydrate() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored) {
     state.value.selectedId = stored;
+  }
+}
+
+function hydrateGroup() {
+  if (hydratedGroup || typeof window === "undefined") {
+    return;
+  }
+  hydratedGroup = true;
+  const stored = window.localStorage.getItem("ims.screening.selected-group");
+  if (stored) {
+    state.value.selectedGroupId = stored;
   }
 }
 
@@ -43,30 +103,79 @@ function persistSelected(id: string | null) {
   }
 }
 
+function persistSelectedGroup(id: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (id) {
+    window.localStorage.setItem("ims.screening.selected-group", id);
+  } else {
+    window.localStorage.removeItem("ims.screening.selected-group");
+  }
+}
+
 export function useScreeningTemplates() {
   hydrate();
+  hydrateGroup();
+
+  async function loadGroup(groupId: string): Promise<ScreeningTemplateGroupDetailData | null> {
+    state.value.groupLoading = true;
+    try {
+      const detail = await screeningTemplatesApi.getGroup(groupId);
+      state.value.items = detail.templates;
+      state.value.defaultTemplateId = detail.defaultTemplate?.id ?? null;
+      state.value.selectedGroupBatchScreeningConfig = detail.batchScreeningConfig;
+
+      const nextSelectedId = state.value.selectedId && detail.templates.some((template) => template.id === state.value.selectedId)
+        ? state.value.selectedId
+        : detail.defaultTemplate?.id ?? detail.templates[0]?.id ?? null;
+
+      if (nextSelectedId !== state.value.selectedId) {
+        state.value.selectedId = nextSelectedId;
+        persistSelected(nextSelectedId);
+      }
+
+      return detail;
+    } catch {
+      state.value.items = [];
+      state.value.defaultTemplateId = null;
+      state.value.selectedGroupBatchScreeningConfig = null;
+      return null;
+    } finally {
+      state.value.groupLoading = false;
+    }
+  }
 
   async function fetchTemplates(): Promise<void> {
     state.value.loading = true;
     try {
-      const data = await api<MatchingTemplateListData>("/api/screening/templates");
-      state.value.items = data.items;
+    const [templateData, groupData] = await Promise.all([
+        api<MatchingTemplateListData>("/api/screening/templates"),
+        screeningTemplatesApi.listGroups(),
+      ]);
 
-      // Update default template ID if any template is marked as default
-      const defaultTemplate = data.items.find((t) => t.isDefault);
-      if (defaultTemplate) {
-        state.value.defaultTemplateId = defaultTemplate.id;
+      state.value.groups = groupData.items;
+
+      const nextGroupId = state.value.selectedGroupId && groupData.items.some((group) => group.id === state.value.selectedGroupId)
+        ? state.value.selectedGroupId
+        : groupData.items[0]?.id ?? null;
+
+      if (nextGroupId) {
+        state.value.selectedGroupId = nextGroupId;
+        persistSelectedGroup(nextGroupId);
+        await loadGroup(nextGroupId);
+      } else {
+        state.value.items = templateData.items;
+        state.value.defaultTemplateId = templateData.items.find((t) => t.isDefault)?.id ?? null;
       }
 
-      // Auto-select default template or first available
-      if (!state.value.selectedId && data.items.length > 0) {
-        const defaultTpl = data.items.find((t) => t.isDefault) ?? data.items[0];
+      if (!state.value.selectedId && state.value.items.length > 0) {
+        const defaultTpl = state.value.items.find((t) => t.isDefault) ?? state.value.items[0];
         selectTemplate(defaultTpl.id);
       } else if (state.value.selectedId) {
-        // Verify selected template still exists
-        const stillExists = data.items.some((t) => t.id === state.value.selectedId);
-        if (!stillExists && data.items.length > 0) {
-          const defaultTpl = data.items.find((t) => t.isDefault) ?? data.items[0];
+        const stillExists = state.value.items.some((t) => t.id === state.value.selectedId);
+        if (!stillExists && state.value.items.length > 0) {
+          const defaultTpl = state.value.items.find((t) => t.isDefault) ?? state.value.items[0];
           selectTemplate(defaultTpl.id);
         }
       }
@@ -76,13 +185,16 @@ export function useScreeningTemplates() {
   }
 
   async function loadDefaultTemplate(): Promise<MatchingTemplate | null> {
-    // Find the template marked as default in current list first
     const localDefault = state.value.items.find((t) => t.isDefault);
     if (localDefault) {
       return localDefault;
     }
 
-    // Otherwise, fetch from API
+    if (state.value.selectedGroupId) {
+      const detail = await loadGroup(state.value.selectedGroupId);
+      return detail?.defaultTemplate ?? null;
+    }
+
     const data = await api<MatchingTemplateListData>("/api/screening/templates");
     const defaultTemplate = data.items.find((t) => t.isDefault) ?? null;
     if (defaultTemplate) {
@@ -109,9 +221,15 @@ export function useScreeningTemplates() {
     }
   }
 
-  function selectTemplate(id: string) {
+  function selectTemplate(id: string | null) {
     state.value.selectedId = id;
     persistSelected(id);
+  }
+
+  async function selectGroup(id: string) {
+    state.value.selectedGroupId = id;
+    persistSelectedGroup(id);
+    await loadGroup(id);
   }
 
   function clearSelection() {
@@ -195,14 +313,20 @@ export function useScreeningTemplates() {
 
   return {
     templates: computed(() => state.value.items),
+    groups: computed(() => state.value.groups),
     selectedId: computed(() => state.value.selectedId),
+    selectedGroupId: computed(() => state.value.selectedGroupId),
     loading: computed(() => state.value.loading),
+    groupLoading: computed(() => state.value.groupLoading),
     defaultTemplate,
+    selectedGroup: computed(() => state.value.groups.find((group) => group.id === state.value.selectedGroupId) ?? null),
+    selectedGroupBatchScreeningConfig: computed(() => state.value.selectedGroupBatchScreeningConfig),
     selectedTemplate: () => state.value.items.find((t) => t.id === state.value.selectedId) ?? null,
     fetchTemplates,
     loadDefaultTemplate,
     setAsDefault,
     selectTemplate,
+    selectGroup,
     createTemplate,
     updateTemplate,
     deleteTemplate,

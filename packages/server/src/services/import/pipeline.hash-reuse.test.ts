@@ -16,6 +16,7 @@ const runtimeState = vi.hoisted(() => ({
     interviews: [] as Array<Record<string, any>>,
     providerCredentials: [] as Array<Record<string, any>>,
     resumes: [] as Array<Record<string, any>>,
+    screeningScoreFeedbacks: [] as Array<Record<string, any>>,
     users: [] as Array<Record<string, any>>,
   },
 }));
@@ -35,11 +36,12 @@ const schemaMock = vi.hoisted(() => ({
   artifacts: createTable("artifacts", ["candidateId", "id"]),
   candidateWorkspaces: createTable("candidateWorkspaces", ["candidateId", "id"]),
   candidates: createTable("candidates", ["email", "id", "organizationName", "phone", "updatedAt", "yearsOfExperience"]),
-  importBatches: createTable("importBatches", ["autoScreen", "batchId", "completedAt", "createdAt", "currentStage", "failedFiles", "id", "processedFiles", "status", "successFiles", "templateId", "totalFiles"]),
-  importFileTasks: createTable("importFileTasks", ["batchId", "candidateId", "createdAt", "errorCode", "errorMessage", "fileHash", "id", "normalizedPath", "originalPath", "resultJson", "retryCount", "stage", "status", "updatedAt"]),
+  importBatches: createTable("importBatches", ["autoScreen", "batchId", "completedAt", "createdAt", "currentStage", "failedFiles", "groupId", "id", "processedFiles", "status", "successFiles", "templateId", "totalFiles"]),
+  importFileTasks: createTable("importFileTasks", ["batchId", "candidateId", "createdAt", "errorCode", "errorMessage", "fileHash", "id", "matchedTemplateId", "normalizedPath", "originalPath", "resultJson", "retryCount", "stage", "status", "updatedAt"]),
   interviews: createTable("interviews", ["candidateId", "id"]),
   providerCredentials: createTable("providerCredentials", ["apiKey", "provider"]),
   resumes: createTable("resumes", ["candidateId", "createdAt", "fileHash", "filePath", "fileSize", "id", "ocrConfidence"]),
+  screeningScoreFeedbacks: createTable("screeningScoreFeedbacks", ["batchId", "candidateId", "createdAt", "overriddenScore", "fileTaskId", "groupId", "id", "learningEnabledSnapshot", "matchedTemplateId", "originalScore", "reason", "templateId", "updatedAt"]),
   users: createTable("users", ["settingsJson"]),
 }));
 
@@ -267,6 +269,7 @@ const mocks = vi.hoisted(() => ({
   createOpenAIMock: vi.fn(),
   extractTextMock: vi.fn(),
   generateTextMock: vi.fn(),
+  getGroupMock: vi.fn(),
   getTemplateMock: vi.fn(),
   logErrorMock: vi.fn(),
   logInfoMock: vi.fn(),
@@ -310,11 +313,17 @@ vi.mock("../university-verification", () => ({
   verifyCandidateSchools: mocks.verifyCandidateSchoolsMock,
 }));
 
-vi.mock("../screening-templates", () => ({
-  screeningTemplatesService: {
-    getTemplate: mocks.getTemplateMock,
-  },
-}));
+vi.mock("../screening-templates", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../screening-templates")>();
+  return {
+    ...actual,
+    screeningTemplatesService: {
+      ...actual.screeningTemplatesService,
+      getGroup: mocks.getGroupMock,
+      getTemplate: mocks.getTemplateMock,
+    },
+  };
+});
 
 vi.mock("../../utils/logger", () => ({
   logError: mocks.logErrorMock,
@@ -322,17 +331,66 @@ vi.mock("../../utils/logger", () => ({
   logWarn: mocks.logWarnMock,
 }));
 
-function createTemplate(id: string, prompt: string) {
+function createTemplate(id: string, prompt: string): {
+  id: string;
+  name: string;
+  description: null;
+  prompt: string;
+  sourceType: string;
+  isReadonly: boolean;
+  matchHintsJson: string | null;
+  keywordsJson: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+} {
   return {
     id,
     name: id,
     description: null,
     prompt,
+    sourceType: "custom",
+    isReadonly: false,
+    matchHintsJson: null,
+    keywordsJson: null,
     isDefault: false,
     isActive: true,
     version: 1,
     createdAt: 1_734_000_000_000,
     updatedAt: 1_734_000_000_000,
+  };
+}
+
+function createGroupDetail(groupId: string, templates: ReturnType<typeof createTemplate>[], defaultTemplateId: string) {
+  return {
+    group: {
+      id: groupId,
+      name: groupId,
+      description: null,
+      passThreshold: 80,
+      reviewThreshold: 70,
+      learningEnabled: false,
+      createdAt: 1_734_000_000_000,
+      updatedAt: 1_734_000_000_000,
+    },
+    templates,
+    defaultTemplate: templates.find((template) => template.id === defaultTemplateId) ?? null,
+    links: templates.map((template, index) => ({
+      id: `link-${index}`,
+      groupId,
+      templateId: template.id,
+      isDefault: template.id === defaultTemplateId,
+      createdAt: 1_734_000_000_000 + index,
+      updatedAt: 1_734_000_000_000 + index,
+    })),
+    batchScreeningConfig: {
+      groupId,
+      passThreshold: 80,
+      reviewThreshold: 70,
+      learningEnabled: false,
+    },
   };
 }
 
@@ -381,6 +439,7 @@ beforeEach(() => {
   runtimeState.tables.interviews = [];
   runtimeState.tables.providerCredentials = [];
   runtimeState.tables.resumes = [];
+  runtimeState.tables.screeningScoreFeedbacks = [];
   runtimeState.tables.users = [];
 
   mocks.createOpenAIMock.mockReset().mockReturnValue({
@@ -391,6 +450,7 @@ beforeEach(() => {
     confidence: 92,
   });
   mocks.generateTextMock.mockReset();
+  mocks.getGroupMock.mockReset();
   mocks.getTemplateMock.mockReset().mockImplementation(async (templateId: string) => {
     if (templateId === "template-a") return createTemplate("template-a", "模板 A：偏重 TypeScript 与 Vue 项目经验");
     if (templateId === "template-b") return createTemplate("template-b", "模板 B：偏重低代码平台与中后台协作经验");
@@ -432,6 +492,7 @@ async function setupRuntime(name: string) {
 
 function seedBatchAndTask(options: {
   batchId: string;
+  groupId?: string | null;
   originalPath: string;
   taskId: string;
   templateId?: string | null;
@@ -448,7 +509,11 @@ function seedBatchAndTask(options: {
     successFiles: 0,
     failedFiles: 0,
     autoScreen: true,
+    groupId: options.groupId ?? null,
     templateId: options.templateId ?? null,
+    passThreshold: 80,
+    reviewThreshold: 70,
+    learningEnabled: false,
     createdAt: now,
     startedAt: null,
     completedAt: null,
@@ -465,6 +530,7 @@ function seedBatchAndTask(options: {
     errorCode: null,
     errorMessage: null,
     candidateId: null,
+    matchedTemplateId: null,
     resultJson: null,
     retryCount: 0,
     fileHash: null,
@@ -487,7 +553,7 @@ describe("import pipeline hash reuse", () => {
     seedBatchAndTask({ batchId: "batch-1", originalPath: firstFile, taskId: "task-1", templateId: "template-a" });
     seedBatchAndTask({ batchId: "batch-2", originalPath: secondFile, taskId: "task-2", templateId: "template-a" });
 
-    await runtime.pipeline.processFile("task-1", firstFile, "pdf", "template-a");
+    await runtime.pipeline.processFile("task-1", firstFile, "pdf", { templateId: "template-a" });
     expect(mocks.generateTextMock).toHaveBeenCalledTimes(1);
 
     const firstTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-1");
@@ -497,7 +563,7 @@ describe("import pipeline hash reuse", () => {
     expect(firstResult.screeningSource).toBe("ai");
     expect(firstResult.screeningReuseKey).toMatch(/^sha256:[a-f0-9]{64}$/);
 
-    await runtime.pipeline.processFile("task-2", secondFile, "pdf", "template-a");
+    await runtime.pipeline.processFile("task-2", secondFile, "pdf", { templateId: "template-a" });
     expect(mocks.generateTextMock).toHaveBeenCalledTimes(1);
 
     const secondTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-2");
@@ -530,8 +596,8 @@ describe("import pipeline hash reuse", () => {
     seedBatchAndTask({ batchId: "batch-a", originalPath: firstFile, taskId: "task-a", templateId: "template-a" });
     seedBatchAndTask({ batchId: "batch-b", originalPath: secondFile, taskId: "task-b", templateId: "template-b" });
 
-    await runtime.pipeline.processFile("task-a", firstFile, "pdf", "template-a");
-    await runtime.pipeline.processFile("task-b", secondFile, "pdf", "template-b");
+    await runtime.pipeline.processFile("task-a", firstFile, "pdf", { templateId: "template-a" });
+    await runtime.pipeline.processFile("task-b", secondFile, "pdf", { templateId: "template-b" });
 
     expect(mocks.generateTextMock).toHaveBeenCalledTimes(2);
 
@@ -559,7 +625,7 @@ describe("import pipeline hash reuse", () => {
     const screeningReuseKey = runtime.hashReuse.buildScreeningReuseKey({
       fileHash,
       promptSnapshot: reuseContext.promptSnapshot,
-      templateId: reuseContext.templateInfo?.templateId,
+      matchedTemplateId: reuseContext.matchedTemplateId,
       templateVersion: reuseContext.templateInfo?.templateVersion,
       screeningProviderId: reuseContext.screeningProviderId,
       screeningModel: reuseContext.screeningModel,
@@ -578,7 +644,11 @@ describe("import pipeline hash reuse", () => {
       successFiles: 0,
       failedFiles: 1,
       autoScreen: true,
+      groupId: null,
       templateId: "template-a",
+      passThreshold: 80,
+      reviewThreshold: 70,
+      learningEnabled: false,
       createdAt: now,
       startedAt: now,
       completedAt: now,
@@ -613,7 +683,7 @@ describe("import pipeline hash reuse", () => {
 
     seedBatchAndTask({ batchId: "batch-current", originalPath: filePath, taskId: "task-current", templateId: "template-a" });
 
-    await runtime.pipeline.processFile("task-current", filePath, "pdf", "template-a");
+    await runtime.pipeline.processFile("task-current", filePath, "pdf", { templateId: "template-a" });
     expect(mocks.generateTextMock).toHaveBeenCalledTimes(1);
 
     const currentTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-current");
@@ -621,5 +691,520 @@ describe("import pipeline hash reuse", () => {
 
     expect(currentResult.screeningSource).toBe("ai");
     expect(currentResult.reusedFromTaskId).toBeNull();
+  });
+
+  test("group reuse key follows final matched template instead of only group id", async () => {
+    const runtime = await setupRuntime("reuse-group-final-template");
+    const sameBytes = Buffer.from("%PDF-1.4 identical bytes grouped template choice\n");
+    const firstFile = join(runtimeState.dataDir, "first-group.pdf");
+    const secondFile = join(runtimeState.dataDir, "second-group.pdf");
+    writeFileSync(firstFile, sameBytes);
+    writeFileSync(secondFile, sameBytes);
+
+    const templateA: ReturnType<typeof createTemplate> = {
+      ...createTemplate("template-a", "模板 A：偏重 TypeScript 与 Vue 项目经验"),
+      matchHintsJson: JSON.stringify(["vue", "前端"]),
+      keywordsJson: JSON.stringify(["typescript"]),
+    };
+    const templateB: ReturnType<typeof createTemplate> = {
+      ...createTemplate("template-b", "模板 B：偏重低代码平台与中后台协作经验"),
+      matchHintsJson: JSON.stringify(["低代码", "中后台"]),
+      keywordsJson: JSON.stringify(["vue"]),
+    };
+    mocks.getGroupMock.mockResolvedValue(createGroupDetail("group-1", [templateA, templateB], "template-a"));
+    mocks.generateTextMock
+      .mockResolvedValueOnce({ text: JSON.stringify({ templateId: "template-b", reason: "更匹配低代码经历" }) })
+      .mockResolvedValueOnce(createAiPayload(91))
+      .mockResolvedValueOnce({ text: JSON.stringify({ templateId: "template-b", reason: "仍然更匹配低代码经历" }) });
+    mocks.parseResumeTextMock.mockReturnValue({
+      ...createParsedResume(),
+      workHistory: ["负责低代码平台建设", "参与中后台系统协作"],
+      rawText: "张三 raw text 低代码 中后台 Vue",
+    });
+
+    seedBatchAndTask({ batchId: "batch-group-1", groupId: "group-1", originalPath: firstFile, taskId: "task-group-1" });
+    seedBatchAndTask({ batchId: "batch-group-2", groupId: "group-1", originalPath: secondFile, taskId: "task-group-2" });
+
+    await runtime.pipeline.processFile("task-group-1", firstFile, "pdf", { groupId: "group-1" });
+    expect(mocks.generateTextMock).toHaveBeenCalledTimes(2);
+
+    await runtime.pipeline.processFile("task-group-2", secondFile, "pdf", { groupId: "group-1" });
+    expect(mocks.generateTextMock).toHaveBeenCalledTimes(3);
+
+    const firstTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-group-1");
+    const secondTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-group-2");
+    const firstResult = JSON.parse(firstTask?.resultJson ?? "null");
+    const secondResult = JSON.parse(secondTask?.resultJson ?? "null");
+
+    expect(firstResult.matchedTemplateId).toBe("template-b");
+    expect(firstResult.screeningSource).toBe("ai");
+    expect(secondResult.matchedTemplateId).toBe("template-b");
+    expect(secondResult.screeningSource).toBe("reused");
+    expect(secondResult.reusedFromTaskId).toBe("task-group-1");
+    expect(secondResult.screeningReuseKey).toBe(firstResult.screeningReuseKey);
+  });
+
+  test("manual score override persists in feedback table and updates derived recommendation", async () => {
+    const runtime = await setupRuntime("manual-score-override");
+    const filePath = join(runtimeState.dataDir, "override.pdf");
+    writeFileSync(filePath, Buffer.from("%PDF-1.4 override bytes\n"));
+    seedBatchAndTask({ batchId: "batch-override", groupId: "group-1", originalPath: filePath, taskId: "task-override", templateId: "template-a" });
+
+    runtimeState.tables.importBatches[0].passThreshold = 80;
+    runtimeState.tables.importBatches[0].reviewThreshold = 70;
+    runtimeState.tables.importBatches[0].learningEnabled = true;
+    runtimeState.tables.importFileTasks[0].candidateId = "cand-1";
+    runtimeState.tables.importFileTasks[0].matchedTemplateId = "template-a";
+    runtimeState.tables.importFileTasks[0].resultJson = JSON.stringify({
+      parsedResume: createParsedResume(),
+      matchedTemplateId: "template-a",
+      screeningStatus: "completed",
+      screeningSource: "ai",
+      screeningConclusion: {
+        verdict: "review",
+        label: "待定",
+        score: 76,
+        summary: "原始结论",
+        strengths: ["基础匹配"],
+        concerns: ["项目细节不足"],
+        recommendedAction: "建议人工复核。",
+        wechatConclusion: "待定",
+        wechatReason: "项目细节不足",
+        wechatAction: "建议人工复核",
+        wechatCopyText: "待定\n项目细节不足\n建议人工复核",
+        templateInfo: {
+          templateId: "template-a",
+          templateName: "template-a",
+          templateVersion: 1,
+          promptSnapshot: "模板 A",
+          renderedPromptSnapshot: "模板 A",
+        },
+      },
+    });
+
+    const outcome = await runtime.pipeline.updateImportTaskScreeningScore("task-override", {
+      score: 88,
+      reason: "补充了低代码平台实战经验",
+    });
+
+    expect(outcome).toEqual(expect.objectContaining({
+      taskId: "task-override",
+      batchId: "batch-override",
+      feedbackCount: 1,
+      currentScore: 88,
+      overridden: true,
+    }));
+    expect(runtimeState.tables.screeningScoreFeedbacks).toHaveLength(1);
+    expect(runtimeState.tables.screeningScoreFeedbacks[0]).toEqual(expect.objectContaining({
+      originalScore: 76,
+      overriddenScore: 88,
+      reason: "补充了低代码平台实战经验",
+      learningEnabledSnapshot: true,
+    }));
+
+    const savedTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-override");
+    const savedResult = JSON.parse(savedTask?.resultJson ?? "null");
+    expect(savedResult.screeningConclusion.score).toBe(76);
+    expect(savedResult.screeningConclusion.scoreOverride).toEqual(expect.objectContaining({
+      originalScore: 76,
+      overriddenScore: 88,
+    }));
+    expect(savedResult.screeningConclusion.derivedRecommendation).toEqual(expect.objectContaining({
+      verdict: "pass",
+      label: "通过",
+    }));
+  });
+
+  test("manual score override keeps threshold boundary as review when score equals review threshold", async () => {
+    const runtime = await setupRuntime("manual-score-override-review-boundary");
+    const filePath = join(runtimeState.dataDir, "override-review-boundary.pdf");
+    writeFileSync(filePath, Buffer.from("%PDF-1.4 override boundary bytes\n"));
+    seedBatchAndTask({ batchId: "batch-review-boundary", groupId: "group-1", originalPath: filePath, taskId: "task-review-boundary", templateId: "template-a" });
+
+    runtimeState.tables.importBatches[0].passThreshold = 80;
+    runtimeState.tables.importBatches[0].reviewThreshold = 70;
+    runtimeState.tables.importFileTasks[0].candidateId = "cand-1";
+    runtimeState.tables.importFileTasks[0].matchedTemplateId = "template-a";
+    runtimeState.tables.importFileTasks[0].resultJson = JSON.stringify({
+      parsedResume: createParsedResume(),
+      matchedTemplateId: "template-a",
+      screeningStatus: "completed",
+      screeningSource: "ai",
+      screeningConclusion: {
+        verdict: "reject",
+        label: "淘汰",
+        score: 65,
+        summary: "原始结论",
+        strengths: [],
+        concerns: ["项目细节不足"],
+        recommendedAction: "建议淘汰。",
+        wechatConclusion: "淘汰",
+        wechatReason: "项目细节不足",
+        wechatAction: "建议结束流程",
+        wechatCopyText: "淘汰\n项目细节不足\n建议结束流程",
+        templateInfo: {
+          templateId: "template-a",
+          templateName: "template-a",
+          templateVersion: 1,
+          promptSnapshot: "模板 A",
+          renderedPromptSnapshot: "模板 A",
+        },
+      },
+    });
+
+    const outcome = await runtime.pipeline.updateImportTaskScreeningScore("task-review-boundary", {
+      score: 70,
+      reason: "补充了边界案例说明",
+    });
+
+    expect(outcome).toEqual(expect.objectContaining({
+      currentScore: 70,
+      overridden: true,
+    }));
+    const savedTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-review-boundary");
+    const savedResult = JSON.parse(savedTask?.resultJson ?? "null");
+    expect(savedResult.screeningConclusion.derivedRecommendation).toEqual(expect.objectContaining({
+      verdict: "review",
+      label: "待定",
+      passThreshold: 80,
+      reviewThreshold: 70,
+    }));
+  });
+
+  test("clearing single task score feedback removes override but keeps feedback history empty", async () => {
+    const runtime = await setupRuntime("clear-task-score-feedback");
+    const now = Date.now();
+    runtimeState.tables.importBatches.push({
+      id: "batch-clear-task",
+      displayName: "batch-clear-task",
+      status: "completed",
+      sourceType: "pdf",
+      currentStage: "completed",
+      totalFiles: 1,
+      processedFiles: 1,
+      successFiles: 1,
+      failedFiles: 0,
+      autoScreen: true,
+      groupId: "group-1",
+      templateId: "template-a",
+      passThreshold: 80,
+      reviewThreshold: 70,
+      learningEnabled: true,
+      createdAt: now,
+      startedAt: now,
+      completedAt: now,
+    });
+    runtimeState.tables.importFileTasks.push({
+      id: "task-clear-task",
+      batchId: "batch-clear-task",
+      originalPath: "resume.pdf",
+      normalizedPath: null,
+      fileType: "pdf",
+      status: "done",
+      stage: "completed",
+      errorCode: null,
+      errorMessage: null,
+      candidateId: "cand-1",
+      matchedTemplateId: "template-a",
+      resultJson: JSON.stringify({
+        parsedResume: createParsedResume(),
+        matchedTemplateId: "template-a",
+        screeningStatus: "completed",
+        screeningSource: "ai",
+        scoreFeedbackHistory: [{
+          id: "fb-task-1",
+          batchId: "batch-clear-task",
+          fileTaskId: "task-clear-task",
+          candidateId: "cand-1",
+          groupId: "group-1",
+          templateId: "template-a",
+          matchedTemplateId: "template-a",
+          originalScore: 69,
+          overriddenScore: 82,
+          reason: "人工确认补充经历后可过",
+          learningEnabledSnapshot: true,
+          createdAt: now,
+          updatedAt: now,
+        }],
+        screeningConclusion: {
+          verdict: "review",
+          label: "待定",
+          score: 69,
+          summary: "原始结论",
+          strengths: [],
+          concerns: [],
+          recommendedAction: "建议人工复核。",
+          wechatConclusion: "待定",
+          wechatReason: "原始结论",
+          wechatAction: "建议人工复核",
+          wechatCopyText: "待定\n原始结论\n建议人工复核",
+          scoreOverride: {
+            feedbackId: "fb-task-1",
+            originalScore: 69,
+            overriddenScore: 82,
+            reason: "人工确认补充经历后可过",
+            learningEnabledSnapshot: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+          derivedRecommendation: {
+            verdict: "pass",
+            label: "通过",
+            passThreshold: 80,
+            reviewThreshold: 70,
+          },
+        },
+      }),
+      retryCount: 0,
+      fileHash: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    runtimeState.tables.screeningScoreFeedbacks.push({
+      id: "fb-task-1",
+      batchId: "batch-clear-task",
+      fileTaskId: "task-clear-task",
+      candidateId: "cand-1",
+      groupId: "group-1",
+      templateId: "template-a",
+      matchedTemplateId: "template-a",
+      originalScore: 69,
+      overriddenScore: 82,
+      reason: "人工确认补充经历后可过",
+      learningEnabledSnapshot: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const cleared = await runtime.pipeline.clearImportTaskScreeningScoreFeedback("task-clear-task");
+
+    expect(cleared).toEqual({
+      taskId: "task-clear-task",
+      batchId: "batch-clear-task",
+      feedbackCount: 0,
+      currentScore: 69,
+      overridden: false,
+    });
+    expect(runtimeState.tables.screeningScoreFeedbacks).toHaveLength(0);
+
+    const savedTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-clear-task");
+    const savedResult = JSON.parse(savedTask?.resultJson ?? "null");
+    expect(savedResult.screeningConclusion.score).toBe(69);
+    expect(savedResult.screeningConclusion.scoreOverride).toBeNull();
+    expect(savedResult.screeningConclusion.derivedRecommendation).toEqual(expect.objectContaining({
+      verdict: "reject",
+      label: "淘汰",
+    }));
+    expect(savedResult.scoreFeedbackHistory).toEqual([]);
+  });
+
+  test("updating batch screening config reapplies derived recommendation to existing results", async () => {
+    const runtime = await setupRuntime("update-batch-threshold-config");
+    const now = Date.now();
+    runtimeState.tables.importBatches.push({
+      id: "batch-config",
+      displayName: "batch-config",
+      status: "completed",
+      sourceType: "pdf",
+      currentStage: "completed",
+      totalFiles: 1,
+      processedFiles: 1,
+      successFiles: 1,
+      failedFiles: 0,
+      autoScreen: true,
+      groupId: "group-1",
+      templateId: "template-a",
+      passThreshold: 80,
+      reviewThreshold: 70,
+      learningEnabled: false,
+      createdAt: now,
+      startedAt: now,
+      completedAt: now,
+    });
+    runtimeState.tables.importFileTasks.push({
+      id: "task-config",
+      batchId: "batch-config",
+      originalPath: "resume.pdf",
+      normalizedPath: null,
+      fileType: "pdf",
+      status: "done",
+      stage: "completed",
+      errorCode: null,
+      errorMessage: null,
+      candidateId: "cand-1",
+      matchedTemplateId: "template-a",
+      resultJson: JSON.stringify({
+        parsedResume: createParsedResume(),
+        matchedTemplateId: "template-a",
+        screeningStatus: "completed",
+        screeningSource: "ai",
+        screeningConclusion: {
+          verdict: "review",
+          label: "待定",
+          score: 78,
+          summary: "原始结论",
+          strengths: [],
+          concerns: [],
+          recommendedAction: "建议人工复核。",
+          wechatConclusion: "待定",
+          wechatReason: "原始结论",
+          wechatAction: "建议人工复核",
+          wechatCopyText: "待定\n原始结论\n建议人工复核",
+          derivedRecommendation: {
+            verdict: "review",
+            label: "待定",
+            passThreshold: 80,
+            reviewThreshold: 70,
+          },
+        },
+      }),
+      retryCount: 0,
+      fileHash: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const updatedBatch = await runtime.pipeline.updateImportBatchScreeningConfig("batch-config", {
+      passThreshold: 75,
+      reviewThreshold: 60,
+      learningEnabled: true,
+    });
+
+    expect(updatedBatch).toEqual(expect.objectContaining({
+      id: "batch-config",
+      passThreshold: 75,
+      reviewThreshold: 60,
+      learningEnabled: true,
+    }));
+
+    const savedTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-config");
+    const savedResult = JSON.parse(savedTask?.resultJson ?? "null");
+    expect(savedResult.screeningConclusion.derivedRecommendation).toEqual(expect.objectContaining({
+      verdict: "pass",
+      label: "通过",
+      passThreshold: 75,
+      reviewThreshold: 60,
+    }));
+  });
+
+  test("clearing batch score feedback removes override layer but keeps raw AI score", async () => {
+    const runtime = await setupRuntime("clear-batch-score-feedbacks");
+    const now = Date.now();
+    runtimeState.tables.importBatches.push({
+      id: "batch-clear",
+      displayName: "batch-clear",
+      status: "completed",
+      sourceType: "pdf",
+      currentStage: "completed",
+      totalFiles: 1,
+      processedFiles: 1,
+      successFiles: 1,
+      failedFiles: 0,
+      autoScreen: true,
+      groupId: "group-1",
+      templateId: "template-a",
+      passThreshold: 80,
+      reviewThreshold: 70,
+      learningEnabled: true,
+      createdAt: now,
+      startedAt: now,
+      completedAt: now,
+    });
+    runtimeState.tables.importFileTasks.push({
+      id: "task-clear",
+      batchId: "batch-clear",
+      originalPath: "resume.pdf",
+      normalizedPath: null,
+      fileType: "pdf",
+      status: "done",
+      stage: "completed",
+      errorCode: null,
+      errorMessage: null,
+      candidateId: "cand-1",
+      matchedTemplateId: "template-a",
+      resultJson: JSON.stringify({
+        parsedResume: createParsedResume(),
+        matchedTemplateId: "template-a",
+        screeningStatus: "completed",
+        screeningSource: "ai",
+        scoreFeedbackHistory: [{
+          id: "fb-1",
+          batchId: "batch-clear",
+          fileTaskId: "task-clear",
+          candidateId: "cand-1",
+          groupId: "group-1",
+          templateId: "template-a",
+          matchedTemplateId: "template-a",
+          originalScore: 72,
+          overriddenScore: 86,
+          reason: "人工确认可过",
+          learningEnabledSnapshot: true,
+          createdAt: now,
+          updatedAt: now,
+        }],
+        screeningConclusion: {
+          verdict: "review",
+          label: "待定",
+          score: 72,
+          summary: "原始结论",
+          strengths: [],
+          concerns: [],
+          recommendedAction: "建议人工复核。",
+          wechatConclusion: "待定",
+          wechatReason: "原始结论",
+          wechatAction: "建议人工复核",
+          wechatCopyText: "待定\n原始结论\n建议人工复核",
+          scoreOverride: {
+            feedbackId: "fb-1",
+            originalScore: 72,
+            overriddenScore: 86,
+            reason: "人工确认可过",
+            learningEnabledSnapshot: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+          derivedRecommendation: {
+            verdict: "pass",
+            label: "通过",
+            passThreshold: 80,
+            reviewThreshold: 70,
+          },
+        },
+      }),
+      retryCount: 0,
+      fileHash: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    runtimeState.tables.screeningScoreFeedbacks.push({
+      id: "fb-1",
+      batchId: "batch-clear",
+      fileTaskId: "task-clear",
+      candidateId: "cand-1",
+      groupId: "group-1",
+      templateId: "template-a",
+      matchedTemplateId: "template-a",
+      originalScore: 72,
+      overriddenScore: 86,
+      reason: "人工确认可过",
+      learningEnabledSnapshot: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const cleared = await runtime.pipeline.clearImportBatchScreeningFeedbacks("batch-clear");
+
+    expect(cleared).toEqual({ batchId: "batch-clear", clearedCount: 1 });
+    expect(runtimeState.tables.screeningScoreFeedbacks).toHaveLength(0);
+
+    const savedTask = runtimeState.tables.importFileTasks.find((task) => task.id === "task-clear");
+    const savedResult = JSON.parse(savedTask?.resultJson ?? "null");
+    expect(savedResult.screeningConclusion.score).toBe(72);
+    expect(savedResult.screeningConclusion.scoreOverride).toBeNull();
+    expect(savedResult.screeningConclusion.derivedRecommendation).toEqual(expect.objectContaining({
+      verdict: "review",
+      label: "待定",
+    }));
+    expect(savedResult.scoreFeedbackHistory).toEqual([]);
   });
 });

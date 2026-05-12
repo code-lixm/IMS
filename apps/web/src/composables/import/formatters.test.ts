@@ -4,6 +4,7 @@ import {
   formatImportTimestamp,
   importStageLabel,
   parseImportTaskResult,
+  screeningRecommendationClass,
   screeningScoreClass,
   screeningSourceLabel,
   screeningUniversityVerdictBadgeProps,
@@ -32,7 +33,6 @@ describe("import formatters", () => {
       },
     }));
     expect(parsed?.screeningStatus).toBe("completed");
-    expect(parsed?.extractionConfidence).toBe(88);
     expect(parsed?.screeningConclusion?.wechatCopyText).toBe("推荐复试");
   });
 
@@ -42,6 +42,8 @@ describe("import formatters", () => {
     expect(screeningScoreClass(60)).toContain("bg-orange-100");
     expect(screeningScoreClass(70)).toContain("bg-blue-100");
     expect(screeningScoreClass(85)).toContain("bg-green-100");
+    expect(screeningScoreClass(50, "pass")).toContain("bg-blue-100");
+    expect(screeningRecommendationClass("review")).toContain("bg-amber-100");
   });
 
   test("formats source labels and timestamps for zh-CN display", () => {

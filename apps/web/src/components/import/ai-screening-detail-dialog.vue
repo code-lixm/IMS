@@ -105,8 +105,117 @@
                     <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       <p v-if="templateInfo">模板：{{ screeningTemplateLabel(templateInfo) }}</p>
                       <p>来源：{{ screeningSourceLabel(screeningData.screeningSource) }}</p>
+                      <p v-if="recommendationThresholdText">推荐规则：{{ recommendationThresholdText }}</p>
                     </div>
                   </div>
+                </div>
+
+                <div class="rounded-lg border bg-muted/30 p-4 space-y-4">
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">人工改分与学习反馈</h3>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        原始 AI 分数会保留，人工改分只作为覆盖层参与推荐判断。
+                      </p>
+                    </div>
+                    <Badge variant="outline" class="w-fit">
+                      {{ learningStatusText }}
+                    </Badge>
+                  </div>
+
+                  <div class="grid gap-3 sm:grid-cols-3">
+                    <div class="rounded-lg border border-border/60 bg-background/80 p-3">
+                      <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">原始 AI 分数</p>
+                      <p class="mt-1 text-lg font-semibold text-foreground">{{ rawScore }}%</p>
+                    </div>
+                    <div class="rounded-lg border border-border/60 bg-background/80 p-3">
+                      <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">当前生效分数</p>
+                      <p class="mt-1 text-lg font-semibold" :class="matchDegreeColorClass">{{ score }}%</p>
+                    </div>
+                    <div class="rounded-lg border border-border/60 bg-background/80 p-3">
+                      <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">覆盖状态</p>
+                      <p class="mt-1 text-sm font-medium text-foreground">{{ currentOverride ? '已人工改分' : '使用原始 AI 结果' }}</p>
+                    </div>
+                  </div>
+
+                  <div v-if="currentOverride" class="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm space-y-1.5">
+                    <p class="font-medium text-foreground">最近一次改分：{{ currentOverride.originalScore }} → {{ currentOverride.overriddenScore }}</p>
+                    <p v-if="currentOverride.reason" class="text-muted-foreground break-words">原因：{{ currentOverride.reason }}</p>
+                    <p class="text-xs text-muted-foreground">
+                      {{ formatFeedbackTime(currentOverride.createdAt) }}
+                      <span v-if="currentOverride.learningEnabledSnapshot">· 当时已开启本地学习</span>
+                    </p>
+                  </div>
+
+                  <div class="grid gap-3 md:grid-cols-[140px_minmax(0,1fr)] md:items-start">
+                    <div class="space-y-2">
+                      <Label for="override-score-input">修改后分数</Label>
+                      <Input id="override-score-input" v-model="overrideScoreInput" inputmode="numeric" placeholder="0-100" />
+                    </div>
+                    <div class="space-y-2">
+                      <Label for="override-reason-input">修改原因</Label>
+                      <Textarea id="override-reason-input" v-model="overrideReasonInput" rows="3" placeholder="例如：项目经历比 AI 判断更贴近岗位，补充了低代码平台实战经验" />
+                    </div>
+                  </div>
+
+                  <p v-if="overrideValidationMessage" class="text-sm text-destructive">{{ overrideValidationMessage }}</p>
+
+                  <div class="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      v-if="currentOverride"
+                      type="button"
+                      variant="secondary"
+                      :disabled="scoreActionPending"
+                      @click="file?.id && emit('clear-score-override', file.id)"
+                    >
+                      清除当前改分
+                    </Button>
+                    <Button
+                      type="button"
+                      :disabled="Boolean(overrideValidationMessage) || scoreActionPending || !file?.id"
+                      @click="submitScoreOverride"
+                    >
+                      {{ scoreActionPending ? '保存中...' : '保存人工改分' }}
+                    </Button>
+                  </div>
+
+                  <div v-if="feedbackHistory.length > 0" class="space-y-2">
+                    <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">改分记录</h4>
+                    <div class="space-y-2">
+                      <div v-for="item in feedbackHistory" :key="item.id" class="rounded-lg border border-border/60 bg-background/80 p-3 text-sm space-y-1">
+                        <p class="font-medium text-foreground">{{ item.originalScore }} → {{ item.overriddenScore }}</p>
+                        <p v-if="item.reason" class="break-words text-muted-foreground">原因：{{ item.reason }}</p>
+                        <p class="text-xs text-muted-foreground">
+                          {{ formatFeedbackTime(item.createdAt) }}
+                          <span v-if="item.learningEnabledSnapshot">· 已纳入本地学习样本</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border bg-muted/30 p-4 space-y-3">
+                  <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">基础信息</h3>
+                  <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div
+                      v-for="item in candidateOverviewItems"
+                      :key="item.label"
+                      class="min-w-0 space-y-1"
+                    >
+                      <dt class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                        {{ item.label }}
+                      </dt>
+                      <dd
+                        :class="[
+                          item.label === '学历/学校'
+                            ? 'line-clamp-2 break-words text-sm font-medium leading-relaxed'
+                            : 'truncate text-sm font-medium leading-relaxed',
+                        ]"
+                      >
+                        {{ item.value }}
+                      </dd>
+                    </div>
+                  </dl>
                 </div>
 
                 <!-- University verification -->
@@ -319,7 +428,8 @@
 
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount, computed } from "vue";
-import type { ImportTaskResultData } from "@ims/shared/src/api-types";
+import type { BatchScreeningConfig, ImportTaskResultData } from "@ims/shared";
+import { deriveScreeningRecommendation, formatScreeningThresholdSummary, getEffectiveScreeningScore } from "@ims/shared";
 import type { ImportFileTask } from "@ims/shared";
 import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates";
 import { AlertCircle, Check, ChevronLeft, ChevronRight, Loader2, FileText, ClipboardList, Sparkles, RefreshCw, XCircle } from "lucide-vue-next";
@@ -330,7 +440,11 @@ import { Tabs } from "@/components/ui/tabs";
 import { TabsList } from "@/components/ui/tabs";
 import { TabsTrigger } from "@/components/ui/tabs";
 import { TabsContent } from "@/components/ui/tabs";
-import { screeningSourceLabel, screeningUniversityTags, screeningUniversityVerdictBadgeProps, screeningTemplateLabel } from "@/composables/import/formatters";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { extractImportOriginalFileName, screeningSourceLabel, screeningUniversityTags, screeningUniversityVerdictBadgeProps, screeningTemplateLabel } from "@/composables/import/formatters";
+import { buildScreeningCandidateOverviewItems } from "@/composables/import/screening-summary";
 
 type TemplateEvidence = {
   matched: { item: string; evidence?: string }[];
@@ -348,6 +462,8 @@ const props = defineProps<{
   open: boolean;
   screeningData: ImportTaskResultWithConfidence | null;
   file: ImportFileTask | null;
+  batchScreeningConfig?: BatchScreeningConfig | null;
+  scoreActionPending?: boolean;
   currentPosition?: number;
   totalPositions?: number;
   hasPrev?: boolean;
@@ -358,6 +474,8 @@ const emit = defineEmits<{
   (e: "update:open", value: boolean): void;
   (e: "run-screening", taskId: string): void;
   (e: "retry-university-verification", taskId: string): void;
+  (e: "override-score", payload: { taskId: string; score: number; reason?: string | null }): void;
+  (e: "clear-score-override", taskId: string): void;
   (e: "navigate-prev"): void;
   (e: "navigate-next"): void;
 }>();
@@ -379,27 +497,109 @@ const hasScreeningConclusion = computed(() => {
 });
 
 const score = computed(() => {
+  return getEffectiveScreeningScore(props.screeningData?.screeningConclusion ?? null) ?? 0;
+});
+
+const rawScore = computed(() => {
   return props.screeningData?.screeningConclusion?.score ?? 0;
 });
 
+const derivedRecommendation = computed(() => {
+  const conclusion = props.screeningData?.screeningConclusion;
+  if (!conclusion) {
+    return null;
+  }
+
+  return conclusion.derivedRecommendation
+    ?? deriveScreeningRecommendation(getEffectiveScreeningScore(conclusion), props.batchScreeningConfig ?? null);
+});
+
+const currentOverride = computed(() => {
+  return props.screeningData?.screeningConclusion?.scoreOverride ?? null;
+});
+
+const feedbackHistory = computed(() => {
+  return props.screeningData?.scoreFeedbackHistory ?? [];
+});
+
+const learningStatusText = computed(() => {
+  return props.batchScreeningConfig?.learningEnabled ? "本地学习已开启" : "本地学习未开启";
+});
+
+const overrideScoreInput = ref("");
+const overrideReasonInput = ref("");
+
+const overrideValidationMessage = computed(() => {
+  if (!overrideScoreInput.value.trim()) {
+    return "请输入修改后的分数";
+  }
+  const parsed = Number(overrideScoreInput.value.trim());
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
+    return "改分必须是 0 到 100 之间的整数";
+  }
+  return null;
+});
+
+function syncOverrideForm() {
+  overrideScoreInput.value = currentOverride.value
+    ? String(currentOverride.value.overriddenScore)
+    : String(rawScore.value || 0);
+  overrideReasonInput.value = currentOverride.value?.reason ?? "";
+}
+
+function formatFeedbackTime(timestamp: number) {
+  return new Date(timestamp).toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function submitScoreOverride() {
+  if (!props.file?.id || overrideValidationMessage.value) {
+    return;
+  }
+
+  emit("override-score", {
+    taskId: props.file.id,
+    score: Number(overrideScoreInput.value.trim()),
+    reason: overrideReasonInput.value.trim() || null,
+  });
+}
+
 const matchDegreeColorClass = computed(() => {
-  const s = score.value;
-  if (s >= 85) return "text-green-600";
-  if (s >= 70) return "text-blue-600";
-  if (s >= 55) return "text-amber-600";
-  return "text-red-600";
+  if (derivedRecommendation.value?.verdict === "pass") return "text-blue-600";
+  if (derivedRecommendation.value?.verdict === "review") return "text-amber-600";
+  if (derivedRecommendation.value?.verdict === "reject") return "text-red-600";
+  return "text-muted-foreground";
 });
 
 const matchDegreeLabel = computed(() => {
-  const s = score.value;
-  if (s >= 85) return "强匹配";
-  if (s >= 70) return "较匹配";
-  if (s >= 55) return "待确认";
-  return "不匹配";
+  return derivedRecommendation.value ? `推荐${derivedRecommendation.value.label}` : "待确认";
+});
+
+const recommendationThresholdText = computed(() => {
+  const recommendation = derivedRecommendation.value;
+  if (!recommendation) {
+    return "";
+  }
+
+  return formatScreeningThresholdSummary({
+    groupId: props.batchScreeningConfig?.groupId ?? null,
+    passThreshold: recommendation.passThreshold,
+    reviewThreshold: recommendation.reviewThreshold,
+    learningEnabled: props.batchScreeningConfig?.learningEnabled ?? false,
+  });
 });
 
 const templateInfo = computed(() => {
   return props.screeningData?.screeningConclusion?.templateInfo ?? null;
+});
+
+const candidateOverviewItems = computed(() => {
+  return buildScreeningCandidateOverviewItems(props.screeningData);
 });
 
 const universityVerification = computed(() => {
@@ -494,8 +694,7 @@ const isScreeningRunning = computed(() => {
 });
 
 const dialogTitle = computed(() => {
-  const fileName = props.file?.originalPath?.split("#").pop()?.split("/").pop() ?? "文件";
-  return fileName;
+  return extractImportOriginalFileName(props.file?.originalPath, "文件");
 });
 
 const currentPosition = computed(() => {
@@ -545,9 +744,16 @@ async function loadPreview(candidateId: string | undefined) {
       return;
     }
 
-    previewObjectUrl.value = candidatesApi.getResumePreviewUrl(latestResume.id);
-    previewContentType.value = resolveResumePreviewContentType(latestResume.fileType, latestResume.fileName);
-    previewFileName.value = latestResume.fileName;
+    const preview = await candidatesApi.loadResumePreviewSource(latestResume.id);
+    if (requestToken !== previewRequestToken.value || !props.open) {
+      URL.revokeObjectURL(preview.objectUrl);
+      return;
+    }
+
+    previewObjectUrl.value = preview.objectUrl;
+    previewContentType.value = preview.contentType
+      ?? resolveResumePreviewContentType(latestResume.fileType, latestResume.fileName);
+    previewFileName.value = preview.fileName ?? latestResume.fileName;
   } catch (error) {
     if (requestToken !== previewRequestToken.value) return;
     previewError.value = error instanceof Error ? error.message : "原件预览加载失败";
@@ -602,8 +808,15 @@ watch(() => props.open, (isOpen) => {
   if (isOpen) {
     activeTab.value = "screening";
     cleanupPreview();
+    syncOverrideForm();
   }
 });
+
+watch(() => props.screeningData, () => {
+  if (props.open) {
+    syncOverrideForm();
+  }
+}, { deep: true });
 
 onBeforeUnmount(() => {
   cleanupPreview();

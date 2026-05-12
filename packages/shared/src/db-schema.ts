@@ -9,6 +9,8 @@
  * and import from drizzle-orm/sqlite-core. Only plain types live here.
  */
 
+import type { RecorderStatus } from "./recorder";
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
@@ -185,7 +187,11 @@ export interface ImportBatch {
   successFiles: number;
   failedFiles: number;
   autoScreen: boolean;
+  groupId: string | null;
   templateId: string | null;
+  passThreshold: number | null;
+  reviewThreshold: number | null;
+  learningEnabled: boolean | null;
   createdAt: number;
   startedAt: number | null;
   completedAt: number | null;
@@ -202,6 +208,7 @@ export interface ImportFileTask {
   errorCode: string | null;
   errorMessage: string | null;
   candidateId: string | null;
+  matchedTemplateId: string | null;
   resultJson: string | null;
   retryCount: number;
   fileHash: string | null;
@@ -219,6 +226,21 @@ export interface ShareRecord {
   resultJson: string | null;
   createdAt: number;
   completedAt: number | null;
+}
+
+export interface Recording {
+  id: string;
+  status: RecorderStatus;
+  filePath: string;
+  durationMs: number;
+  fileSizeBytes: number;
+  language: string | null;
+  liveTranscriptText: string | null;
+  finalTranscriptText: string | null;
+  transcriptJson: string | null;
+  organisedText: string | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Notification {
@@ -381,9 +403,49 @@ export interface ScreeningTemplate {
   name: string;
   description: string | null;
   prompt: string;
+  sourceType: string;
+  isReadonly: boolean;
+  matchHintsJson: string | null;
+  keywordsJson: string | null;
   isDefault: boolean;
   isActive: boolean;
   version: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ScreeningTemplateGroupRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ScreeningTemplateGroupTemplateRecord {
+  id: string;
+  groupId: string;
+  templateId: string;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ScreeningScoreFeedbackRecord {
+  id: string;
+  batchId: string;
+  fileTaskId: string;
+  candidateId: string | null;
+  groupId: string | null;
+  templateId: string | null;
+  matchedTemplateId: string | null;
+  originalScore: number;
+  overriddenScore: number;
+  reason: string | null;
+  learningEnabledSnapshot: boolean;
   createdAt: number;
   updatedAt: number;
 }

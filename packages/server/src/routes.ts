@@ -1,18 +1,22 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   APPLICATION_STATUS_LABELS,
+  normalizeBatchScreeningConfig,
   formatInterviewRoundLabel,
   INTERVIEW_TYPE_LABELS,
   lookupLabelOrDefault,
   resolveApplicationStatusCode,
   type ImportTaskResultData,
   type ImportScreeningExportRequest,
+  type ImportTaskScreeningScoreData,
+  type UpdateImportTaskScreeningScoreInput,
+  type UpdateImportBatchScreeningConfigInput,
 } from "@ims/shared";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { syncManager } from "./services/sync-manager";
 import { resetCandidateRecords } from "./services/sync-reset";
-import { cancelImportBatch, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, retryFileUniversityVerification, exportScreeningResults, ImportScreeningExportError, ImportValidationError, startRerunImportBatchScreening } from "./services/import/pipeline";
+import { cancelImportBatch, clearImportBatchScreeningFeedbacks, clearImportTaskScreeningScoreFeedback, prepareImportTasks, processFile, refreshBatchProgress, rerunImportBatchScreening, rerunFileScreening, retryFileUniversityVerification, exportScreeningResults, ImportScreeningExportError, ImportValidationError, startRerunImportBatchScreening, updateImportBatchScreeningConfig, updateImportTaskScreeningScore } from "./services/import/pipeline";
 import { exportCandidate } from "./services/imr/exporter";
 import { importIpmr } from "./services/imr/importer";
 import { getDiscovery } from "./services/share/discovery";
@@ -26,8 +30,8 @@ import { logError, logInfo, logWarn, resolveRequestId } from "./utils/logger";
 import {
   users, candidates, resumes, interviews, artifacts, artifactVersions,
   candidateWorkspaces, importBatches, importFileTasks, shareRecords, notifications,
-  remoteUsers, conversations, messages, fileResources, agents, providerCredentials,
-  luiWorkflows,
+  remoteUsers, conversations, messages, fileResources, agents, providerCredentials, screeningScoreFeedbacks,
+  luiWorkflows, screeningTemplateGroups, screeningTemplateGroupTemplates,
 } from "./schema";
 import { streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -63,7 +67,9 @@ import { sessionMemoryRoute } from "./routes/session-memory";
 import { fileResourcesRoute } from "./routes/file-resources";
 import { emailRoute } from "./routes/email";
 import { interviewAssessmentRoute } from "./routes/interview-assessment";
+import { interviewImportRoute } from "./routes/interview-import";
 import { screeningTemplatesRoute } from "./routes/screening-templates";
+import { recorderRoute } from "./routes/recorder";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
 let databaseShutdownScheduled = false;
@@ -212,7 +218,7 @@ function summarizeImportBatchAnalysis(
   };
 }
 
-function attachImportBatchAnalysisSummary(
+async function attachImportBatchAnalysisSummary(
   batches: Array<typeof importBatches.$inferSelect>,
   tasks: Array<typeof importFileTasks.$inferSelect>,
 ) {
@@ -223,9 +229,26 @@ function attachImportBatchAnalysisSummary(
     taskMap.set(task.batchId, list);
   }
 
+  const groupIds = Array.from(new Set(batches.map((batch) => batch.groupId).filter((groupId): groupId is string => Boolean(groupId))));
+  const groupRows = groupIds.length
+    ? await db.select().from(screeningTemplateGroups).where(inArray(screeningTemplateGroups.id, groupIds))
+    : [];
+  const groupMap = new Map(groupRows.map((group) => [group.id, group]));
+
+  const buildBatchScreeningConfig = (batch: typeof importBatches.$inferSelect) => {
+    const group = batch.groupId ? groupMap.get(batch.groupId) : null;
+    return normalizeBatchScreeningConfig({
+      groupId: batch.groupId ?? null,
+      passThreshold: batch.passThreshold ?? group?.passThreshold ?? undefined,
+      reviewThreshold: batch.reviewThreshold ?? group?.reviewThreshold ?? undefined,
+      learningEnabled: batch.learningEnabled ?? group?.learningEnabled ?? undefined,
+    });
+  };
+
   return batches.map((batch) => ({
     ...batch,
     autoScreen: batch.autoScreen ?? false,
+    batchScreeningConfig: buildBatchScreeningConfig(batch),
     ...summarizeImportBatchAnalysis(batch, taskMap.get(batch.id) ?? []),
   }));
 }
@@ -354,7 +377,10 @@ async function runBatchInQueue<T>(job: () => Promise<T>): Promise<T> {
   }
 }
 
-function runImportBatchSerially(tasks: Array<{ taskId: string; filePath: string; fileType: Parameters<typeof processFile>[2] }>, batchTemplateId?: string | null) {
+function runImportBatchSerially(
+  tasks: Array<{ taskId: string; filePath: string; fileType: Parameters<typeof processFile>[2] }>,
+  screeningOptions?: Parameters<typeof processFile>[3],
+) {
   void runBatchInQueue(async () => {
     let batchId: string | null = null;
     for (const task of tasks) {
@@ -363,7 +389,7 @@ function runImportBatchSerially(tasks: Array<{ taskId: string; filePath: string;
           const [taskRow] = await db.select({ batchId: importFileTasks.batchId }).from(importFileTasks).where(eq(importFileTasks.id, task.taskId)).limit(1);
           batchId = taskRow?.batchId ?? null;
         }
-        await processFile(task.taskId, task.filePath, task.fileType, batchTemplateId);
+        await processFile(task.taskId, task.filePath, task.fileType, screeningOptions);
       } catch (err) {
         console.error(`[import] file processing error: ${(err as Error).message}`);
       }
@@ -2118,7 +2144,7 @@ async function routeInternal(request: Request): Promise<Response> {
     const [row] = await db.select().from(resumes).where(eq(resumes.id, id)).limit(1);
     if (!row) return fail("NOT_FOUND", "resume not found", 404);
 
-    const { statSync, existsSync } = await import("node:fs");
+    const { statSync, existsSync, readFileSync } = await import("node:fs");
     if (!existsSync(row.filePath)) return fail("NOT_FOUND", "file not found on disk", 404);
 
     const contentType = resolveResumeContentType(row.fileType, row.fileName);
@@ -2127,8 +2153,8 @@ async function routeInternal(request: Request): Promise<Response> {
     }
 
     const stat = statSync(row.filePath);
-    const file = Bun.file(row.filePath);
-    return new Response(file, {
+    const fileBuffer = readFileSync(row.filePath);
+    return new Response(fileBuffer, {
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": buildContentDisposition("inline", row.fileName),
@@ -2143,12 +2169,12 @@ async function routeInternal(request: Request): Promise<Response> {
     const id = resumeDownloadMatch[1];
     const [row] = await db.select().from(resumes).where(eq(resumes.id, id)).limit(1);
     if (!row) return fail("NOT_FOUND", "resume not found", 404);
-    const { statSync, existsSync } = await import("node:fs");
+    const { statSync, existsSync, readFileSync } = await import("node:fs");
     if (!existsSync(row.filePath)) return fail("NOT_FOUND", "file not found on disk", 404);
     const stat = statSync(row.filePath);
-    const file = Bun.file(row.filePath);
     const contentType = resolveResumeContentType(row.fileType, row.fileName) ?? "application/octet-stream";
-    return new Response(file, {
+    const fileBuffer = readFileSync(row.filePath);
+    return new Response(fileBuffer, {
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": buildContentDisposition("attachment", row.fileName),
@@ -2437,7 +2463,7 @@ async function routeInternal(request: Request): Promise<Response> {
     const tasks = batchIds.length > 0
       ? await db.select().from(importFileTasks).where(inArray(importFileTasks.batchId, batchIds))
       : [];
-    return ok({ items: attachImportBatchAnalysisSummary(rows, tasks) });
+    return ok({ items: await attachImportBatchAnalysisSummary(rows, tasks) });
   }
 
   if (path === "/api/import/batches" && request.method === "POST") {
@@ -2446,23 +2472,53 @@ async function routeInternal(request: Request): Promise<Response> {
     const contentType = request.headers.get("content-type") ?? "";
 
     let autoScreen = false;
+    let groupId: string | null = null;
     let templateId: string | null = null;
     let sourcePaths: string[] = [];
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       autoScreen = sanitizeString(formData.get("autoScreen")) === "true";
+      groupId = sanitizeString(formData.get("groupId")) || null;
       templateId = sanitizeString(formData.get("templateId")) || null;
       const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File && entry.size > 0);
       if (!files.length) return fail("VALIDATION_ERROR", "files is required and non-empty", 422);
       sourcePaths = await Promise.all(files.map((file) => saveImportUploadToLocal(id, file)));
     } else {
-      const body = await parseJson<{ paths: string[]; autoScreen?: boolean; templateId?: string }>(request);
+      const body = await parseJson<{ paths: string[]; autoScreen?: boolean; groupId?: string; templateId?: string }>(request);
       if (!body.paths?.length) return fail("VALIDATION_ERROR", "paths is required and non-empty", 422);
       autoScreen = body.autoScreen ?? false;
+      groupId = sanitizeString(body.groupId) || null;
       templateId = sanitizeString(body.templateId) || null;
       sourcePaths = body.paths;
     }
+
+    if (!groupId) {
+      return fail("VALIDATION_ERROR", "groupId is required", 422);
+    }
+
+    const [selectedGroup] = await db.select().from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, groupId)).limit(1);
+    if (!selectedGroup) {
+      return fail("NOT_FOUND", "template group not found", 404);
+    }
+    if (templateId) {
+      const [memberRow] = await db.select({ id: screeningTemplateGroupTemplates.id })
+        .from(screeningTemplateGroupTemplates)
+        .where(and(
+          eq(screeningTemplateGroupTemplates.groupId, groupId),
+          eq(screeningTemplateGroupTemplates.templateId, templateId),
+        ))
+        .limit(1);
+      if (!memberRow) {
+        return fail("VALIDATION_ERROR", "templateId does not belong to the selected group", 422);
+      }
+    }
+    const batchScreeningConfig = normalizeBatchScreeningConfig({
+      groupId,
+      passThreshold: selectedGroup.passThreshold,
+      reviewThreshold: selectedGroup.reviewThreshold,
+      learningEnabled: selectedGroup.learningEnabled,
+    });
 
     logInfo("import.batch.create.start", {
       batchId: id,
@@ -2484,11 +2540,11 @@ async function routeInternal(request: Request): Promise<Response> {
       throw error;
     }
     const displayName = buildImportBatchDisplayName(sourcePaths, preparedTasks.length, ts);
-    await db.insert(importBatches).values({ id, displayName, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, templateId, createdAt: ts, startedAt: ts });
+    await db.insert(importBatches).values({ id, displayName, status: "processing", sourceType: null, currentStage: "processing", totalFiles: preparedTasks.length, processedFiles: 0, successFiles: 0, failedFiles: 0, autoScreen, groupId, templateId, passThreshold: batchScreeningConfig.passThreshold, reviewThreshold: batchScreeningConfig.reviewThreshold, learningEnabled: batchScreeningConfig.learningEnabled, createdAt: ts, startedAt: ts });
     const queuedTasks: Array<{ taskId: string; filePath: string; fileType: typeof preparedTasks[number]["fileType"] }> = [];
     for (const task of preparedTasks) {
       const taskId = `task_${crypto.randomUUID()}`;
-      await db.insert(importFileTasks).values({ id: taskId, batchId: id, originalPath: task.originalPath, normalizedPath: task.normalizedPath, fileType: task.fileType, status: task.status, stage: task.status === "skipped" ? "classifying" : null, errorCode: task.errorCode, errorMessage: task.errorMessage, candidateId: null, resultJson: null, retryCount: 0, createdAt: ts, updatedAt: ts });
+      await db.insert(importFileTasks).values({ id: taskId, batchId: id, originalPath: task.originalPath, normalizedPath: task.normalizedPath, fileType: task.fileType, status: task.status, stage: task.status === "skipped" ? "classifying" : null, errorCode: task.errorCode, errorMessage: task.errorMessage, candidateId: null, matchedTemplateId: null, resultJson: null, retryCount: 0, createdAt: ts, updatedAt: ts });
       if (task.status === "queued") {
         queuedTasks.push({
           taskId,
@@ -2497,7 +2553,13 @@ async function routeInternal(request: Request): Promise<Response> {
         });
       }
     }
-    runImportBatchSerially(queuedTasks, templateId);
+    runImportBatchSerially(queuedTasks, {
+      groupId,
+      templateId,
+      passThreshold: batchScreeningConfig.passThreshold,
+      reviewThreshold: batchScreeningConfig.reviewThreshold,
+      learningEnabled: batchScreeningConfig.learningEnabled,
+    });
     await refreshBatchProgress(id);
     logInfo("import.batch.create.finish", { batchId: id, totalFiles: preparedTasks.length, queuedCount: queuedTasks.length, autoScreen, hasTemplate: Boolean(templateId) });
     return ok({ id, displayName, status: "processing", totalFiles: preparedTasks.length, autoScreen, createdAt: ts }, { status: 201 });
@@ -2506,14 +2568,17 @@ async function routeInternal(request: Request): Promise<Response> {
   const batchMatch = path.match(/^\/api\/import\/batches\/([^/]+)$/);
   const batchCancelMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/cancel$/);
   const batchRetryMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/retry-failed$/);
+  const batchScreeningConfigMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/screening-config$/);
+  const batchScoreFeedbacksMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/score-feedbacks$/);
   const batchRerunScreeningMatch = path.match(/^\/api\/import\/batches\/([^/]+)\/rerun-screening$/);
+  const fileScoreOverrideMatch = path.match(/^\/api\/import\/file-tasks\/([^/]+)\/score-override$/);
   const fileRerunScreeningMatch = path.match(/^\/api\/import\/file-tasks\/([^/]+)\/rerun-screening$/);
   const fileRetryUniversityMatch = path.match(/^\/api\/import\/file-tasks\/([^/]+)\/retry-university-verification$/);
   if (batchMatch && request.method === "GET") {
     const [row] = await db.select().from(importBatches).where(eq(importBatches.id, batchMatch[1])).limit(1);
     if (!row) return fail("NOT_FOUND", "batch not found", 404);
     const tasks = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchMatch[1]));
-    return ok(attachImportBatchAnalysisSummary([row], tasks)[0]);
+    return ok((await attachImportBatchAnalysisSummary([row], tasks))[0]);
   }
 
    if (batchMatch && request.method === "DELETE") {
@@ -2523,6 +2588,7 @@ async function routeInternal(request: Request): Promise<Response> {
      if (row.status === "processing" || row.status === "queued") {
        return fail("BATCH_ACTIVE", "cannot delete active batch", 409);
      }
+     await db.delete(screeningScoreFeedbacks).where(eq(screeningScoreFeedbacks.batchId, id));
      await db.delete(importFileTasks).where(eq(importFileTasks.batchId, id));
      await db.delete(importBatches).where(eq(importBatches.id, id));
      return ok({ id, deleted: true });
@@ -2546,13 +2612,63 @@ async function routeInternal(request: Request): Promise<Response> {
     return ok({ retriedCount: 0 });
   }
 
+  if (batchScreeningConfigMatch && request.method === "PUT") {
+    const id = batchScreeningConfigMatch[1];
+    try {
+      const body = await parseJson<UpdateImportBatchScreeningConfigInput>(request);
+      const updated = await updateImportBatchScreeningConfig(id, body);
+      if (!updated) {
+        return fail("NOT_FOUND", "batch not found", 404);
+      }
+      const tasks = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, id));
+      return ok((await attachImportBatchAnalysisSummary([updated], tasks))[0]);
+    } catch (error) {
+      if (error instanceof ImportScreeningExportError) {
+        return fail(error.code, error.message, error.status);
+      }
+      throw error;
+    }
+  }
+
+  if (batchScoreFeedbacksMatch && request.method === "DELETE") {
+    const id = batchScoreFeedbacksMatch[1];
+    const cleared = await clearImportBatchScreeningFeedbacks(id);
+    if (!cleared) {
+      return fail("NOT_FOUND", "batch not found", 404);
+    }
+    return ok(cleared);
+  }
+
   if (batchRerunScreeningMatch && request.method === "POST") {
     const id = batchRerunScreeningMatch[1];
-    const body = await parseJson<{ templateId?: string }>(request).catch((error) => {
+    const body = await parseJson<{ groupId?: string; templateId?: string }>(request).catch((error) => {
       logWarn("import.rerun_batch.parse_body_failed", { batchId: id, error: error instanceof Error ? error.message : String(error) });
       return null;
     });
-    const kickoff = await startRerunImportBatchScreening(id);
+    const [batch] = await db.select({ groupId: importBatches.groupId }).from(importBatches).where(eq(importBatches.id, id)).limit(1);
+    const effectiveGroupId = sanitizeString(body?.groupId) || batch?.groupId || null;
+    if (!effectiveGroupId) {
+      return fail("VALIDATION_ERROR", "groupId is required", 422);
+    }
+    const [groupRow] = await db.select({ id: screeningTemplateGroups.id }).from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, effectiveGroupId)).limit(1);
+    if (!groupRow) {
+      return fail("NOT_FOUND", "template group not found", 404);
+    }
+
+    if (body?.templateId) {
+      const [memberRow] = await db.select({ id: screeningTemplateGroupTemplates.id })
+        .from(screeningTemplateGroupTemplates)
+        .where(and(
+          eq(screeningTemplateGroupTemplates.groupId, effectiveGroupId),
+          eq(screeningTemplateGroupTemplates.templateId, body.templateId),
+        ))
+        .limit(1);
+      if (!memberRow) {
+        return fail("VALIDATION_ERROR", "templateId does not belong to the selected group", 422);
+      }
+    }
+
+    const kickoff = await startRerunImportBatchScreening(id, effectiveGroupId);
     if (kickoff.notFound) return fail("NOT_FOUND", "batch not found", 404);
     if (kickoff.alreadyRunning) {
       return fail("BATCH_ACTIVE", "AI 初筛已在处理中", 409);
@@ -2561,7 +2677,7 @@ async function routeInternal(request: Request): Promise<Response> {
       return ok({ id, retriedCount: 0, status: kickoff.status });
     }
 
-    void rerunImportBatchScreening(id, body?.templateId).catch((error) => {
+    void rerunImportBatchScreening(id, effectiveGroupId, body?.templateId).catch((error) => {
       console.error("[import] rerun batch screening failed", {
         batchId: id,
         error: error instanceof Error ? error.message : String(error),
@@ -2569,7 +2685,7 @@ async function routeInternal(request: Request): Promise<Response> {
       logError("import.rerun_batch.failed", error, { batchId: id });
     });
 
-    logInfo("import.rerun_batch.started", { batchId: id, retriedCount: kickoff.retriedCount, hasTemplate: Boolean(body?.templateId) });
+    logInfo("import.rerun_batch.started", { batchId: id, retriedCount: kickoff.retriedCount, hasTemplate: Boolean(body?.templateId), groupId: effectiveGroupId });
 
     return ok({ id, retriedCount: kickoff.retriedCount, status: "processing" });
   }
@@ -2579,12 +2695,35 @@ async function routeInternal(request: Request): Promise<Response> {
     const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
     if (!task) return fail("NOT_FOUND", "task not found", 404);
 
-    const body = await parseJson<{ templateId?: string }>(request).catch((error) => {
+    const body = await parseJson<{ groupId?: string; templateId?: string }>(request).catch((error) => {
       logWarn("import.rerun_file.parse_body_failed", { taskId, error: error instanceof Error ? error.message : String(error) });
       return null;
     });
 
-    void rerunFileScreening(taskId, body?.templateId).catch((error) => {
+    const [batch] = await db.select({ groupId: importBatches.groupId }).from(importBatches).where(eq(importBatches.id, task.batchId)).limit(1);
+    const effectiveGroupId = sanitizeString(body?.groupId) || batch?.groupId || null;
+    if (!effectiveGroupId) {
+      return fail("VALIDATION_ERROR", "groupId is required", 422);
+    }
+    const [groupRow] = await db.select({ id: screeningTemplateGroups.id }).from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, effectiveGroupId)).limit(1);
+    if (!groupRow) {
+      return fail("NOT_FOUND", "template group not found", 404);
+    }
+
+    if (body?.templateId) {
+      const [memberRow] = await db.select({ id: screeningTemplateGroupTemplates.id })
+        .from(screeningTemplateGroupTemplates)
+        .where(and(
+          eq(screeningTemplateGroupTemplates.groupId, effectiveGroupId),
+          eq(screeningTemplateGroupTemplates.templateId, body.templateId),
+        ))
+        .limit(1);
+      if (!memberRow) {
+        return fail("VALIDATION_ERROR", "templateId does not belong to the selected group", 422);
+      }
+    }
+
+    void rerunFileScreening(taskId, effectiveGroupId, body?.templateId).catch((error) => {
       console.error("[import] rerun file screening failed", {
         taskId,
         error: error instanceof Error ? error.message : String(error),
@@ -2592,9 +2731,41 @@ async function routeInternal(request: Request): Promise<Response> {
       logError("import.rerun_file.failed", error, { taskId });
     });
 
-    logInfo("import.rerun_file.started", { taskId, hasTemplate: Boolean(body?.templateId) });
+    logInfo("import.rerun_file.started", { taskId, hasTemplate: Boolean(body?.templateId), groupId: effectiveGroupId });
 
     return ok({ taskId, retried: true, screeningStatus: "running" });
+  }
+
+  if (fileScoreOverrideMatch && request.method === "POST") {
+    const taskId = fileScoreOverrideMatch[1];
+    try {
+      const body = await parseJson<UpdateImportTaskScreeningScoreInput>(request);
+      const updated = await updateImportTaskScreeningScore(taskId, body);
+      if (!updated) {
+        return fail("NOT_FOUND", "task not found", 404);
+      }
+      return ok(updated satisfies ImportTaskScreeningScoreData);
+    } catch (error) {
+      if (error instanceof ImportScreeningExportError) {
+        return fail(error.code, error.message, error.status);
+      }
+      throw error;
+    }
+  }
+
+  if (fileScoreOverrideMatch && request.method === "DELETE") {
+    try {
+      const cleared = await clearImportTaskScreeningScoreFeedback(fileScoreOverrideMatch[1]);
+      if (!cleared) {
+        return fail("NOT_FOUND", "task not found", 404);
+      }
+      return ok(cleared satisfies ImportTaskScreeningScoreData);
+    } catch (error) {
+      if (error instanceof ImportScreeningExportError) {
+        return fail(error.code, error.message, error.status);
+      }
+      throw error;
+    }
   }
 
   if (fileRetryUniversityMatch && request.method === "POST") {
@@ -3907,6 +4078,9 @@ Always be concise and helpful in your responses.`;
   const interviewAssessmentResponse = await interviewAssessmentRoute(request);
   if (interviewAssessmentResponse) return interviewAssessmentResponse;
 
+  const interviewImportResponse = await interviewImportRoute(request);
+  if (interviewImportResponse) return interviewImportResponse;
+
   // ---------------------------------------------------------------------------
   // Memory Routes (Phase 2.2)
   // ---------------------------------------------------------------------------
@@ -3921,6 +4095,10 @@ Always be concise and helpful in your responses.`;
 
   const screeningTemplatesResponse = await screeningTemplatesRoute(request);
   if (screeningTemplatesResponse) return screeningTemplatesResponse;
+
+  const recorderResponse = await recorderRoute(request);
+  if (recorderResponse) return recorderResponse;
+
   return fail("NOT_FOUND", "route not found", 404);
 }
 

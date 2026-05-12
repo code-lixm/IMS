@@ -29,7 +29,7 @@ export function useImportFileSelection(options: UseImportFileSelectionOptions = 
     }
   }
 
-  async function triggerImport(importOptions?: { autoScreen?: boolean; templateId?: string | null }) {
+  async function triggerImport(importOptions?: { autoScreen?: boolean; groupId?: string | null; templateId?: string | null }) {
     const files = await pickFiles({ accept: IMPORT_ACCEPT, multiple: true });
     if (!files.length) {
       return;
@@ -41,7 +41,12 @@ export function useImportFileSelection(options: UseImportFileSelectionOptions = 
     isImporting.value = true;
     try {
       if (regularFiles.length > 0) {
-        await importApi.upload(regularFiles.map((file) => file.file), importOptions?.autoScreen ?? autoScreen.value, importOptions?.templateId);
+        await importApi.upload(
+          regularFiles.map((file) => file.file),
+          importOptions?.autoScreen ?? autoScreen.value,
+          importOptions?.groupId,
+          importOptions?.templateId,
+        );
       }
 
       if (imrFiles.length > 0) {

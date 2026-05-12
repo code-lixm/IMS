@@ -146,13 +146,18 @@ export const importBatches = sqliteTable("import_batches", {
   displayName: text("display_name"),
   status: text("status").notNull().default("queued"),
   sourceType: text("source_type"),
+  summaryJson: text("summary_json"),
   currentStage: text("current_stage"),
   totalFiles: integer("total_files").notNull().default(0),
   processedFiles: integer("processed_files").notNull().default(0),
   successFiles: integer("success_files").notNull().default(0),
   failedFiles: integer("failed_files").notNull().default(0),
   autoScreen: integer("auto_screen", { mode: "boolean" }).default(false),
+  groupId: text("group_id"),
   templateId: text("template_id"),
+  passThreshold: integer("pass_threshold"),
+  reviewThreshold: integer("review_threshold"),
+  learningEnabled: integer("learning_enabled", { mode: "boolean" }),
   createdAt: integer("created_at").notNull(),
   startedAt: integer("started_at"),
   completedAt: integer("completed_at"),
@@ -172,6 +177,8 @@ export const importFileTasks = sqliteTable("import_file_tasks", {
   errorCode: text("error_code"),
   errorMessage: text("error_message"),
   candidateId: text("candidate_id").references(() => candidates.id),
+  matchedTemplateId: text("matched_template_id"),
+  payloadJson: text("payload_json"),
   resultJson: text("result_json"),
   retryCount: integer("retry_count").notNull().default(0),
   fileHash: text("file_hash"),
@@ -192,6 +199,24 @@ export const shareRecords = sqliteTable("share_records", {
   resultJson: text("result_json"),
   createdAt: integer("created_at").notNull(),
   completedAt: integer("completed_at"),
+});
+
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
+export const recordings = sqliteTable("recordings", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull().default("idle"),
+  filePath: text("file_path").notNull(),
+  durationMs: integer("duration_ms").notNull().default(0),
+  fileSizeBytes: integer("file_size_bytes").notNull().default(0),
+  language: text("language"),
+  liveTranscriptText: text("live_transcript_text"),
+  finalTranscriptText: text("final_transcript_text"),
+  transcriptJson: text("transcript_json"),
+  organisedText: text("organised_text"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
 });
 
 // ---------------------------------------------------------------------------
@@ -237,9 +262,49 @@ export const screeningTemplates = sqliteTable("screening_templates", {
   name: text("name").notNull(),
   description: text("description"),
   prompt: text("prompt").notNull(),
+  sourceType: text("source_type").notNull().default("custom"),
+  isReadonly: integer("is_readonly", { mode: "boolean" }).notNull().default(false),
+  matchHintsJson: text("match_hints_json"),
+  keywordsJson: text("keywords_json"),
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   version: integer("version").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const screeningTemplateGroups = sqliteTable("screening_template_groups", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  passThreshold: integer("pass_threshold").notNull().default(80),
+  reviewThreshold: integer("review_threshold").notNull().default(70),
+  learningEnabled: integer("learning_enabled", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const screeningTemplateGroupTemplates = sqliteTable("screening_template_group_templates", {
+  id: text("id").primaryKey(),
+  groupId: text("group_id").notNull(),
+  templateId: text("template_id").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const screeningScoreFeedbacks = sqliteTable("screening_score_feedbacks", {
+  id: text("id").primaryKey(),
+  batchId: text("batch_id").notNull().references(() => importBatches.id),
+  fileTaskId: text("file_task_id").notNull().references(() => importFileTasks.id),
+  candidateId: text("candidate_id").references(() => candidates.id),
+  groupId: text("group_id").references(() => screeningTemplateGroups.id),
+  templateId: text("template_id"),
+  matchedTemplateId: text("matched_template_id"),
+  originalScore: integer("original_score").notNull(),
+  overriddenScore: integer("overridden_score").notNull(),
+  reason: text("reason"),
+  learningEnabledSnapshot: integer("learning_enabled_snapshot", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });

@@ -65,7 +65,7 @@ test.describe("导入页 AI 初筛门槛 mock E2E", () => {
 
     const exportDialog = page.getByRole("dialog");
     await expect(exportDialog.getByRole("heading", { name: "自定义导出" })).toBeVisible();
-    await expect(exportDialog.getByText("支持按分数范围、指定 PDF 文件导出。ZIP 命名统一为“base-name-年限-职位-联系方式（手机号）”。")).toBeVisible();
+    await expect(exportDialog.getByText(/支持按分数范围、指定 PDF 文件导出/)).toBeVisible();
     await expect(exportDialog.getByText("已完成批次 1")).toBeVisible();
     await expect(exportDialog.getByRole("button", { name: /ZIP 导出/ })).toBeVisible();
     await expect(exportDialog.getByLabel("最低分")).toBeVisible();

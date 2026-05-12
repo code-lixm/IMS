@@ -291,6 +291,14 @@
                         <Badge variant="outline" class="text-[11px]"
                           >{{ task.score }} 分</Badge
                         >
+                        <Badge
+                          v-if="task.recommendationLabel"
+                          :class="task.recommendationClass"
+                          variant="outline"
+                          class="text-[11px]"
+                        >
+                          {{ task.recommendationLabel }}
+                        </Badge>
                         <Badge variant="secondary" class="text-[11px]">{{
                           task.batchLabel
                         }}</Badge>
@@ -343,12 +351,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import type {
+  BatchScreeningConfig,
   ImportBatch,
   ImportFileTask,
   ImportScreeningConclusion,
   ImportScreeningExportMode,
   ImportScreeningExportRequest,
 } from "@ims/shared";
+import { deriveScreeningRecommendation, getEffectiveScreeningScore, normalizeBatchScreeningConfig } from "@ims/shared";
 import {
   Loader2,
   MessageSquareText,
@@ -375,6 +385,7 @@ import {
   formatImportBatchDisplayName,
   formatImportTimestamp,
   parseImportTaskResult,
+  screeningRecommendationClass,
 } from "@/composables/import/formatters";
 
 interface ExportTaskOption {
@@ -382,6 +393,8 @@ interface ExportTaskOption {
   batchId: string;
   batchLabel: string;
   score: number;
+  recommendationLabel: string;
+  recommendationClass: string;
   displayName: string;
   position: string;
   yearsLabel: string;
@@ -437,6 +450,7 @@ const availableTasks = computed<ExportTaskOption[]>(() => {
   return selectedBatchIds.value
     .flatMap((batchId) => {
       const batch = completedBatches.value.find((item) => item.id === batchId);
+      const batchScreeningConfig = normalizeBatchScreeningConfig((batch as (ImportBatch & { batchScreeningConfig?: BatchScreeningConfig }) | undefined)?.batchScreeningConfig ?? null);
       const files = taskCache.value[batchId] ?? [];
 
       return files.flatMap((task) => {
@@ -452,13 +466,17 @@ const availableTasks = computed<ExportTaskOption[]>(() => {
         }
         const conclusionWithMetadata =
           conclusion as ImportScreeningConclusionWithMetadata;
+        const effectiveScore = getEffectiveScreeningScore(conclusion) ?? conclusion.score;
+        const recommendation = conclusion.derivedRecommendation ?? deriveScreeningRecommendation(effectiveScore, batchScreeningConfig);
 
         return [
           {
             id: task.id,
             batchId,
             batchLabel: batch ? formatImportBatchDisplayName(batch) : batchId,
-            score: conclusion.score,
+            score: effectiveScore,
+            recommendationLabel: recommendation?.label ?? conclusion.label,
+            recommendationClass: screeningRecommendationClass(recommendation?.verdict ?? conclusion.derivedRecommendation?.verdict ?? conclusion.verdict),
             displayName:
               conclusionWithMetadata.candidateName ??
               result.parsedResume.name ??

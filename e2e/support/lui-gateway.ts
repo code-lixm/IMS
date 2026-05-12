@@ -99,6 +99,9 @@ interface MockLuiGatewayOptions {
   conversations?: MockConversation[];
   conversationDetails?: Record<string, MockConversationDetail>;
   importBatches?: { items: Array<Record<string, unknown>> };
+  importBatchFiles?: Record<string, { items: Array<Record<string, unknown>> }>;
+  screeningTemplateGroups?: { items: Array<Record<string, unknown>> };
+  screeningTemplateGroupDetails?: Record<string, Record<string, unknown>>;
 }
 
 export interface LuiGatewayMockState {
@@ -107,6 +110,11 @@ export interface LuiGatewayMockState {
   createdConversations: Array<Record<string, unknown>>;
   sentMessages: Array<Record<string, unknown>>;
   exportRequests: Array<Record<string, unknown>>;
+  batchConfigUpdates: Array<{ batchId: string; payload: Record<string, unknown> }>;
+  batchFeedbackClears: string[];
+  batchRerunRequests: Array<{ batchId: string; payload: Record<string, unknown> }>;
+  taskScoreOverrides: Array<{ taskId: string; payload: Record<string, unknown> }>;
+  taskScoreClears: string[];
 }
 
 const now = Date.now();
@@ -215,6 +223,11 @@ export async function mockLuiGatewayApp(page: Page, options: MockLuiGatewayOptio
     createdConversations: [],
     sentMessages: [],
     exportRequests: [],
+    batchConfigUpdates: [],
+    batchFeedbackClears: [],
+    batchRerunRequests: [],
+    taskScoreOverrides: [],
+    taskScoreClears: [],
   };
 
   let currentSettings = options.settings ?? {
@@ -229,6 +242,16 @@ export async function mockLuiGatewayApp(page: Page, options: MockLuiGatewayOptio
   const conversations = options.conversations ?? [];
   const conversationDetails = options.conversationDetails ?? {};
   const importBatches = options.importBatches ?? { items: [] };
+  const importBatchFiles = options.importBatchFiles ?? {};
+  const screeningTemplateGroups = options.screeningTemplateGroups ?? { items: [] };
+  const screeningTemplateGroupDetails = options.screeningTemplateGroupDetails ?? {};
+  const screeningTemplates = Array.from(
+    new Map(
+      Object.values(screeningTemplateGroupDetails)
+        .flatMap((detail) => Array.isArray(detail.templates) ? detail.templates : [])
+        .map((template) => [String((template as Record<string, unknown>).id ?? ""), template]),
+    ).values(),
+  );
 
   await page.route("**/api/auth/status", (route) =>
     fulfillJson(route, {
@@ -252,6 +275,116 @@ export async function mockLuiGatewayApp(page: Page, options: MockLuiGatewayOptio
   );
 
   await page.route("**/api/import/batches", (route) => fulfillJson(route, importBatches));
+
+  await page.route(/\/api\/import\/batches\/[^/]+\/files(?:\?.*)?$/, async (route) => {
+    const batchId = route.request().url().split("/").slice(-2)[0] ?? "";
+    await fulfillJson(route, importBatchFiles[batchId] ?? { items: [] });
+  });
+
+  await page.route(/\/api\/import\/batches\/[^/]+\/screening-config(?:\?.*)?$/, async (route) => {
+    const batchId = route.request().url().split("/").slice(-2)[0] ?? "";
+    const payload = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    state.batchConfigUpdates.push({ batchId, payload });
+
+    const batch = (importBatches.items.find((item) => item.id === batchId) as Record<string, unknown> | undefined) ?? null;
+    if (batch) {
+      const nextConfig: Record<string, unknown> = {
+        ...((batch.batchScreeningConfig as Record<string, unknown> | undefined) ?? {}),
+        ...payload,
+        groupId: batch.groupId ?? null,
+      };
+      batch.batchScreeningConfig = nextConfig;
+      batch.passThreshold = nextConfig.passThreshold;
+      batch.reviewThreshold = nextConfig.reviewThreshold;
+      batch.learningEnabled = nextConfig.learningEnabled;
+    }
+
+    await fulfillJson(route, batch ?? { id: batchId, batchScreeningConfig: payload });
+  });
+
+  await page.route(/\/api\/import\/batches\/[^/]+\/score-feedbacks(?:\?.*)?$/, async (route) => {
+    const batchId = route.request().url().split("/").slice(-2)[0] ?? "";
+    state.batchFeedbackClears.push(batchId);
+
+    const files = importBatchFiles[batchId]?.items;
+    if (files) {
+      for (const file of files) {
+        const result = file.resultJson && typeof file.resultJson === "string" ? JSON.parse(file.resultJson) as Record<string, any> : null;
+        if (result?.screeningConclusion) {
+          result.scoreFeedbackHistory = [];
+          result.screeningConclusion.scoreOverride = null;
+          if (result.screeningConclusion.derivedRecommendation && Number.isFinite(result.screeningConclusion.score)) {
+            const score = Number(result.screeningConclusion.score);
+            const batch = importBatches.items.find((item) => item.id === batchId) as Record<string, any> | undefined;
+            const passThreshold = Number(batch?.batchScreeningConfig?.passThreshold ?? batch?.passThreshold ?? 80);
+            const reviewThreshold = Number(batch?.batchScreeningConfig?.reviewThreshold ?? batch?.reviewThreshold ?? 70);
+            result.screeningConclusion.derivedRecommendation = score >= passThreshold
+              ? { verdict: "pass", label: "通过", passThreshold, reviewThreshold }
+              : score >= reviewThreshold
+                ? { verdict: "review", label: "待定", passThreshold, reviewThreshold }
+                : { verdict: "reject", label: "淘汰", passThreshold, reviewThreshold };
+          }
+          file.resultJson = JSON.stringify(result);
+        }
+      }
+    }
+
+    await fulfillJson(route, { batchId, clearedCount: files?.length ?? 0 });
+  });
+
+  await page.route(/\/api\/import\/batches\/[^/]+\/rerun-screening(?:\?.*)?$/, async (route) => {
+    const batchId = route.request().url().split("/").slice(-2)[0] ?? "";
+    const payload = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    state.batchRerunRequests.push({ batchId, payload });
+    await fulfillJson(route, { id: batchId, retriedCount: 1, status: "processing" });
+  });
+
+  await page.route(/\/api\/import\/file-tasks\/[^/]+\/score-override(?:\?.*)?$/, async (route) => {
+    const taskId = route.request().url().split("/").slice(-2)[0] ?? "";
+    const owner = Object.values(importBatchFiles).flatMap((entry) => entry.items).find((item) => item.id === taskId) as Record<string, any> | undefined;
+    const result = owner?.resultJson && typeof owner.resultJson === "string" ? JSON.parse(owner.resultJson) as Record<string, any> : null;
+
+    if (route.request().method() === "DELETE") {
+      state.taskScoreClears.push(taskId);
+      if (owner && result?.screeningConclusion) {
+        result.scoreFeedbackHistory = [];
+        result.screeningConclusion.scoreOverride = null;
+        owner.resultJson = JSON.stringify(result);
+      }
+      await fulfillJson(route, { taskId, batchId: owner?.batchId ?? null, feedbackCount: 0, currentScore: result?.screeningConclusion?.score ?? null, overridden: false });
+      return;
+    }
+
+    const payload = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    state.taskScoreOverrides.push({ taskId, payload });
+    if (owner && result?.screeningConclusion) {
+      const originalScore = Number(result.screeningConclusion.score ?? 0);
+      const overriddenScore = Number(payload.score ?? originalScore);
+      result.scoreFeedbackHistory = [{
+        id: `fb-${taskId}`,
+        originalScore,
+        overriddenScore,
+        reason: typeof payload.reason === "string" ? payload.reason : null,
+        learningEnabledSnapshot: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }];
+      result.screeningConclusion.scoreOverride = {
+        feedbackId: `fb-${taskId}`,
+        originalScore,
+        overriddenScore,
+        reason: typeof payload.reason === "string" ? payload.reason : null,
+        learningEnabledSnapshot: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      owner.resultJson = JSON.stringify(result);
+      await fulfillJson(route, { taskId, batchId: owner?.batchId ?? null, feedbackCount: 1, currentScore: overriddenScore, overridden: true });
+      return;
+    }
+
+    await fulfillJson(route, { taskId, batchId: owner?.batchId ?? null, feedbackCount: 0, currentScore: null, overridden: false });
+  });
 
   await page.route("**/api/screening/export", async (route) => {
     const payload = route.request().postDataJSON() as Record<string, unknown>;
@@ -358,6 +491,25 @@ export async function mockLuiGatewayApp(page: Page, options: MockLuiGatewayOptio
       tools: [],
       status: "complete",
       createdAt: Date.now(),
+    });
+  });
+
+  await page.route("**/api/screening/template-groups", async (route) => {
+    await fulfillJson(route, screeningTemplateGroups);
+  });
+
+  await page.route("**/api/screening/templates", async (route) => {
+    await fulfillJson(route, { items: screeningTemplates });
+  });
+
+  await page.route(/\/api\/screening\/template-groups\/[^/]+(?:\?.*)?$/, async (route) => {
+    const groupId = route.request().url().split("/").slice(-1)[0] ?? "";
+    await fulfillJson(route, screeningTemplateGroupDetails[groupId] ?? {
+      group: null,
+      templates: [],
+      defaultTemplate: null,
+      links: [],
+      batchScreeningConfig: { groupId, passThreshold: 80, reviewThreshold: 70, learningEnabled: false },
     });
   });
 

@@ -1,6 +1,30 @@
 import { computed, onBeforeUnmount, ref } from "vue";
 import { importApi } from "@/api/import";
-import type { ImportBatchListData, ImportFileListData } from "@ims/shared";
+import type {
+  BatchScreeningConfig,
+  ImportFileListData as BaseImportFileListData,
+  ImportBatch as BaseImportBatch,
+  InterviewImportBatchSummary,
+  UpdateImportBatchScreeningConfigInput,
+} from "@ims/shared";
+
+interface ImportBatchListItem extends BaseImportBatch {
+  groupId: string | null;
+  batchScreeningConfig: BatchScreeningConfig;
+  templateId: string | null;
+  analysisTotalFiles: number;
+  analysisCompletedFiles: number;
+  analysisPendingFiles: number;
+  analysisRunningFiles: number;
+  summaryJson?: string | null;
+  summary?: InterviewImportBatchSummary | null;
+}
+
+interface ImportBatchListData {
+  items: ImportBatchListItem[];
+}
+
+interface ImportFileListData extends BaseImportFileListData {}
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -79,7 +103,18 @@ export function useImportBatches() {
       }
 
       try {
-        const items = (await importApi.list()).items;
+        const items = ((await importApi.list()).items as Array<Partial<ImportBatchListItem> & BaseImportBatch>).map((item) => ({
+          ...item,
+          groupId: item.groupId ?? null,
+          batchScreeningConfig: item.batchScreeningConfig ?? {
+            groupId: item.groupId ?? null,
+            passThreshold: 80,
+            reviewThreshold: 70,
+            learningEnabled: false,
+          },
+          summaryJson: item.summaryJson ?? null,
+          summary: item.summary ?? null,
+        })) as ImportBatchListData["items"];
         batches.value = items;
         pruneStaleBatchState(items);
 
@@ -155,8 +190,8 @@ export function useImportBatches() {
     ]);
   }
 
-  async function rerunScreening(batchId: string, templateId?: string) {
-    const result = await importApi.rerunScreening(batchId, templateId);
+  async function rerunScreening(batchId: string, groupId?: string, templateId?: string) {
+    const result = await importApi.rerunScreening(batchId, groupId, templateId);
     await Promise.all([
       refresh(),
       expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
@@ -164,12 +199,45 @@ export function useImportBatches() {
     return result;
   }
 
-  async function rerunFileScreening(taskId: string, batchId: string, templateId?: string) {
-    await importApi.rerunFileScreening(taskId, templateId);
+  async function updateBatchScreeningConfig(batchId: string, payload: UpdateImportBatchScreeningConfigInput) {
+    await importApi.updateBatchScreeningConfig(batchId, payload);
     await Promise.all([
       refresh(),
       expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
     ]);
+  }
+
+  async function rerunFileScreening(taskId: string, batchId: string, groupId?: string, templateId?: string) {
+    await importApi.rerunFileScreening(taskId, groupId, templateId);
+    await Promise.all([
+      refresh(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
+    ]);
+  }
+
+  async function updateTaskScreeningScore(taskId: string, batchId: string, score: number, reason?: string | null) {
+    await importApi.updateTaskScreeningScore(taskId, { score, reason });
+    await Promise.all([
+      refresh(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
+    ]);
+  }
+
+  async function clearTaskScreeningScore(taskId: string, batchId: string) {
+    await importApi.clearTaskScreeningScore(taskId);
+    await Promise.all([
+      refresh(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
+    ]);
+  }
+
+  async function clearBatchScoreFeedbacks(batchId: string) {
+    const result = await importApi.clearBatchScoreFeedbacks(batchId);
+    await Promise.all([
+      refresh(),
+      expandedBatches.value.has(batchId) ? loadBatchFiles(batchId, { force: true }) : Promise.resolve(),
+    ]);
+    return result;
   }
 
   async function retryUniversityVerification(taskId: string, batchId: string) {
@@ -224,7 +292,11 @@ export function useImportBatches() {
     toggleFiles,
     retryFailed,
     rerunScreening,
+    updateBatchScreeningConfig,
     rerunFileScreening,
+    updateTaskScreeningScore,
+    clearTaskScreeningScore,
+    clearBatchScoreFeedbacks,
     retryUniversityVerification,
     cancelBatch,
     deleteBatch,

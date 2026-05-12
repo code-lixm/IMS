@@ -1,41 +1,11 @@
-import type { ImportBatch, ParsedResume, ScreeningTemplateInfo, ScreeningTemplateRenderedInfo, UniversityVerificationResult } from "@ims/shared";
-
-type ImportScreeningVerdict = "pass" | "review" | "reject";
-type ImportScreeningStatus = "not_requested" | "queued" | "running" | "completed" | "failed";
-type ImportScreeningSource = "ai" | "reused" | "heuristic" | "failed";
-
-interface ImportScreeningConclusion {
-  verdict: ImportScreeningVerdict;
-  label: string;
-  score: number;
-  candidateName?: string | null;
-  candidatePosition?: string | null;
-  candidateYearsOfExperience?: number | null;
-  screeningBaseUrl?: string | null;
-  summary: string;
-  strengths: string[];
-  concerns: string[];
-  recommendedAction: string;
-  wechatConclusion?: string;
-  wechatReason?: string;
-  wechatAction?: string;
-  wechatCopyText: string;
-  templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
-  universityVerification?: UniversityVerificationResult;
-}
-
-interface ImportTaskResultData {
-  parsedResume: ParsedResume;
-  extractionConfidence?: number | null;
-  screeningStatus?: ImportScreeningStatus;
-  screeningSource?: ImportScreeningSource | null;
-  screeningError?: string | null;
-  screeningConclusion?: ImportScreeningConclusion | null;
-  fileHash?: string | null;
-  screeningReuseKey?: string | null;
-  reusedFromTaskId?: string | null;
-  reusedAt?: number | null;
-}
+import type {
+  ImportBatch,
+  ImportScreeningSource,
+  ImportScreeningVerdict,
+  ImportTaskResultData,
+  ScreeningTemplateInfo,
+  UniversityVerificationResult,
+} from "@ims/shared";
 
 export function statusVariant(status: string) {
   const map: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -153,7 +123,27 @@ export function screeningVerdictClass(verdict: ImportScreeningVerdict | undefine
   return map[verdict ?? ""] ?? "bg-muted text-muted-foreground border-border";
 }
 
-export function screeningScoreClass(score: number | undefined): string {
+export function screeningRecommendationClass(verdict: ImportScreeningVerdict | undefined | null): string {
+  if (verdict === "pass") {
+    return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
+  }
+
+  if (verdict === "review") {
+    return "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800";
+  }
+
+  if (verdict === "reject") {
+    return "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800";
+  }
+
+  return "bg-muted text-muted-foreground border-border";
+}
+
+export function screeningScoreClass(score: number | undefined, verdict?: ImportScreeningVerdict | null): string {
+  if (verdict) {
+    return screeningRecommendationClass(verdict);
+  }
+
   if (score === undefined || score === null) {
     return "bg-muted text-muted-foreground border-border";
   }
@@ -229,6 +219,14 @@ export function screeningUniversityVerdictLabel(verdict: "verified" | "not_found
 export function screeningTemplateLabel(info: ScreeningTemplateInfo | null | undefined): string {
   if (!info) return "系统默认";
   return `${info.templateName} v${info.templateVersion}`;
+}
+
+export function extractImportOriginalFileName(originalPath: string | null | undefined, fallback = "文件"): string {
+  const raw = originalPath?.trim();
+  if (!raw) return fallback;
+
+  const sourcePath = raw.split("#").pop() ?? raw;
+  return sourcePath.split(/[\\/]/).pop() ?? fallback;
 }
 
 

@@ -1,20 +1,125 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type {
-  CreateMatchingTemplateInput,
-  MatchingTemplate,
-  UpdateMatchingTemplateInput,
+  CreateMatchingTemplateInput as BaseCreateMatchingTemplateInput,
+  MatchingTemplate as BaseMatchingTemplate,
+  UpdateMatchingTemplateInput as BaseUpdateMatchingTemplateInput,
 } from "../../../shared/src/api-types";
 import { db, rawDb } from "../db";
-import { screeningTemplates } from "../schema";
+import { importBatches, screeningTemplateGroupTemplates, screeningTemplateGroups, screeningTemplates } from "../schema";
 
 type ScreeningTemplateRow = typeof screeningTemplates.$inferSelect;
 
-type BuiltInMatchingTemplate = Omit<MatchingTemplate, "createdAt" | "updatedAt"> & {
-  createdAt: number;
-  updatedAt: number;
+type MatchingTemplate = BaseMatchingTemplate & {
+  sourceType: string;
+  isReadonly: boolean;
+  matchHintsJson: string | null;
+  keywordsJson: string | null;
 };
 
-const BUILT_IN_SCREENING_TEMPLATES: BuiltInMatchingTemplate[] = [
+type CreateMatchingTemplateInput = BaseCreateMatchingTemplateInput & {
+  matchHintsJson?: string | null;
+  keywordsJson?: string | null;
+};
+
+type UpdateMatchingTemplateInput = BaseUpdateMatchingTemplateInput & {
+  matchHintsJson?: string | null;
+  keywordsJson?: string | null;
+};
+
+export interface ScreeningTemplateShortlistResume {
+  name?: string | null;
+  position?: string | null;
+  skills?: string[];
+  education?: string[];
+  workHistory?: string[];
+  rawText?: string;
+}
+
+export interface ScreeningTemplateShortlistItem {
+  template: MatchingTemplate;
+  matchedHints: string[];
+  matchedKeywords: string[];
+  matchedTerms: string[];
+  score: number;
+}
+
+interface BatchScreeningConfig {
+  groupId: string | null;
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled: boolean;
+}
+
+interface ScreeningTemplateGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface ScreeningTemplateGroupTemplate {
+  id: string;
+  groupId: string;
+  templateId: string;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface ScreeningTemplateGroupListItem extends ScreeningTemplateGroup {
+  templateCount: number;
+  defaultTemplateId: string | null;
+}
+
+interface ScreeningTemplateGroupListData {
+  items: ScreeningTemplateGroupListItem[];
+}
+
+interface ScreeningTemplateGroupDetailData {
+  group: ScreeningTemplateGroup;
+  templates: MatchingTemplate[];
+  defaultTemplate: MatchingTemplate | null;
+  links: ScreeningTemplateGroupTemplate[];
+  batchScreeningConfig: BatchScreeningConfig;
+}
+
+interface CreateScreeningTemplateGroupInput {
+  name: string;
+  description?: string;
+  passThreshold?: number;
+  reviewThreshold?: number;
+  learningEnabled?: boolean;
+  templateIds?: string[];
+  defaultTemplateId?: string | null;
+}
+
+interface UpdateScreeningTemplateGroupInput {
+  name?: string;
+  description?: string;
+  passThreshold?: number;
+  reviewThreshold?: number;
+  learningEnabled?: boolean;
+}
+
+interface UpdateScreeningTemplateGroupTemplatesInput {
+  templateIds: string[];
+  defaultTemplateId?: string | null;
+}
+
+type BuiltInMatchingTemplate = Omit<MatchingTemplate, "createdAt" | "updatedAt" | "sourceType" | "isReadonly" | "matchHintsJson" | "keywordsJson"> & {
+  createdAt: number;
+  updatedAt: number;
+  sourceType?: string;
+  isReadonly?: boolean;
+  matchHintsJson?: string | null;
+  keywordsJson?: string | null;
+};
+
+export const BUILT_IN_SCREENING_TEMPLATES: BuiltInMatchingTemplate[] = [
   {
     id: "builtin:ai:screener:tech-engineer-v1",
     name: "技术研发初筛（技术深度版）",
@@ -261,6 +366,108 @@ const BUILT_IN_SCREENING_TEMPLATE_MAP = new Map(
   BUILT_IN_SCREENING_TEMPLATES.map((template) => [template.id, template]),
 );
 
+function materializeBuiltInTemplate(template: BuiltInMatchingTemplate): MatchingTemplate {
+  return {
+    ...template,
+    sourceType: "builtin",
+    isReadonly: true,
+    matchHintsJson: null,
+    keywordsJson: null,
+  };
+}
+
+function parseTemplateMatcherTerms(raw: string | null | undefined): string[] {
+  if (!raw?.trim()) {
+    return [];
+  }
+
+  try {
+    return collectMatcherTerms(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+function collectMatcherTerms(value: unknown): string[] {
+  if (typeof value === "string") {
+    return normalizeMatcherTerm(value) ? [normalizeMatcherTerm(value)!] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectMatcherTerms(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap((item) => collectMatcherTerms(item));
+  }
+
+  return [];
+}
+
+function normalizeMatcherTerm(value: string): string | null {
+  const normalized = value.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalized.length >= 2 ? normalized : null;
+}
+
+function buildResumeMatcherHaystack(resume: ScreeningTemplateShortlistResume): string {
+  return [
+    resume.name ?? "",
+    resume.position ?? "",
+    ...(resume.skills ?? []),
+    ...(resume.education ?? []),
+    ...(resume.workHistory ?? []),
+    resume.rawText ?? "",
+  ]
+    .join("\n")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function uniqueSortedTerms(terms: string[]): string[] {
+  return Array.from(new Set(terms.filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
+export function shortlistScreeningTemplatesByResume(
+  templates: MatchingTemplate[],
+  resume: ScreeningTemplateShortlistResume,
+): ScreeningTemplateShortlistItem[] {
+  const haystack = buildResumeMatcherHaystack(resume);
+  if (!haystack.trim()) {
+    return [];
+  }
+
+  const shortlist = templates
+    .map((template) => {
+      const matchedHints = uniqueSortedTerms(
+        parseTemplateMatcherTerms(template.matchHintsJson).filter((term) => haystack.includes(term)),
+      );
+      const matchedKeywords = uniqueSortedTerms(
+        parseTemplateMatcherTerms(template.keywordsJson).filter((term) => haystack.includes(term)),
+      );
+      const matchedTerms = uniqueSortedTerms([...matchedHints, ...matchedKeywords]);
+
+      return {
+        template,
+        matchedHints,
+        matchedKeywords,
+        matchedTerms,
+        score: matchedHints.length * 2 + matchedKeywords.length,
+      } satisfies ScreeningTemplateShortlistItem;
+    })
+    .filter((item) => item.matchedTerms.length > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      if (right.matchedTerms.length !== left.matchedTerms.length) {
+        return right.matchedTerms.length - left.matchedTerms.length;
+      }
+      return left.template.name.localeCompare(right.template.name, "zh-CN") || left.template.id.localeCompare(right.template.id);
+    });
+
+  return shortlist;
+}
+
 function sortCustomTemplates(a: MatchingTemplate, b: MatchingTemplate): number {
   if (a.createdAt !== b.createdAt) {
     return a.createdAt - b.createdAt;
@@ -279,11 +486,48 @@ function toMatchingTemplate(row: ScreeningTemplateRow): MatchingTemplate {
     name: row.name,
     description: row.description,
     prompt: row.prompt,
+    sourceType: row.sourceType,
+    isReadonly: row.isReadonly,
+    matchHintsJson: row.matchHintsJson,
+    keywordsJson: row.keywordsJson,
     isDefault: row.isDefault,
     isActive: row.isActive,
     version: row.version,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  };
+}
+
+function toScreeningTemplateGroup(row: typeof screeningTemplateGroups.$inferSelect): ScreeningTemplateGroup {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    passThreshold: row.passThreshold,
+    reviewThreshold: row.reviewThreshold,
+    learningEnabled: row.learningEnabled,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toScreeningTemplateGroupTemplate(row: typeof screeningTemplateGroupTemplates.$inferSelect): ScreeningTemplateGroupTemplate {
+  return {
+    id: row.id,
+    groupId: row.groupId,
+    templateId: row.templateId,
+    isDefault: row.isDefault,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toBatchScreeningConfig(group: ScreeningTemplateGroup | null): BatchScreeningConfig {
+  return {
+    groupId: group?.id ?? null,
+    passThreshold: group?.passThreshold ?? 80,
+    reviewThreshold: group?.reviewThreshold ?? 70,
+    learningEnabled: group?.learningEnabled ?? false,
   };
 }
 
@@ -308,7 +552,7 @@ async function listTemplateRows(): Promise<MatchingTemplate[]> {
 
 function getBuiltInTemplates(hasDbDefaultTemplate: boolean): MatchingTemplate[] {
   return BUILT_IN_SCREENING_TEMPLATES.map((template) => ({
-    ...template,
+    ...materializeBuiltInTemplate(template),
     isDefault: hasDbDefaultTemplate ? false : template.isDefault,
   }));
 }
@@ -317,29 +561,24 @@ export class ScreeningTemplatesService {
   async listTemplates(): Promise<MatchingTemplate[]> {
     const hasDbDefaultTemplate = Boolean(await getActiveDbDefaultTemplate());
     const templates = await listTemplateRows();
-
     const builtInTemplates = getBuiltInTemplates(hasDbDefaultTemplate);
 
     return [...builtInTemplates, ...templates];
   }
 
   async getTemplate(id: string): Promise<MatchingTemplate | null> {
-    const builtInTemplate = BUILT_IN_SCREENING_TEMPLATE_MAP.get(id);
-    if (builtInTemplate) {
-      const dbDefaultTemplate = await getActiveDbDefaultTemplate();
-      return {
-        ...builtInTemplate,
-        isDefault: dbDefaultTemplate ? false : builtInTemplate.isDefault,
-      };
-    }
-
     const [row] = await db
       .select()
       .from(screeningTemplates)
       .where(eq(screeningTemplates.id, id))
       .limit(1);
 
-    return row ? toMatchingTemplate(row) : null;
+    if (row) {
+      return toMatchingTemplate(row);
+    }
+
+    const builtInTemplate = BUILT_IN_SCREENING_TEMPLATE_MAP.get(id);
+    return builtInTemplate ? materializeBuiltInTemplate(builtInTemplate) : null;
   }
 
   async createTemplate(
@@ -362,6 +601,10 @@ export class ScreeningTemplatesService {
         name: input.name.trim(),
         description: input.description?.trim() ?? null,
         prompt: input.prompt,
+        sourceType: "custom",
+        isReadonly: false,
+        matchHintsJson: input.matchHintsJson ?? null,
+        keywordsJson: input.keywordsJson ?? null,
         isDefault,
         isActive: true,
         version: 1,
@@ -377,6 +620,10 @@ export class ScreeningTemplatesService {
     id: string,
     input: UpdateMatchingTemplateInput,
   ): Promise<MatchingTemplate | null> {
+    if (BUILT_IN_SCREENING_TEMPLATE_MAP.has(id)) {
+      return null;
+    }
+
     const [existingRow] = await db
       .select()
       .from(screeningTemplates)
@@ -398,6 +645,8 @@ export class ScreeningTemplatesService {
     if (input.description !== undefined)
       setData.description = input.description.trim() || null;
     if (input.prompt !== undefined) setData.prompt = input.prompt;
+    if (input.matchHintsJson !== undefined) setData.matchHintsJson = input.matchHintsJson;
+    if (input.keywordsJson !== undefined) setData.keywordsJson = input.keywordsJson;
     if (input.isDefault !== undefined) setData.isDefault = input.isDefault;
 
     const [row] = await db
@@ -410,12 +659,35 @@ export class ScreeningTemplatesService {
   }
 
   async deleteTemplate(id: string): Promise<boolean> {
+    if (BUILT_IN_SCREENING_TEMPLATE_MAP.has(id)) {
+      return false;
+    }
+
     const [deleted] = await db
       .delete(screeningTemplates)
       .where(eq(screeningTemplates.id, id))
       .returning();
 
     return Boolean(deleted);
+  }
+
+  async listGroupsUsingTemplate(id: string): Promise<ScreeningTemplateGroup[]> {
+    const links = await db
+      .select()
+      .from(screeningTemplateGroupTemplates)
+      .where(eq(screeningTemplateGroupTemplates.templateId, id));
+
+    if (!links.length) {
+      return [];
+    }
+
+    const groupIds = Array.from(new Set(links.map((link) => link.groupId)));
+    const groups = await db
+      .select()
+      .from(screeningTemplateGroups)
+      .where(inArray(screeningTemplateGroups.id, groupIds));
+
+    return groups.map(toScreeningTemplateGroup).sort((a, b) => a.createdAt - b.createdAt);
   }
 
   async setDefaultTemplate(id: string): Promise<MatchingTemplate | null> {
@@ -460,8 +732,149 @@ export class ScreeningTemplatesService {
       return toMatchingTemplate(row);
     }
 
-    const builtInDefault = getBuiltInTemplates(false).find((template) => template.isDefault);
-    return builtInDefault ?? null;
+    const builtInDefault = BUILT_IN_SCREENING_TEMPLATES.find((template) => template.isDefault);
+    return builtInDefault ? materializeBuiltInTemplate(builtInDefault) : null;
+  }
+
+  async listGroups(): Promise<ScreeningTemplateGroupListData> {
+    const groups = await db.select().from(screeningTemplateGroups).orderBy(screeningTemplateGroups.createdAt);
+    if (!groups.length) {
+      return { items: [] };
+    }
+
+    const groupIds = groups.map((group) => group.id);
+    const links = await db.select().from(screeningTemplateGroupTemplates).where(inArray(screeningTemplateGroupTemplates.groupId, groupIds));
+    const linkMap = new Map<string, ScreeningTemplateGroupTemplate[]>();
+    for (const link of links.map(toScreeningTemplateGroupTemplate)) {
+      const list = linkMap.get(link.groupId) ?? [];
+      list.push(link);
+      linkMap.set(link.groupId, list);
+    }
+
+    return {
+      items: groups.map((group) => {
+        const groupLinks = linkMap.get(group.id) ?? [];
+        const defaultLink = groupLinks.find((link) => link.isDefault) ?? null;
+        return {
+          ...toScreeningTemplateGroup(group),
+          templateCount: groupLinks.length,
+          defaultTemplateId: defaultLink?.templateId ?? null,
+        };
+      }),
+    };
+  }
+
+  async getGroup(id: string): Promise<ScreeningTemplateGroupDetailData | null> {
+    const [groupRow] = await db.select().from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, id)).limit(1);
+    if (!groupRow) {
+      return null;
+    }
+
+    const links = await db.select().from(screeningTemplateGroupTemplates).where(eq(screeningTemplateGroupTemplates.groupId, id));
+    const normalizedLinks = links.map(toScreeningTemplateGroupTemplate).sort((a, b) => (a.isDefault === b.isDefault ? a.createdAt - b.createdAt : a.isDefault ? -1 : 1));
+    const templateIds = normalizedLinks.map((link) => link.templateId);
+    const templates = templateIds.length
+      ? (await Promise.all(templateIds.map(async (templateId) => this.getTemplate(templateId)))).filter((template): template is MatchingTemplate => Boolean(template))
+      : [];
+    const defaultTemplateId = normalizedLinks.find((link) => link.isDefault)?.templateId ?? null;
+    const defaultTemplate = defaultTemplateId ? templates.find((template) => template.id === defaultTemplateId) ?? null : null;
+
+    return {
+      group: toScreeningTemplateGroup(groupRow),
+      templates,
+      defaultTemplate,
+      links: normalizedLinks,
+      batchScreeningConfig: toBatchScreeningConfig(toScreeningTemplateGroup(groupRow)),
+    };
+  }
+
+  async createGroup(input: CreateScreeningTemplateGroupInput): Promise<ScreeningTemplateGroupDetailData> {
+    const now = Date.now();
+    const groupId = `stg_${crypto.randomUUID()}`;
+    const group: ScreeningTemplateGroup = {
+      id: groupId,
+      name: input.name.trim(),
+      description: input.description?.trim() ?? null,
+      passThreshold: input.passThreshold ?? 80,
+      reviewThreshold: input.reviewThreshold ?? 70,
+      learningEnabled: input.learningEnabled ?? false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const templateIds = Array.from(new Set((input.templateIds ?? []).map((templateId) => templateId.trim()).filter(Boolean)));
+    const defaultTemplateId = input.defaultTemplateId?.trim() || templateIds[0] || null;
+
+    await db.transaction(async (tx) => {
+      await tx.insert(screeningTemplateGroups).values(group);
+      if (templateIds.length) {
+        await tx.insert(screeningTemplateGroupTemplates).values(templateIds.map((templateId) => ({
+          id: `stgl_${crypto.randomUUID()}`,
+          groupId,
+          templateId,
+          isDefault: templateId === defaultTemplateId,
+          createdAt: now,
+          updatedAt: now,
+        })));
+      }
+    });
+
+    const detail = await this.getGroup(groupId);
+    if (!detail) {
+      throw new Error("Failed to load created screening template group");
+    }
+    return detail;
+  }
+
+  async updateGroup(id: string, input: UpdateScreeningTemplateGroupInput): Promise<ScreeningTemplateGroupDetailData | null> {
+    const existing = await this.getGroup(id);
+    if (!existing) return null;
+
+    const now = Date.now();
+    const updates: Record<string, unknown> = { updatedAt: now };
+    if (input.name !== undefined) updates.name = input.name.trim();
+    if (input.description !== undefined) updates.description = input.description.trim() || null;
+    if (input.passThreshold !== undefined) updates.passThreshold = input.passThreshold;
+    if (input.reviewThreshold !== undefined) updates.reviewThreshold = input.reviewThreshold;
+    if (input.learningEnabled !== undefined) updates.learningEnabled = input.learningEnabled;
+
+    await db.update(screeningTemplateGroups).set(updates).where(eq(screeningTemplateGroups.id, id));
+    return this.getGroup(id);
+  }
+
+  async replaceGroupTemplates(id: string, input: UpdateScreeningTemplateGroupTemplatesInput): Promise<ScreeningTemplateGroupDetailData | null> {
+    const existing = await this.getGroup(id);
+    if (!existing) return null;
+
+    const now = Date.now();
+    const templateIds = Array.from(new Set(input.templateIds.map((templateId) => templateId.trim()).filter(Boolean)));
+    const defaultTemplateId = input.defaultTemplateId?.trim() || templateIds[0] || null;
+
+    await db.transaction(async (tx) => {
+      await tx.delete(screeningTemplateGroupTemplates).where(eq(screeningTemplateGroupTemplates.groupId, id));
+      if (templateIds.length) {
+        await tx.insert(screeningTemplateGroupTemplates).values(templateIds.map((templateId) => ({
+          id: `stgl_${crypto.randomUUID()}`,
+          groupId: id,
+          templateId,
+          isDefault: templateId === defaultTemplateId,
+          createdAt: now,
+          updatedAt: now,
+        })));
+      }
+    });
+
+    return this.getGroup(id);
+  }
+
+  async deleteGroup(id: string): Promise<boolean> {
+    const [referencedBatch] = await db.select({ id: importBatches.id }).from(importBatches).where(eq(importBatches.groupId, id)).limit(1);
+    if (referencedBatch) {
+      return false;
+    }
+
+    const [deleted] = await db.delete(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, id)).returning();
+    return Boolean(deleted);
   }
 }
 

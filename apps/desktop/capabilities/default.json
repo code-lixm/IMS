@@ -5,6 +5,8 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:path:default",
+    "core:resources:default",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-close",

@@ -14,6 +14,16 @@
           {{ store.current?.candidate?.name ?? "候选人详情" }}
         </h1>
         <div class="flex-1" />
+      <Button
+          v-if="store.current"
+          variant="outline"
+          size="sm"
+          class="gap-2 shrink-0"
+          @click="interviewImportOpen = true"
+        >
+          <FileUp class="h-4 w-4" />
+          导入历史面试数据
+        </Button>
         <div class="hidden sm:flex items-center gap-2 shrink-0">
           <AppUserActions />
         </div>
@@ -291,6 +301,17 @@
           </Tabs>
         </template>
       </Dialog>
+
+      <InterviewImportDrawer
+        v-if="store.current"
+        :open="interviewImportOpen"
+        :candidate-id="store.current.candidate.id"
+        :candidate-name="store.current.candidate.name"
+        :existing-interview-count="store.current.interviews.length"
+        :next-round-number="nextInterviewImportRoundNumber"
+        @submitted="handleInterviewImportSubmitted"
+        @update:open="interviewImportOpen = $event"
+      />
   </AppPageShell>
 </template>
 
@@ -304,6 +325,7 @@ import {
   Download,
   ExternalLink,
   FileSearch,
+  FileUp,
   FileText,
   MessageSquare,
   Send,
@@ -315,6 +337,7 @@ import AppUserActions from "@/components/app-user-actions.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
+import InterviewImportDrawer from "@/components/candidates/interview-import-drawer.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -345,6 +368,15 @@ const previewError = ref<string | null>(null);
 const previewContentType = ref<string | null>(null);
 const previewFileName = ref<string | null>(null);
 const previewRequestToken = ref(0);
+const interviewImportOpen = ref(false);
+
+const nextInterviewImportRoundNumber = computed(() => {
+  const rounds = store.current?.interviews ?? [];
+  const maxRound = rounds.reduce((currentMaxRound, interview) => {
+    return interview.round > currentMaxRound ? interview.round : currentMaxRound;
+  }, 0);
+  return maxRound + 1;
+});
 
 onMounted(() => store.fetchOne(route.params.id as string));
 
@@ -369,6 +401,10 @@ function openWorkspace() {
     path: "/lui",
     query: { candidateId: id },
   });
+}
+
+function handleInterviewImportSubmitted() {
+  void store.fetchOne(route.params.id as string);
 }
 
 async function downloadResume(resume: CandidateResume) {
@@ -398,9 +434,16 @@ async function openResumePreview(resume: CandidateResume) {
       return;
     }
 
-    previewObjectUrl.value = candidatesApi.getResumePreviewUrl(resume.id);
-    previewContentType.value = resolveResumePreviewContentType(resume.fileType, resume.fileName);
-    previewFileName.value = resume.fileName;
+    const preview = await candidatesApi.loadResumePreviewSource(resume.id);
+    if (requestToken !== previewRequestToken.value || previewResume.value?.id !== resume.id || !resumePreviewOpen.value) {
+      URL.revokeObjectURL(preview.objectUrl);
+      return;
+    }
+
+    previewObjectUrl.value = preview.objectUrl;
+    previewContentType.value = preview.contentType
+      ?? resolveResumePreviewContentType(resume.fileType, resume.fileName);
+    previewFileName.value = preview.fileName ?? resume.fileName;
   } catch (error) {
     if (requestToken !== previewRequestToken.value) return;
     previewError.value = error instanceof Error ? error.message : "原件预览加载失败";

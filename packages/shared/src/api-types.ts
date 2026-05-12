@@ -24,6 +24,13 @@ import type {
   AgentSourceType,
   AgentSceneAffinity,
 } from "./db-schema";
+import type {
+  InterviewImportAIDraft,
+  InterviewImportConfirmationState,
+  InterviewImportPersistenceResult,
+  InterviewImportRawInput,
+  InterviewImportSystemContext,
+} from "./interview-import";
 
 // ---------------------------------------------------------------------------
 // Transport wrapper
@@ -82,6 +89,11 @@ export const ErrorCodes = {
   SHARE_VALIDATION_FAILED: "SHARE_VALIDATION_FAILED",
   SYSTEM_OPENCODE_NOT_READY: "SYSTEM_OPENCODE_NOT_READY",
   SYSTEM_OPENCODE_CRASHED: "SYSTEM_OPENCODE_CRASHED",
+  RECORDING_NOT_FOUND: "RECORDING_NOT_FOUND",
+  RECORDING_FILE_MISSING: "RECORDING_FILE_MISSING",
+  RECORDING_PERMISSION_DENIED: "RECORDING_PERMISSION_DENIED",
+  RECORDING_DEVICE_UNAVAILABLE: "RECORDING_DEVICE_UNAVAILABLE",
+  RECORDING_MODEL_MISSING: "RECORDING_MODEL_MISSING",
   INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;
 
@@ -260,6 +272,10 @@ export interface MatchingTemplate {
   name: string;
   description: string | null;
   prompt: string;
+  sourceType: string;
+  isReadonly: boolean;
+  matchHintsJson: string | null;
+  keywordsJson: string | null;
   isDefault: boolean;
   isActive: boolean;
   version: number;
@@ -275,6 +291,8 @@ export interface CreateMatchingTemplateInput {
   name: string;
   description?: string;
   prompt: string;
+  matchHintsJson?: string | null;
+  keywordsJson?: string | null;
   isDefault?: boolean;
 }
 
@@ -282,7 +300,82 @@ export interface UpdateMatchingTemplateInput {
   name?: string;
   description?: string;
   prompt?: string;
+  matchHintsJson?: string | null;
+  keywordsJson?: string | null;
   isDefault?: boolean;
+}
+
+export interface ScreeningTemplateGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ScreeningTemplateGroupTemplate {
+  id: string;
+  groupId: string;
+  templateId: string;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface BatchScreeningConfig {
+  groupId: string | null;
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled: boolean;
+}
+
+export interface UpdateImportBatchScreeningConfigInput {
+  passThreshold: number;
+  reviewThreshold: number;
+  learningEnabled?: boolean;
+}
+
+export interface ScreeningTemplateGroupListItem extends ScreeningTemplateGroup {
+  templateCount: number;
+  defaultTemplateId: string | null;
+}
+
+export interface ScreeningTemplateGroupDetailData {
+  group: ScreeningTemplateGroup;
+  templates: MatchingTemplate[];
+  defaultTemplate: MatchingTemplate | null;
+  links: ScreeningTemplateGroupTemplate[];
+  batchScreeningConfig: BatchScreeningConfig;
+}
+
+export interface ScreeningTemplateGroupListData {
+  items: ScreeningTemplateGroupListItem[];
+}
+
+export interface CreateScreeningTemplateGroupInput {
+  name: string;
+  description?: string;
+  passThreshold?: number;
+  reviewThreshold?: number;
+  learningEnabled?: boolean;
+  templateIds?: string[];
+  defaultTemplateId?: string | null;
+}
+
+export interface UpdateScreeningTemplateGroupInput {
+  name?: string;
+  description?: string;
+  passThreshold?: number;
+  reviewThreshold?: number;
+  learningEnabled?: boolean;
+}
+
+export interface UpdateScreeningTemplateGroupTemplatesInput {
+  templateIds: string[];
+  defaultTemplateId?: string | null;
 }
 
 export interface CreateInterviewAssessmentInput {
@@ -461,12 +554,27 @@ export interface ArtifactFeedbackData {
 // Import
 // ---------------------------------------------------------------------------
 
+export interface InterviewImportLayeredContextData {
+  rawInput: InterviewImportRawInput;
+  systemContext: InterviewImportSystemContext;
+}
+
+export interface InterviewImportLayeredReviewData extends InterviewImportLayeredContextData {
+  aiDraft: InterviewImportAIDraft | null;
+  confirmation: InterviewImportConfirmationState | null;
+}
+
+export interface InterviewImportLayeredPersistenceData extends InterviewImportLayeredReviewData {
+  persistence: InterviewImportPersistenceResult | null;
+}
+
 export interface ImportBatchListData {
   items: ImportBatchListItem[];
 }
 
 export interface ImportBatchListItem extends ImportBatch {
   templateId: string | null;
+  batchScreeningConfig: BatchScreeningConfig;
   analysisTotalFiles: number;
   analysisCompletedFiles: number;
   analysisPendingFiles: number;
@@ -476,6 +584,7 @@ export interface ImportBatchListItem extends ImportBatch {
 export interface CreateImportBatchInput {
   paths: string[];
   autoScreen?: boolean;
+  groupId?: string | null;
   templateId?: string | null;
 }
 
@@ -512,6 +621,13 @@ export interface UniversityVerificationResult {
 
 export type ImportScreeningVerdict = "pass" | "review" | "reject";
 
+export interface ImportScreeningDerivedRecommendation {
+  verdict: ImportScreeningVerdict;
+  label: "通过" | "待定" | "淘汰";
+  passThreshold: number;
+  reviewThreshold: number;
+}
+
 export interface TemplateEvidenceMatchedItem {
   item: string;
   evidence: string;
@@ -525,6 +641,32 @@ export interface TemplateEvidenceUnmatchedItem {
 export interface TemplateEvidence {
   matched: TemplateEvidenceMatchedItem[];
   unmatched: TemplateEvidenceUnmatchedItem[];
+}
+
+export interface ImportScreeningScoreFeedback {
+  id: string;
+  batchId: string;
+  fileTaskId: string;
+  candidateId: string | null;
+  groupId: string | null;
+  templateId: string | null;
+  matchedTemplateId: string | null;
+  originalScore: number;
+  overriddenScore: number;
+  reason: string | null;
+  learningEnabledSnapshot: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ImportScreeningScoreOverride {
+  feedbackId: string;
+  originalScore: number;
+  overriddenScore: number;
+  reason: string | null;
+  learningEnabledSnapshot: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type ImportScreeningStatus = "not_requested" | "queued" | "running" | "completed" | "failed";
@@ -545,6 +687,8 @@ export interface ImportScreeningConclusion {
   strengths: string[];
   concerns: string[];
   recommendedAction: string;
+  derivedRecommendation?: ImportScreeningDerivedRecommendation;
+  matchedTemplateId?: string | null;
   wechatConclusion?: string;
   wechatReason?: string;
   wechatAction?: string;
@@ -552,6 +696,7 @@ export interface ImportScreeningConclusion {
   templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
   universityVerification?: UniversityVerificationResult;
   templateEvidence?: TemplateEvidence;
+  scoreOverride?: ImportScreeningScoreOverride | null;
 }
 
 export interface ImportTaskResultData {
@@ -563,9 +708,24 @@ export interface ImportTaskResultData {
   templateInfo?: ScreeningTemplateInfo & ScreeningTemplateRenderedInfo;
   universityVerification?: UniversityVerificationResult;
   fileHash?: string | null;
+  matchedTemplateId?: string | null;
   screeningReuseKey?: string | null;
   reusedFromTaskId?: string | null;
   reusedAt?: number | null;
+  scoreFeedbackHistory?: ImportScreeningScoreFeedback[];
+}
+
+export interface UpdateImportTaskScreeningScoreInput {
+  score: number;
+  reason?: string | null;
+}
+
+export interface ImportTaskScreeningScoreData {
+  taskId: string;
+  batchId: string;
+  feedbackCount: number;
+  currentScore: number | null;
+  overridden: boolean;
 }
 
 export interface CreateImportBatchData {
@@ -585,6 +745,139 @@ export interface ImportScreeningExportRequest {
   scoreMin?: number | null;
   scoreMax?: number | null;
   includeReports?: boolean;
+}
+
+export const DEFAULT_BATCH_SCREENING_CONFIG: BatchScreeningConfig = {
+  groupId: null,
+  passThreshold: 80,
+  reviewThreshold: 70,
+  learningEnabled: false,
+};
+
+export function normalizeBatchScreeningConfig(
+  config?: Partial<BatchScreeningConfig> | null,
+): BatchScreeningConfig {
+  return {
+    groupId: typeof config?.groupId === "string" && config.groupId.trim()
+      ? config.groupId.trim()
+      : null,
+    passThreshold: Number.isFinite(config?.passThreshold)
+      ? Math.round(Number(config?.passThreshold))
+      : DEFAULT_BATCH_SCREENING_CONFIG.passThreshold,
+    reviewThreshold: Number.isFinite(config?.reviewThreshold)
+      ? Math.round(Number(config?.reviewThreshold))
+      : DEFAULT_BATCH_SCREENING_CONFIG.reviewThreshold,
+    learningEnabled: typeof config?.learningEnabled === "boolean"
+      ? config.learningEnabled
+      : DEFAULT_BATCH_SCREENING_CONFIG.learningEnabled,
+  };
+}
+
+export function validateBatchScreeningConfig(
+  config?: Partial<BatchScreeningConfig> | null,
+): string | null {
+  const normalized = normalizeBatchScreeningConfig(config);
+
+  if (!Number.isInteger(normalized.passThreshold) || normalized.passThreshold < 1 || normalized.passThreshold > 100) {
+    return "通过阈值必须是 1 到 100 之间的整数";
+  }
+
+  if (!Number.isInteger(normalized.reviewThreshold) || normalized.reviewThreshold < 1 || normalized.reviewThreshold > 99) {
+    return "待定阈值必须是 1 到 99 之间的整数";
+  }
+
+  if (normalized.passThreshold <= normalized.reviewThreshold) {
+    return "通过阈值必须大于待定阈值，才能保证通过 / 待定 / 淘汰三个分段无重叠且无空档";
+  }
+
+  return null;
+}
+
+export function deriveScreeningRecommendation(
+  score: number | null | undefined,
+  config?: Partial<BatchScreeningConfig> | null,
+): ImportScreeningDerivedRecommendation | null {
+  if (!Number.isFinite(score)) {
+    return null;
+  }
+
+  const normalized = normalizeBatchScreeningConfig(config);
+  const roundedScore = Math.max(0, Math.min(100, Math.round(Number(score))));
+
+  if (roundedScore >= normalized.passThreshold) {
+    return {
+      verdict: "pass",
+      label: "通过",
+      passThreshold: normalized.passThreshold,
+      reviewThreshold: normalized.reviewThreshold,
+    };
+  }
+
+  if (roundedScore >= normalized.reviewThreshold) {
+    return {
+      verdict: "review",
+      label: "待定",
+      passThreshold: normalized.passThreshold,
+      reviewThreshold: normalized.reviewThreshold,
+    };
+  }
+
+  return {
+    verdict: "reject",
+    label: "淘汰",
+    passThreshold: normalized.passThreshold,
+    reviewThreshold: normalized.reviewThreshold,
+  };
+}
+
+export function getEffectiveScreeningScore(
+  conclusion: Pick<ImportScreeningConclusion, "score" | "scoreOverride"> | null | undefined,
+): number | null {
+  if (!conclusion) {
+    return null;
+  }
+
+  const overrideScore = conclusion.scoreOverride?.overriddenScore;
+  if (Number.isFinite(overrideScore)) {
+    return Math.max(0, Math.min(100, Math.round(Number(overrideScore))));
+  }
+
+  if (!Number.isFinite(conclusion.score)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(Number(conclusion.score))));
+}
+
+export function applyDerivedRecommendationToConclusion(
+  conclusion: ImportScreeningConclusion | null | undefined,
+  config?: Partial<BatchScreeningConfig> | null,
+): ImportScreeningConclusion | null {
+  if (!conclusion) {
+    return null;
+  }
+
+  return {
+    ...conclusion,
+    derivedRecommendation: deriveScreeningRecommendation(getEffectiveScreeningScore(conclusion), config) ?? undefined,
+  };
+}
+
+export function applyDerivedRecommendationToTaskResult<T extends Pick<ImportTaskResultData, "screeningConclusion">>(
+  result: T,
+  config?: Partial<BatchScreeningConfig> | null,
+): T {
+  return {
+    ...result,
+    screeningConclusion: applyDerivedRecommendationToConclusion(result.screeningConclusion ?? null, config),
+  };
+}
+
+export function formatScreeningThresholdSummary(
+  config?: Partial<BatchScreeningConfig> | null,
+): string {
+  const normalized = normalizeBatchScreeningConfig(config);
+  return `通过 ≥ ${normalized.passThreshold} · 待定 ${normalized.reviewThreshold}-${normalized.passThreshold - 1} · 淘汰 < ${normalized.reviewThreshold}`;
 }
 
 // ---------------------------------------------------------------------------

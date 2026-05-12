@@ -1,6 +1,10 @@
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { config } from "./config";
+
+mkdirSync(join(config.runtimeDir, "recordings"), { recursive: true });
 
 const sqlite = new Database(config.dbPath, { create: true });
 sqlite.exec("PRAGMA busy_timeout = 5000;");
@@ -132,13 +136,18 @@ CREATE TABLE IF NOT EXISTS import_batches (
   display_name TEXT,
   status TEXT NOT NULL DEFAULT 'queued',
   source_type TEXT,
+  summary_json TEXT,
   current_stage TEXT,
   total_files INTEGER NOT NULL DEFAULT 0,
   processed_files INTEGER NOT NULL DEFAULT 0,
   success_files INTEGER NOT NULL DEFAULT 0,
   failed_files INTEGER NOT NULL DEFAULT 0,
   auto_screen INTEGER DEFAULT 0,
+  group_id TEXT,
   template_id TEXT,
+  pass_threshold INTEGER,
+  review_threshold INTEGER,
+  learning_enabled INTEGER,
   created_at INTEGER NOT NULL,
   started_at INTEGER,
   completed_at INTEGER
@@ -155,6 +164,8 @@ CREATE TABLE IF NOT EXISTS import_file_tasks (
   error_code TEXT,
   error_message TEXT,
   candidate_id TEXT REFERENCES candidates(id),
+  matched_template_id TEXT,
+  payload_json TEXT,
   result_json TEXT,
   retry_count INTEGER NOT NULL DEFAULT 0,
   file_hash TEXT,
@@ -172,6 +183,21 @@ CREATE TABLE IF NOT EXISTS share_records (
   result_json TEXT,
   created_at INTEGER NOT NULL,
   completed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS recordings (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'idle',
+  file_path TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  file_size_bytes INTEGER NOT NULL DEFAULT 0,
+  language TEXT,
+  live_transcript_text TEXT,
+  final_transcript_text TEXT,
+  transcript_json TEXT,
+  organised_text TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -214,9 +240,49 @@ CREATE TABLE IF NOT EXISTS screening_templates (
   name TEXT NOT NULL,
   description TEXT,
   prompt TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'custom',
+  is_readonly INTEGER NOT NULL DEFAULT 0,
+  match_hints_json TEXT,
+  keywords_json TEXT,
   is_default INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
   version INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS screening_template_groups (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  pass_threshold INTEGER NOT NULL DEFAULT 80,
+  review_threshold INTEGER NOT NULL DEFAULT 70,
+  learning_enabled INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS screening_template_group_templates (
+  id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL,
+  template_id TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS screening_score_feedbacks (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES import_batches(id),
+  file_task_id TEXT NOT NULL REFERENCES import_file_tasks(id),
+  candidate_id TEXT REFERENCES candidates(id),
+  group_id TEXT REFERENCES screening_template_groups(id),
+  template_id TEXT,
+  matched_template_id TEXT,
+  original_score INTEGER NOT NULL,
+  overridden_score INTEGER NOT NULL,
+  reason TEXT,
+  learning_enabled_snapshot INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -353,6 +419,18 @@ function ensureColumn(table: string, column: string, definition: string) {
   }
 }
 
+function renameColumnIfNeeded(table: string, from: string, to: string) {
+  const rows = sqlite.query(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>;
+  if (rows.length === 0) {
+    return;
+  }
+  const hasFrom = rows.some((row) => row.name === from);
+  const hasTo = rows.some((row) => row.name === to);
+  if (hasFrom && !hasTo) {
+    sqlite.exec(`ALTER TABLE ${table} RENAME COLUMN ${from} TO ${to};`);
+  }
+}
+
 ensureColumn("remote_users", "cookie_json", "TEXT");
 ensureColumn("conversations", "agent_id", "TEXT");
 ensureColumn("conversations", "model_provider", "TEXT");
@@ -381,6 +459,11 @@ ensureColumn("session_memories", "metadata", "TEXT");
 ensureColumn("session_memories", "importance", "INTEGER NOT NULL DEFAULT 5");
 ensureColumn("session_memories", "expires_at", "INTEGER");
 ensureColumn("import_batches", "display_name", "TEXT");
+ensureColumn("import_batches", "summary_json", "TEXT");
+ensureColumn("import_batches", "group_id", "TEXT");
+ensureColumn("import_batches", "pass_threshold", "INTEGER");
+ensureColumn("import_batches", "review_threshold", "INTEGER");
+ensureColumn("import_batches", "learning_enabled", "INTEGER");
 ensureColumn("agents", "source_type", "TEXT NOT NULL DEFAULT 'custom'");
 ensureColumn("agents", "is_mutable", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("agents", "scene_affinity", "TEXT NOT NULL DEFAULT 'general'");
@@ -399,43 +482,60 @@ WHERE verdict IS NULL OR (verdict = 'verified' AND found = 0);
 ensureColumn("import_batches", "template_id", "TEXT");
 ensureColumn("resumes", "file_hash", "TEXT");
 ensureColumn("import_file_tasks", "file_hash", "TEXT");
+ensureColumn("import_file_tasks", "matched_template_id", "TEXT");
+ensureColumn("import_file_tasks", "payload_json", "TEXT");
+ensureColumn("recordings", "status", "TEXT NOT NULL DEFAULT 'idle'");
+ensureColumn("recordings", "file_path", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("recordings", "duration_ms", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("recordings", "file_size_bytes", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("recordings", "language", "TEXT");
+ensureColumn("recordings", "live_transcript_text", "TEXT");
+ensureColumn("recordings", "final_transcript_text", "TEXT");
+ensureColumn("recordings", "transcript_json", "TEXT");
+ensureColumn("recordings", "organised_text", "TEXT");
+ensureColumn("recordings", "created_at", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("recordings", "updated_at", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("screening_templates", "source_type", "TEXT NOT NULL DEFAULT 'custom'");
+ensureColumn("screening_templates", "is_readonly", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("screening_templates", "match_hints_json", "TEXT");
+ensureColumn("screening_templates", "keywords_json", "TEXT");
+renameColumnIfNeeded("screening_score_feedbacks", "previous_score", "original_score");
+renameColumnIfNeeded("screening_score_feedbacks", "current_score", "overridden_score");
+ensureColumn("screening_score_feedbacks", "learning_enabled_snapshot", "INTEGER NOT NULL DEFAULT 0");
 export const db = drizzle(sqlite);
 
 export const rawDb = sqlite;
 
-// Seed default screening template if none exists
-(function seedDefaultScreeningTemplate() {
+void (async function materializeBuiltinScreeningTemplates() {
   try {
-    const existing = rawDb.prepare(
+    const { BUILT_IN_SCREENING_TEMPLATES } = await import("./services/screening-templates");
+    const existingDefault = rawDb.prepare(
       "SELECT COUNT(*) as cnt FROM screening_templates WHERE is_default = 1"
     ).get() as { cnt: number } | undefined;
-    if (existing && existing.cnt > 0) {
-      return;
+    const hasDefault = Boolean(existingDefault && existingDefault.cnt > 0);
+
+    const stmt = rawDb.prepare(
+      "INSERT OR IGNORE INTO screening_templates (id, name, description, prompt, source_type, is_readonly, match_hints_json, keywords_json, is_default, is_active, version, created_at, updated_at) VALUES (?, ?, ?, ?, 'builtin', 1, ?, ?, ?, ?, ?, ?, ?)"
+    );
+
+    for (const template of BUILT_IN_SCREENING_TEMPLATES) {
+      const hintTemplate = template as { matchHintsJson?: string | null; keywordsJson?: string | null };
+      stmt.run(
+        template.id,
+        template.name,
+        template.description,
+        template.prompt,
+        hintTemplate.matchHintsJson ?? null,
+        hintTemplate.keywordsJson ?? null,
+        hasDefault ? 0 : (template.isDefault ? 1 : 0),
+        template.isActive ? 1 : 0,
+        template.version,
+        template.createdAt,
+        template.updatedAt,
+      );
     }
-
-    const now = Date.now();
-    const id = `scrntpl_${crypto.randomUUID()}`;
-    const defaultPrompt = [
-      "你是一位资深的互联网行业技术面试官，请根据候选人的简历信息进行初筛评估。",
-      "",
-      "## 评估维度",
-      "1. 工作年限与岗位匹配度（初级1-3年、中级3-5年、高级5-10年、资深10年+）",
-      "2. 技术栈与项目经验的深度和广度",
-      "3. 教育背景和学历水平",
-      "4. 跳槽频率和职业发展路径",
-      "5. 知名公司/项目经验加分",
-      "",
-      "## 输出要求",
-      "- 给出通过/待定/淘汰的结论",
-      "- 简要说明评估依据（不超过100字）",
-      "- 列出关键风险点或亮点",
-    ].join("\n");
-
-    rawDb.prepare(
-      "INSERT INTO screening_templates (id, name, description, prompt, is_default, is_active, version, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1, 1, ?, ?)"
-    ).run(id, "默认初筛模板", "系统提供的通用候选人初筛评估模板，适用于多数互联网技术岗位", defaultPrompt, now, now);
   } catch (error) {
-    console.error("[db] Failed to seed default screening template:", error);
+    console.error("[db] Failed to materialize builtin screening templates:", error);
   }
 })();
 

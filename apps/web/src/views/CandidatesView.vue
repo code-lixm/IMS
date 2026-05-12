@@ -28,7 +28,7 @@
           :reset-sync-loading="syncStore.resetLoading"
           @search="scheduleSearch"
           @import="triggerImport"
-          @import-imr="handleImportImr"
+          @open-interview-import="interviewImportOpen = true"
           @goto-import="goToImportPage"
           @sync="runSyncNow"
           @reset-sync="runResetSyncNow"
@@ -55,7 +55,7 @@
             :is-indeterminate-on-page="pageSelectionState.isIndeterminate"
             :share-loading="isBatchSharing"
             :is-selected="batchSelection.isSelected"
-            @import-imr="handleImportImr"
+            @import-imr="interviewImportOpen = true"
             @select="goToCandidateDetail"
             @open-workspace="openWorkspace"
             @export="exportCandidate"
@@ -76,6 +76,12 @@
         @update:open="deviceSelectDialogOpen = $event"
         @send="handleBatchShare"
       />
+
+      <InterviewImportDrawer
+        :open="interviewImportOpen"
+        @submitted="handleInterviewImportSubmitted"
+        @update:open="interviewImportOpen = $event"
+      />
     </template>
 
     <BaobaoLoginDialog
@@ -90,6 +96,7 @@ import { computed, onMounted, ref } from "vue";
 import CandidateFeedbackBanner from "@/components/candidates/candidate-feedback-banner.vue";
 import CandidateList from "@/components/candidates/candidate-list.vue";
 import CandidatePageHeader from "@/components/candidates/candidate-page-header.vue";
+import InterviewImportDrawer from "@/components/candidates/interview-import-drawer.vue";
 import DeviceSelectDialog from "@/components/candidates/device-select-dialog.vue";
 import BaobaoLoginDialog from "@/components/auth/baobao-login-dialog.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
@@ -126,7 +133,6 @@ const {
   goToCandidateDetail,
   goToImportPage,
   triggerImport,
-    triggerImrImport,
     openWorkspace,
     exportCandidate,
     deleteCandidate,
@@ -135,6 +141,7 @@ const {
 
 const deviceSelectDialogOpen = ref(false);
 const isBatchSharing = ref(false);
+const interviewImportOpen = ref(false);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(store.total / store.pageSize)));
 
@@ -169,11 +176,11 @@ async function handleDelete(candidateId: string) {
   await store.refreshCurrentPage();
 }
 
-async function handleImportImr() {
-  const result = await triggerImrImport();
-  if (result?.result === "created" || result?.result === "merged") {
-    await store.refreshCurrentPage();
-  }
+async function handleInterviewImportSubmitted() {
+  await Promise.all([
+    store.refreshCurrentPage(),
+    importActivity.refresh(),
+  ]);
 }
 
 async function runSyncNow() {

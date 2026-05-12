@@ -13,20 +13,33 @@ export * from "./api-types";
 export type {
   BaobaoLoginQrData,
   ImportScreeningConclusion,
+  ImportScreeningScoreFeedback,
   ImportScreeningVerdict,
+  ImportTaskScreeningScoreData,
   ImportTaskResultData,
+  ImportScreeningScoreOverride,
   LuiAssessmentBalanceHighlightData,
   LuiAssessmentFeedbackComparisonData,
   LuiAssessmentQuestionScoreData,
   LuiAssessmentWechatSummaryItemData,
   LuiStructuredInterviewAssessmentData,
+  UpdateImportTaskScreeningScoreInput,
 } from "./api-types";
+export {
+  getEffectiveScreeningScore,
+} from "./api-types";
+
+// Recorder domain types
+export * from "./recorder";
 
 // Baobao third-party API types
 export * from "./baobao-types";
 
 // Shared constants
 export * from "./constants";
+
+// Import screening helpers
+export * from "./import-screening";
 
 // Agent contract types
 export * from "./agent-contract";
@@ -39,3 +52,6 @@ export * from "./changelog";
 
 // Baobao dictionary constants
 export * from "./dictionaries/baobao";
+
+// Interview import types & helpers
+export * from "./interview-import";

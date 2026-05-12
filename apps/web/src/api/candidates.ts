@@ -13,6 +13,10 @@ export interface DownloadedResumeFile {
   fileName: string | null;
 }
 
+export interface ResumePreviewSource extends DownloadedResumeFile {
+  objectUrl: string;
+}
+
 export function resolveResumePreviewContentType(fileType: string | null | undefined, fileName: string | null | undefined): string | null {
   const normalizedType = fileType?.trim().toLowerCase() ?? "";
   const normalizedName = fileName?.trim().toLowerCase() ?? "";
@@ -37,6 +41,20 @@ function parseContentDispositionFileName(contentDisposition: string | null): str
 
   const asciiMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
   return asciiMatch?.[1] ?? null;
+}
+
+function resolveBinaryResponseContentType(response: Response, blob: Blob): string | null {
+  return response.headers.get("content-type")?.split(";")[0]?.trim() || blob.type || null;
+}
+
+async function readBinaryResponse(response: Response): Promise<DownloadedResumeFile> {
+  const blob = await response.blob();
+
+  return {
+    blob,
+    contentType: resolveBinaryResponseContentType(response, blob),
+    fileName: parseContentDispositionFileName(response.headers.get("content-disposition")),
+  };
 }
 
 export const candidatesApi = {
@@ -64,17 +82,19 @@ export const candidatesApi = {
     return `/api/resumes/${id}/preview`;
   },
 
-  async downloadResume(id: string): Promise<DownloadedResumeFile> {
-    const response = await requestStream(`/api/resumes/${id}/download`);
-    const blob = await response.blob();
-    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || blob.type || null;
-    const fileName = parseContentDispositionFileName(response.headers.get("content-disposition"));
+  async loadResumePreviewSource(id: string): Promise<ResumePreviewSource> {
+    const response = await requestStream(`/api/resumes/${id}/preview`);
+    const file = await readBinaryResponse(response);
 
     return {
-      blob,
-      contentType,
-      fileName,
+      ...file,
+      objectUrl: URL.createObjectURL(file.blob),
     };
+  },
+
+  async downloadResume(id: string): Promise<DownloadedResumeFile> {
+    const response = await requestStream(`/api/resumes/${id}/download`);
+    return readBinaryResponse(response);
   },
 
   create(input: CreateCandidateInput) {
