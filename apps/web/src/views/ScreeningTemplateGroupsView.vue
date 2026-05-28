@@ -6,6 +6,8 @@ import { screeningTemplatesApi } from "@/api/screening-templates";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageContent from "@/components/layout/app-page-content.vue";
+import ImsPageBackground from "@/components/layout/ims-page-background.vue";
+import { imsDesign } from "@/components/layout/ims-design";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
 import AppUserActions from "@/components/app-user-actions.vue";
 import { Badge } from "@/components/ui/badge";
@@ -240,7 +242,8 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
 </script>
 
 <template>
-  <AppPageShell>
+  <AppPageShell :class="imsDesign.shell">
+    <ImsPageBackground />
     <AppPageHeader>
       <AppBrandLink />
       <div class="flex-1" />
@@ -251,24 +254,22 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
       <AppUserActions />
     </AppPageHeader>
 
-    <AppPageContent class="space-y-6">
-      <Card class="overflow-hidden border-border/60">
-        <div class="flex flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between">
-          <div class="space-y-2">
-            <h1 class="text-xl font-semibold tracking-tight">初筛分组管理</h1>
-            <p class="text-sm text-muted-foreground">
-              分组只负责组织模板、默认模板和筛选阈值；模板内容本身请到模板管理页面维护。
-            </p>
-          </div>
-
-          <router-link
-            to="/screening/templates"
-            class="shrink-0 text-sm text-primary/80 underline underline-offset-2 transition-colors hover:text-primary"
-          >
-            前往模板管理
-          </router-link>
+    <AppPageContent class="relative z-[1] space-y-6 px-4 py-4 lg:px-16">
+      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div class="space-y-2">
+          <h1 class="text-xl font-semibold tracking-tight">筛选模板组管理</h1>
+          <p class="text-sm text-muted-foreground">
+            模板组只负责组织模板、默认模板和筛选阈值；模板内容本身请到模板管理页面维护。
+          </p>
         </div>
-      </Card>
+
+        <router-link
+          to="/screening/templates"
+          class="shrink-0 text-sm text-primary/80 underline underline-offset-2 transition-colors hover:text-primary"
+        >
+          前往模板管理
+        </router-link>
+      </div>
 
       <Card v-if="hasFocusContext" class="border-primary/20 bg-primary/5 p-4">
         <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -301,8 +302,8 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
       <EmptyState
         v-else-if="!hasGroups"
         scenario="generic"
-        title="暂无分组"
-        description="创建分组后，导入页就能按分组统一选择模板策略和筛选阈值"
+        title="暂无模板组"
+        description="创建模板组后，导入页就能按分组统一选择模板策略和筛选阈值"
         :action-text="'新建分组'"
         :action-icon="Plus"
         :action-handler="handleCreate"
@@ -325,7 +326,7 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
                   <div class="flex flex-wrap items-center gap-2">
                     <h3 class="text-base font-semibold">{{ card.group.name }}</h3>
                     <Badge v-if="card.matchesFocusContext" variant="default">{{ card.focusBadgeLabel }}</Badge>
-                    <Badge variant="secondary">{{ card.group.templateCount }} 个模板</Badge>
+                    <Badge variant="secondary">模板组 · {{ card.group.templateCount }} 个模板</Badge>
                     <Badge :variant="card.hasDefaultTemplate ? 'outline' : 'secondary'">
                       {{ card.hasDefaultTemplate ? "已设默认模板" : "未设默认模板" }}
                     </Badge>
@@ -381,11 +382,11 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
               </div>
             </div>
 
-            <div class="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)_minmax(0,1.05fr)]">
-              <div class="rounded-lg border border-border/60 bg-muted/20 p-3">
+            <div class="grid gap-0 overflow-hidden rounded-lg border border-border/60 bg-muted/[0.18] divide-y divide-border/60 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)_minmax(0,1.05fr)] xl:divide-x xl:divide-y-0">
+              <div class="p-4">
                 <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
                   <Boxes class="h-3.5 w-3.5" />
-                  <span>分组内模板</span>
+                  <span>三列内容区 · 分组内模板</span>
                 </div>
 
                 <div v-if="card.visibleTemplateNames.length > 0" class="space-y-3">
@@ -412,10 +413,10 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
                 </p>
               </div>
 
-              <div class="rounded-lg border border-border/60 bg-muted/20 p-3">
+              <div class="p-4">
                 <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
                   <FileText class="h-3.5 w-3.5" />
-                  <span>默认模板</span>
+                  <span>三列内容区 · 默认模板</span>
                 </div>
 
                 <div class="space-y-2">
@@ -428,10 +429,10 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
                 </div>
               </div>
 
-              <div class="rounded-lg border border-border/60 bg-muted/20 p-3">
+              <div class="p-4">
                 <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
                   <SlidersHorizontal class="h-3.5 w-3.5" />
-                  <span>阈值策略</span>
+                  <span>三列内容区 · 阈值策略</span>
                 </div>
 
                 <dl class="space-y-2 text-sm">
@@ -451,9 +452,9 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border/60 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <Clock3 class="h-3.5 w-3.5" />
-              <span>这个页面只负责维护分组组合关系；模板正文仍在模板管理页编辑。</span>
+              <span>这个页面只负责维护模板组组合关系；模板正文仍在模板管理页编辑。</span>
             </div>
           </div>
         </Card>

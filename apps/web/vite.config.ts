@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
         enabled: mockEnabled,
         log: mockEnabled ? "info" : "silent",
       }),
-    ],
+    ].filter(Boolean),
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),

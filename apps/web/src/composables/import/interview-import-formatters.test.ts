@@ -58,8 +58,10 @@ describe("interview import formatters", () => {
       errors: [],
     });
 
+    expect(items).toHaveLength(4);
     expect(items[0]).toEqual(expect.objectContaining({ label: "候选人", value: "已创建" }));
-    expect(items[4]).toEqual(expect.objectContaining({ label: "Workflow", value: "S0 → S2" }));
+    expect(items[1]).toEqual(expect.objectContaining({ label: "总轮次", value: "5" }));
+    expect(items[3]).toEqual(expect.objectContaining({ label: "Workflow", value: "S0 → S2" }));
     expect(interviewImportWorkflowDescription({
       fromStage: "S0",
       toStage: "S2",

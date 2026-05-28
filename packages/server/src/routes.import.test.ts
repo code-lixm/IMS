@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   prepareImportTasksMock: vi.fn(),
   selectQueue: [] as unknown[][],
+  insertValues: [] as unknown[],
+  ensureUsableGroupMock: vi.fn(),
 }));
 
 function jsonResponse(body: unknown, status = 200) {
@@ -61,7 +63,7 @@ vi.mock("./services/baobao-login", () => ({
   getBaobaoLoginSessionStatus: vi.fn(),
 }));
 vi.mock("./config", () => ({
-  config: { dataDir: "/tmp", filesDir: "/tmp", dbPath: ":memory:" },
+  config: { dataDir: "/tmp", filesDir: "/tmp", runtimeDir: "/tmp", dbPath: ":memory:" },
 }));
 vi.mock("./db", () => ({
   closeDatabase: vi.fn(),
@@ -74,6 +76,16 @@ vi.mock("./db", () => ({
         })),
       })),
     })),
+    insert: vi.fn(() => ({
+      values: vi.fn(async (value: unknown) => {
+        mocks.insertValues.push(value);
+      }),
+    })),
+  },
+}));
+vi.mock("./services/screening-templates", () => ({
+  screeningTemplatesService: {
+    ensureUsableGroup: mocks.ensureUsableGroupMock,
   },
 }));
 vi.mock("./utils/http", () => ({
@@ -184,6 +196,8 @@ describe("import batch creation validation", () => {
   beforeEach(() => {
     mocks.selectQueue.splice(0, mocks.selectQueue.length);
     mocks.prepareImportTasksMock.mockReset();
+    mocks.insertValues.splice(0, mocks.insertValues.length);
+    mocks.ensureUsableGroupMock.mockReset();
   });
 
   test("rejects templateId that does not belong to the selected group on new batch creation", async () => {
@@ -210,5 +224,34 @@ describe("import batch creation validation", () => {
       },
     });
     expect(mocks.prepareImportTasksMock).not.toHaveBeenCalled();
+  });
+
+  test("creates first import batch with auto-bootstrapped default group when request omits groupId", async () => {
+    mocks.ensureUsableGroupMock.mockResolvedValue({
+      group: { id: "builtin-group" },
+    });
+    mocks.selectQueue.push([{ id: "builtin-group", passThreshold: 80, reviewThreshold: 70, learningEnabled: false }]);
+    mocks.prepareImportTasksMock.mockResolvedValue([]);
+
+    const response = await route(new Request("http://localhost/api/import/batches", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        paths: ["/tmp/resume.pdf"],
+        autoScreen: true,
+      }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.ensureUsableGroupMock).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        status: "processing",
+        totalFiles: 0,
+        autoScreen: true,
+      },
+    });
+    expect(mocks.prepareImportTasksMock).toHaveBeenCalledWith(expect.any(String), ["/tmp/resume.pdf"]);
   });
 });

@@ -4,6 +4,24 @@ import type {
   RecorderStateSnapshot,
 } from "@ims/shared";
 
+export interface RecorderDiagnosticsData {
+  checkedAt: number;
+  desktopRuntime: boolean;
+  activeRecording: boolean;
+  deviceAvailable: boolean;
+  deviceName: string | null;
+  configAvailable: boolean;
+  sampleRate: number | null;
+  channels: number | null;
+  permissionGranted: boolean | null;
+  inputSignalDetected: boolean | null;
+  peakLevel: number | null;
+  muted: boolean | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  notes: string[];
+}
+
 /**
  * Unified recorder adapter interface.
  *
@@ -20,6 +38,9 @@ export interface IRecorderAdapter {
 
   /** Poll the current full recorder state from the backend. */
   getStatus(): Promise<RecorderStateSnapshot>;
+
+  /** Run a one-shot recorder self-check. */
+  runDiagnostics(): Promise<RecorderDiagnosticsData>;
 
   /**
    * Subscribe to audio level updates.

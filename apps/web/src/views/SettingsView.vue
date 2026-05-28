@@ -1,5 +1,6 @@
 <template>
-  <AppPageShell>
+  <AppPageShell :class="imsDesign.shell">
+    <ImsPageBackground />
     <AppPageHeader>
       <AppBrandLink />
       <div class="flex-1" />
@@ -16,11 +17,40 @@
       </div>
     </AppPageHeader>
 
-    <AppPageContent class="space-y-4">
+    <AppPageContent class="relative z-[1] bg-transparent px-4 py-4 lg:px-16">
+      <div class="mx-auto grid max-w-[1240px] gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside class="h-fit rounded-[16px] border border-[#E0E9F3] bg-[#F8FAFD] p-3 shadow-[0_18px_26px_-20px_#0F172A40] dark:border-white/10 dark:bg-card dark:shadow-none">
+          <div class="mb-3 rounded-[12px] bg-[#EDF4FC]/80 px-3 py-3 dark:bg-white/6">
+            <div class="flex items-center gap-2">
+              <span class="h-[7px] w-[7px] rounded-full bg-[#2563EB]/70" />
+              <p class="text-[14px] font-semibold text-[#1A1A1A] dark:text-slate-100">设置与用户菜单</p>
+            </div>
+            <p class="mt-1 text-[12px] leading-5 text-[#4B5563] dark:text-slate-300">账号、数据、AI 与规则集中维护。</p>
+          </div>
+          <nav class="space-y-1">
+            <a
+              v-for="item in settingsNavItems"
+              :key="item.id"
+              :href="`#${item.id}`"
+              class="flex h-8 items-center gap-2 rounded-[6px] px-2.5 text-[12px] font-medium text-[#4B5563] transition-colors hover:bg-[#EEF4FF] hover:text-[#1A1A1A] dark:text-slate-300 dark:hover:bg-white/6 dark:hover:text-slate-100"
+            >
+              <component :is="item.icon" class="h-4 w-4" />
+              {{ item.label }}
+            </a>
+          </nav>
+        </aside>
+
+        <div class="space-y-4">
       <!-- Account -->
-      <Card class="p-5">
-        <h2 class="text-sm font-semibold mb-4">账户</h2>
-        <Separator class="mb-4" />
+      <Card id="account-permission" class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[12px] font-semibold text-[#0062FF]">账号与权限</p>
+            <h2 class="text-[16px] font-semibold text-[#1A1A1A] dark:text-slate-100">账户状态</h2>
+          </div>
+          <Badge variant="outline" class="rounded-[6px]">Baobao</Badge>
+        </div>
+        <Separator class="mb-4 bg-[#E5E7EB]" />
         <div
           v-if="authStore.status === 'valid'"
           class="flex items-center gap-3"
@@ -54,9 +84,17 @@
       </Card>
 
       <!-- Sync -->
-      <Card class="p-5">
-        <h2 class="text-sm font-semibold mb-4">同步</h2>
-        <Separator class="mb-4" />
+      <Card id="data-maintenance" class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[12px] font-semibold text-[#0062FF]">数据维护</p>
+            <h2 class="text-[16px] font-semibold text-[#1A1A1A] dark:text-slate-100">同步与运行数据</h2>
+          </div>
+          <Badge :variant="syncStore.status.enabled ? 'default' : 'outline'" class="rounded-[6px]">
+            {{ syncStore.status.enabled ? '自动同步' : '手动同步' }}
+          </Badge>
+        </div>
+        <Separator class="mb-4 bg-[#E5E7EB]" />
         <div class="flex items-center gap-3 mb-3">
           <label class="flex items-center gap-2 text-sm cursor-pointer">
             <input
@@ -100,7 +138,7 @@
       </Card>
 
       <!-- App Update -->
-      <Card v-if="isDesktopRuntime" class="p-5">
+      <Card v-if="isDesktopRuntime" class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7">
         <h2 class="text-sm font-semibold mb-4">应用更新</h2>
         <Separator class="mb-4" />
         <div class="space-y-3">
@@ -172,7 +210,7 @@
       </Card>
 
       <!-- Theme -->
-      <Card class="p-5">
+      <Card class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7">
         <h2 class="text-sm font-semibold mb-4">外观</h2>
         <Separator class="mb-4" />
 
@@ -181,7 +219,7 @@
           <div>
             <p class="text-xs text-muted-foreground mb-1">主题</p>
             <p class="mb-3 text-xs text-muted-foreground/80">
-              使用 shadcn 内置的克制中性色方案，默认黑白极简风格。
+              使用 design.pen 提取的 IMS 蓝白玻璃主题，统一覆盖 shadcn 默认色板。
             </p>
             <div class="grid grid-cols-2 gap-2 xl:grid-cols-4">
               <button
@@ -190,13 +228,13 @@
                 :class="[
                   'flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-colors',
                   currentColor === c
-                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                    : 'border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground',
+                    ? 'border-[#0062FF] bg-[#EEF4FF] text-[#0062FF] shadow-sm dark:border-primary/40 dark:bg-primary/20 dark:text-slate-100'
+                    : 'border-[#0063ff14] bg-white/75 text-[#1A1A1A] hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:border-white/10 dark:bg-white/7 dark:text-slate-200 dark:hover:bg-white/12 dark:hover:text-white',
                 ]"
                 @click="setColor(c)"
               >
                 <span
-                  class="h-4 w-4 shrink-0 rounded-full border border-black/10 shadow-sm"
+                  class="h-4 w-4 shrink-0 rounded-full border border-[#0063ff26] shadow-sm"
                   :style="{ background: colorDotStyle[c] }"
                 />
                 <span class="flex flex-col items-start leading-none">
@@ -219,8 +257,8 @@
                 :class="[
                   'flex items-center justify-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
                   currentRadius === r
-                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                    : 'border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground',
+                    ? 'border-[#0062FF] bg-[#EEF4FF] text-[#0062FF] shadow-sm dark:border-primary/40 dark:bg-primary/20 dark:text-slate-100'
+                    : 'border-[#0063ff14] bg-white/75 text-[#1A1A1A] hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:border-white/10 dark:bg-white/7 dark:text-slate-200 dark:hover:bg-white/12 dark:hover:text-white',
                 ]"
                 @click="setRadius(r)"
               >
@@ -231,9 +269,15 @@
         </div>
       </Card>
 
-      <Card class="p-5" data-onboarding="gateway-endpoints">
-        <h2 class="text-sm font-semibold mb-4">AI Gateway 自定义端点</h2>
-        <Separator class="mb-4" />
+      <Card id="gateway-agent" class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7" data-onboarding="gateway-endpoints">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[12px] font-semibold text-[#0062FF]">导入与日志</p>
+            <h2 class="text-[16px] font-semibold text-[#1A1A1A] dark:text-slate-100">AI Gateway 自定义端点</h2>
+          </div>
+          <Badge variant="default" class="rounded-[6px]">{{ luiStore.customEndpoints.length }} 个端点</Badge>
+        </div>
+        <Separator class="mb-4 bg-[#E5E7EB]" />
 
         <div class="space-y-4">
           <p class="text-xs text-muted-foreground">
@@ -268,8 +312,11 @@
             :initial-provider-id="gatewayEndpointForm.providerId"
             :initial-api-key="gatewayEndpointForm.apiKey"
             :initial-model-id="gatewayEndpointForm.modelId"
+            :initial-is-default="editingGatewayEndpointId !== null && luiStore.defaultEndpointId === editingGatewayEndpointId"
             :saving="isSavingGatewayEndpoint"
             :testing="isTestingGatewayEndpoint"
+            :test-status="gatewayDialogTestStatus"
+            :test-message="gatewayDialogTestMessage"
             :disable-provider-selection="editingGatewayEndpointId !== null"
             :save-button-text="editingGatewayEndpointId ? '保存修改' : '添加端点'"
             @update:open="handleGatewayEndpointDialogOpenChange"
@@ -279,14 +326,14 @@
 
           <div
             v-if="luiStore.customEndpoints.length === 0"
-            class="rounded-md border border-dashed p-3 text-xs text-muted-foreground"
+            class="rounded-[6px] border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-3 text-xs text-[#4B5563] dark:border-white/10 dark:bg-white/6 dark:text-slate-300"
           >
             暂无自定义端点
           </div>
 
           <div v-else class="space-y-2">
             <div
-              class="flex items-center justify-between gap-3 rounded-md border border-dashed p-3 text-xs text-muted-foreground"
+              class="flex items-center justify-between gap-3 rounded-[6px] border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-3 text-xs text-[#4B5563] dark:border-white/10 dark:bg-white/6 dark:text-slate-300"
             >
               <span>
                 {{
@@ -307,7 +354,7 @@
             <div
               v-for="endpoint in luiStore.customEndpoints"
               :key="endpoint.id"
-              class="flex items-center justify-between gap-3 rounded-md border p-3"
+              class="flex items-center justify-between gap-3 rounded-[6px] border border-[#E5E7EB] bg-[#FFFFFF] p-3 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7"
             >
               <div class="min-w-0 space-y-1">
                 <div class="flex items-center gap-2">
@@ -317,6 +364,12 @@
                     variant="secondary"
                     >默认</Badge
                   >
+                  <span
+                    class="rounded-[6px] px-2 py-0.5 text-[11px] font-semibold"
+                    :class="endpointTestClass(endpointTestStatuses[endpoint.id])"
+                  >
+                    {{ formatEndpointTestLabel(endpointTestStatuses[endpoint.id]) }}
+                  </span>
                 </div>
                 <p class="text-xs text-muted-foreground break-all">
                   <template v-if="endpoint.providerId">
@@ -385,9 +438,15 @@
         </div>
       </Card>
 
-      <Card class="p-5" data-onboarding="agent-management">
-        <h2 class="text-sm font-semibold mb-4">Agent 管理</h2>
-        <Separator class="mb-4" />
+      <Card class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7" data-onboarding="agent-management">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[12px] font-semibold text-[#0062FF]">Agent 状态</p>
+            <h2 class="text-[16px] font-semibold text-[#1A1A1A] dark:text-slate-100">Agent 管理</h2>
+          </div>
+          <Badge variant="outline" class="rounded-[6px]">{{ luiStore.agents.length }} 个 Agent</Badge>
+        </div>
+        <Separator class="mb-4 bg-[#E5E7EB]" />
 
         <div class="space-y-4">
           <p class="text-xs text-muted-foreground">
@@ -396,7 +455,7 @@
           </p>
 
           <div
-            class="flex items-center justify-between gap-3 rounded-md border border-dashed p-3"
+            class="flex items-center justify-between gap-3 rounded-[6px] border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-3 dark:border-white/10 dark:bg-white/6"
           >
             <div>
               <p class="text-sm font-medium">管理智能体</p>
@@ -412,28 +471,31 @@
 
           <Dialog
             :open="isAgentDialogOpen"
+            content-class="max-w-2xl max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)] dark:border-white/10 dark:bg-[#132237] dark:shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
             @update:open="handleAgentDialogOpenChange"
           >
             <template #content>
-              <DialogHeader>
-                <DialogTitle>{{ agentDialogTitle }}</DialogTitle>
-                <DialogDescription>
-                  {{
-                    editingAgentId
-                      ? "更新智能体引擎、模式、工具和提示词。"
-                      : "创建一个新的 LUI 智能体。"
-                  }}
-                </DialogDescription>
-              </DialogHeader>
+              <AppDialogLayout body-class="space-y-4">
+                <template #header>
+                  <DialogHeader>
+                    <DialogTitle>{{ agentDialogTitle }}</DialogTitle>
+                    <DialogDescription>
+                      {{
+                        editingAgentId
+                          ? "更新智能体引擎、模式、工具和提示词。"
+                          : "创建一个新的 LUI 智能体。"
+                      }}
+                    </DialogDescription>
+                  </DialogHeader>
+                </template>
 
-            <div class="overflow-y-auto flex-1 min-h-0">
-              <Separator class="my-4" />
-
-              <div class="space-y-4">
+                <div class="space-y-4">
                 <div class="space-y-1.5">
                   <label class="text-xs text-muted-foreground">名称</label>
                   <Input
                     v-model="agentForm.name"
+                    :disabled="agentFormReadonly"
+                    class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]"
                     placeholder="例如：面试流程协调员"
                   />
                   <p class="text-xs text-muted-foreground">
@@ -445,6 +507,8 @@
                   <label class="text-xs text-muted-foreground">描述</label>
                   <Input
                     v-model="agentForm.description"
+                    :disabled="agentFormReadonly"
+                    class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]"
                     placeholder="说明该智能体负责什么任务"
                   />
                 </div>
@@ -456,7 +520,8 @@
                     >
                     <select
                       v-model="agentForm.engine"
-                      class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      class="h-[34px] w-full rounded-[6px] border-0 bg-[#FFFFFF] px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                      :disabled="agentFormReadonly"
                     >
                       <option value="builtin">builtin</option>
                       <option value="deepagents">deepagents</option>
@@ -466,7 +531,8 @@
                     <label class="text-xs text-muted-foreground">模式</label>
                     <select
                       v-model="agentForm.mode"
-                      class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      class="h-[34px] w-full rounded-[6px] border-0 bg-[#FFFFFF] px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                      :disabled="agentFormReadonly"
                     >
                       <option
                         v-for="mode in AGENT_MODE_OPTIONS"
@@ -483,7 +549,8 @@
                   <label class="text-xs text-muted-foreground">场景亲和</label>
                   <select
                     v-model="agentForm.sceneAffinity"
-                    class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    class="h-[34px] w-full rounded-[6px] border-0 bg-[#FFFFFF] px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                    :disabled="agentFormReadonly"
                   >
                     <option value="general">general</option>
                     <option value="interview">interview</option>
@@ -495,6 +562,8 @@
                   <Input
                     v-model="agentForm.temperature"
                     type="number"
+                    :disabled="agentFormReadonly"
+                    class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]"
                     min="0"
                     max="2"
                     step="0.1"
@@ -507,7 +576,8 @@
                   >
                   <Textarea
                     v-model="agentForm.systemPrompt"
-                    class="min-h-[120px]"
+                    :disabled="agentFormReadonly"
+                    class="min-h-[120px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]"
                     placeholder="定义这个智能体的职责、边界与输出要求"
                   />
                 </div>
@@ -521,7 +591,7 @@
                       >已选 {{ agentForm.tools.length }} 个</span
                     >
                   </div>
-                  <div class="grid grid-cols-2 gap-2 rounded-md border p-3">
+                  <div class="grid grid-cols-2 gap-2 rounded-[6px] border-0 bg-[#F1F5FB] p-3">
                     <label
                       v-for="toolName in AGENT_TOOL_OPTIONS"
                       :key="toolName"
@@ -530,6 +600,7 @@
                       <input
                         type="checkbox"
                         :checked="agentForm.tools.includes(toolName)"
+                        :disabled="agentFormReadonly"
                         class="rounded border-border"
                         @change="
                           toggleAgentTool(
@@ -547,35 +618,36 @@
                   <input
                     v-model="agentForm.isDefault"
                     type="checkbox"
+                    :disabled="agentFormReadonly"
                     class="rounded border-border"
                   />
                   设为默认智能体
                 </label>
-              </div>
-            </div>
+                </div>
 
-              <DialogFooter class="mt-6 gap-2">
-                <Button
-                  variant="secondary"
-                  :disabled="isSavingAgent"
-                  @click="closeAgentDialog"
-                >
-                  取消
-                </Button>
-                <Button :disabled="isSavingAgent" @click="saveAgent">
-                  <Loader2
-                    v-if="isSavingAgent"
-                    class="mr-2 h-3.5 w-3.5 animate-spin"
-                  />
-                  {{ editingAgentId ? "保存修改" : "创建智能体" }}
-                </Button>
-              </DialogFooter>
+                <template #footer>
+                  <Button
+                    variant="secondary"
+                    :disabled="isSavingAgent"
+                    @click="closeAgentDialog"
+                  >
+                    取消
+                  </Button>
+                  <Button :disabled="isSavingAgent || agentFormReadonly" @click="saveAgent">
+                    <Loader2
+                      v-if="isSavingAgent"
+                      class="mr-2 h-3.5 w-3.5 animate-spin"
+                    />
+                    {{ editingAgentId ? "保存修改" : "创建智能体" }}
+                  </Button>
+                </template>
+              </AppDialogLayout>
             </template>
           </Dialog>
 
           <div
             v-if="luiStore.agents.length === 0"
-            class="rounded-md border border-dashed p-3 text-xs text-muted-foreground"
+            class="rounded-[6px] border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-3 text-xs text-[#4B5563]"
           >
             暂无 Agent
           </div>
@@ -584,7 +656,7 @@
             <div
               v-for="agent in luiStore.agents"
               :key="agent.id"
-              class="flex items-center justify-between gap-3 rounded-md border p-3"
+              class="flex items-center justify-between gap-3 rounded-[6px] border border-[#E5E7EB] bg-[#FFFFFF] p-3 shadow-[0_2px_6px_#00000008]"
             >
               <div class="min-w-0 space-y-1">
                 <div class="flex items-center gap-2 flex-wrap">
@@ -655,6 +727,119 @@
           </div>
         </div>
       </Card>
+      <Card id="email-config" class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008]">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[12px] font-semibold text-[#0062FF]">独立功能组</p>
+            <h2 class="text-[16px] font-semibold text-[#1A1A1A]">邮件配置</h2>
+          </div>
+          <Badge :variant="defaultEmailConfig ? 'default' : 'outline'" class="rounded-[6px]">
+            {{ defaultEmailConfig ? '已配置 SMTP' : '未配置' }}
+          </Badge>
+        </div>
+        <Separator class="mb-4 bg-[#E5E7EB]" />
+
+        <div class="grid gap-4 lg:grid-cols-[1fr_260px]">
+          <div class="grid gap-3 md:grid-cols-2">
+            <div class="space-y-1.5">
+              <label class="text-xs text-[#4B5563]">SMTP Host</label>
+              <Input v-model="emailConfigForm.smtpHost" class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]" placeholder="smtp.example.com" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs text-[#4B5563]">SMTP Port</label>
+              <Input v-model="emailConfigForm.smtpPort" type="number" class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]" placeholder="465" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs text-[#4B5563]">SMTP User</label>
+              <Input v-model="emailConfigForm.smtpUser" class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]" placeholder="邮箱账号" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs text-[#4B5563]">SMTP Pass</label>
+              <Input v-model="emailConfigForm.smtpPass" type="password" class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]" placeholder="授权码或密码" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs text-[#4B5563]">From Name</label>
+              <Input v-model="emailConfigForm.fromName" class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]" placeholder="IMS" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs text-[#4B5563]">From Email</label>
+              <Input v-model="emailConfigForm.fromEmail" type="email" class="h-[34px] rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF]" placeholder="noreply@example.com" />
+            </div>
+          </div>
+
+          <div class="flex flex-col justify-between gap-3 rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] p-3">
+            <div class="space-y-2">
+              <p class="text-[13px] font-semibold text-[#1A1A1A]">默认发件身份</p>
+              <p class="break-all text-[12px] leading-5 text-[#4B5563]">
+                {{ defaultEmailConfig ? `${defaultEmailConfig.fromName} <${defaultEmailConfig.fromEmail}>` : '保存后用于邮件发送与模板通知。' }}
+              </p>
+              <label class="flex items-center gap-2 text-[12px] text-[#4B5563]">
+                <input v-model="emailConfigForm.isDefault" type="checkbox" class="rounded border-border" />
+                设为默认配置
+              </label>
+            </div>
+            <Button class="h-9 rounded-[6px] bg-[#0062FF] px-4 text-[13px] font-semibold text-white shadow-[0_8px_18px_-12px_#0B6BFF66] hover:bg-[#0057E5]" :disabled="loadingEmailConfig || isSavingEmailConfig" @click="saveEmailConfig">
+              <Loader2 v-if="isSavingEmailConfig" class="mr-1.5 h-4 w-4 animate-spin" />
+              {{ editingEmailConfigId ? '保存邮件配置' : '创建邮件配置' }}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <Card id="screening-rules" class="rounded-[6px] border-[#E5E7EB] bg-[#FFFFFF] p-4 shadow-[0_2px_6px_#00000008]">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[12px] font-semibold text-[#0062FF]">独立功能组</p>
+            <h2 class="text-[16px] font-semibold text-[#1A1A1A]">筛选规则</h2>
+          </div>
+          <Button variant="outline" size="sm" class="h-8 rounded-[6px] px-3 text-[12px] font-semibold" @click="$router.push('/screening/template-groups')">
+            管理规则
+          </Button>
+        </div>
+        <Separator class="mb-4 bg-[#E5E7EB]" />
+
+        <div v-if="loadingScreeningRules" class="rounded-[6px] border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-4 text-xs text-[#4B5563]">
+          正在加载筛选规则...
+        </div>
+        <div v-else-if="screeningRuleGroups.length === 0" class="rounded-[6px] border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-4 text-xs text-[#4B5563]">
+          暂无筛选规则分组，可前往分组管理创建 pass/review 阈值与默认模板。
+        </div>
+        <div v-else class="grid gap-3 md:grid-cols-2">
+          <div
+            v-for="group in screeningRuleGroups"
+            :key="group.id"
+            class="rounded-[6px] border border-[#E5E7EB] bg-[#FFFFFF] p-3 shadow-[0_2px_6px_#00000008]"
+          >
+            <div class="mb-3 flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="truncate text-[14px] font-semibold text-[#1A1A1A]">{{ group.name }}</p>
+                <p class="mt-1 line-clamp-2 text-[12px] leading-5 text-[#4B5563]">
+                  {{ group.description || '未填写规则说明' }}
+                </p>
+              </div>
+              <Badge :variant="group.learningEnabled ? 'default' : 'outline'" class="shrink-0 rounded-[6px]">
+                {{ group.learningEnabled ? '学习开启' : '学习关闭' }}
+              </Badge>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-[12px]">
+              <div class="rounded-[6px] bg-[#EEF4FF] px-3 py-2 text-[#0062FF]">
+                <p class="font-semibold">通过</p>
+                <p>{{ group.passThreshold }}</p>
+              </div>
+              <div class="rounded-[6px] bg-[#F9FAFB] px-3 py-2 text-[#4B5563]">
+                <p class="font-semibold">复核</p>
+                <p>{{ group.reviewThreshold }}</p>
+              </div>
+              <div class="rounded-[6px] bg-[#F9FAFB] px-3 py-2 text-[#4B5563]">
+                <p class="font-semibold">模板</p>
+                <p>{{ group.templateCount }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+        </div>
+      </div>
     </AppPageContent>
 
     <BaobaoLoginDialog
@@ -668,13 +853,17 @@
 import { computed, reactive, ref, onMounted } from "vue";
 import {
   CheckCircle,
+  Database,
   Download,
   FileText,
   FlaskConical,
+  Mail,
   Pencil,
   Power,
   Plus,
   RefreshCw,
+  Shield,
+  SlidersHorizontal,
   Trash2,
   Upload,
   XCircle,
@@ -692,20 +881,24 @@ import GatewayEndpointDialog from "@/components/lui/gateway-endpoint-dialog.vue"
 import AppPageContent from "@/components/layout/app-page-content.vue";
 import AppPageHeader from "@/components/layout/app-page-header.vue";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
+import ImsPageBackground from "@/components/layout/ims-page-background.vue";
+import { imsDesign } from "@/components/layout/ims-design";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { AppDialogLayout } from "@/components/ui/dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { DialogDescription } from "@/components/ui/dialog";
-import { DialogFooter } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { GatewayEndpoint } from "@/lib/ai-gateway-config";
+import { emailApi } from "@/api/email";
 import { luiApi } from "@/api/lui";
+import { screeningTemplatesApi } from "@/api/screening-templates";
 import type { Agent as LuiAgent } from "@/stores/lui";
+import type { EmailConfig, ScreeningTemplateGroupListItem } from "@ims/shared";
 
 interface PresetProvider {
   id: string;
@@ -757,10 +950,19 @@ const editingGatewayEndpointId = ref<string | null>(null);
 const testingEndpointId = ref<string | null>(null);
 const isTestingGatewayEndpoint = ref(false);
 const isSavingGatewayEndpoint = ref(false);
+const gatewayDialogTestStatus = ref<"idle" | "testing" | "success" | "failure">("idle");
+const gatewayDialogTestMessage = ref("尚未测试当前端点");
+const endpointTestStatuses = ref<Record<string, "testing" | "success" | "failure">>({});
 const presetProviders = ref<PresetProvider[]>([]);
 const isAgentDialogOpen = ref(false);
 const editingAgentId = ref<string | null>(null);
 const isSavingAgent = ref(false);
+const emailConfigs = ref<EmailConfig[]>([]);
+const loadingEmailConfig = ref(false);
+const isSavingEmailConfig = ref(false);
+const editingEmailConfigId = ref<string | null>(null);
+const screeningRuleGroups = ref<ScreeningTemplateGroupListItem[]>([]);
+const loadingScreeningRules = ref(false);
 const isDesktopRuntime = ref(false);
 const checkingUpdate = ref(false);
 const installingUpdate = ref(false);
@@ -770,6 +972,15 @@ const gatewayEndpointForm = reactive({
   providerId: "",
   apiKey: "",
   modelId: "",
+});
+const emailConfigForm = reactive({
+  smtpHost: "",
+  smtpPort: 465,
+  smtpUser: "",
+  smtpPass: "",
+  fromName: "IMS",
+  fromEmail: "",
+  isDefault: true,
 });
 const gatewayModelOptions = computed(() => {
   return luiStore.providers.flatMap((provider) =>
@@ -805,27 +1016,45 @@ const gatewayEndpointDialogTitle = computed(() =>
 const agentDialogTitle = computed(() =>
   editingAgentId.value ? "编辑智能体" : "创建智能体",
 );
+const agentFormReadonly = computed(() => {
+  if (!editingAgentId.value) {
+    return false;
+  }
+  return !luiStore.agents.find((agent) => agent.id === editingAgentId.value)?.isMutable;
+});
+
+const defaultEmailConfig = computed(() => {
+  return emailConfigs.value.find((config) => config.isDefault) ?? emailConfigs.value[0] ?? null;
+});
+
+const settingsNavItems = [
+  { id: "account-permission", label: "账号与权限", icon: Shield },
+  { id: "data-maintenance", label: "数据维护", icon: Database },
+  { id: "gateway-agent", label: "导入与日志", icon: FileText },
+  { id: "email-config", label: "邮件配置", icon: Mail },
+  { id: "screening-rules", label: "筛选规则", icon: SlidersHorizontal },
+] as const;
 
 const colorLabel: Record<string, string> = {
-  neutral: "黑白",
-  zinc: "锌灰",
-  stone: "暖灰",
-  slate: "板岩",
+  neutral: "IMS 标准",
+  zinc: "蓝白玻璃",
+  stone: "浅雾背景",
+  slate: "钴蓝强调",
 };
 
 const colorHint: Record<string, string> = {
-  neutral: "极简黑白",
-  zinc: "冷调灰黑",
-  stone: "暖调米灰",
-  slate: "蓝灰中性",
+  neutral: "#F7FAFF",
+  zinc: "#F8FAFF",
+  stone: "#EEF4FF",
+  slate: "#0062FF",
 };
 
 const colorDotStyle: Record<string, string> = {
-  neutral: "linear-gradient(135deg, hsl(0 0% 9%) 0%, hsl(0 0% 85%) 100%)",
-  zinc: "linear-gradient(135deg, hsl(240 5.9% 10%) 0%, hsl(240 5% 55%) 100%)",
-  stone: "linear-gradient(135deg, hsl(24 9.8% 10%) 0%, hsl(30 18% 70%) 100%)",
+  neutral: "linear-gradient(135deg, #F7FAFF 0%, #EEF4FF 55%, #0062FF 100%)",
+  zinc: "linear-gradient(135deg, #FFFFFF 0%, #F8FAFF 55%, #93C5FD 100%)",
+  stone: "linear-gradient(135deg, #F9FAFB 0%, #EEF4FF 65%, #0063FF26 100%)",
   slate:
-    "linear-gradient(135deg, hsl(222.2 47.4% 11.2%) 0%, hsl(214 30% 55%) 100%)",
+    "linear-gradient(135deg, #EEF4FF 0%, #0062FF 70%, #0047BA 100%)",
 };
 
 onMounted(async () => {
@@ -905,6 +1134,10 @@ onMounted(async () => {
 
   await luiStore.loadAgents();
   await luiStore.loadModels();
+  await Promise.all([
+    loadEmailConfigs(),
+    loadScreeningRules(),
+  ]);
 });
 
 function getTauriInvoker() {
@@ -1051,9 +1284,114 @@ function resetGatewayEndpointForm() {
   gatewayEndpointForm.providerId = "";
   gatewayEndpointForm.apiKey = "";
   gatewayEndpointForm.modelId = "";
+  gatewayDialogTestStatus.value = "idle";
+  gatewayDialogTestMessage.value = "尚未测试当前端点";
 }
 
-function buildGatewayEndpointFromValues(payload?: { providerId: string; apiKey: string; modelId: string }): GatewayEndpoint {
+function fillEmailConfigForm(config: EmailConfig | null) {
+  editingEmailConfigId.value = config?.id ?? null;
+  emailConfigForm.smtpHost = config?.smtpHost ?? "";
+  emailConfigForm.smtpPort = config?.smtpPort ?? 465;
+  emailConfigForm.smtpUser = config?.smtpUser ?? "";
+  emailConfigForm.smtpPass = config?.smtpPass ?? "";
+  emailConfigForm.fromName = config?.fromName ?? "IMS";
+  emailConfigForm.fromEmail = config?.fromEmail ?? "";
+  emailConfigForm.isDefault = config?.isDefault ?? true;
+}
+
+async function loadEmailConfigs() {
+  loadingEmailConfig.value = true;
+  try {
+    const data = await emailApi.listConfigs(authStore.user?.id);
+    emailConfigs.value = data.items;
+    fillEmailConfigForm(defaultEmailConfig.value);
+  } catch (error) {
+    emailConfigs.value = [];
+    fillEmailConfigForm(null);
+    notifyError(error instanceof Error ? error.message : "加载邮件配置失败");
+  } finally {
+    loadingEmailConfig.value = false;
+  }
+}
+
+async function saveEmailConfig() {
+  if (!emailConfigForm.smtpHost.trim()) {
+    notifyWarning("请输入 SMTP Host");
+    return;
+  }
+  if (!emailConfigForm.fromEmail.trim()) {
+    notifyWarning("请输入发件邮箱");
+    return;
+  }
+
+  isSavingEmailConfig.value = true;
+  try {
+    const payload = {
+      userId: authStore.user?.id,
+      smtpHost: emailConfigForm.smtpHost.trim(),
+      smtpPort: Number(emailConfigForm.smtpPort),
+      smtpUser: emailConfigForm.smtpUser.trim(),
+      smtpPass: emailConfigForm.smtpPass,
+      fromName: emailConfigForm.fromName.trim() || "IMS",
+      fromEmail: emailConfigForm.fromEmail.trim(),
+      isDefault: emailConfigForm.isDefault,
+    };
+
+    if (editingEmailConfigId.value) {
+      await emailApi.updateConfig(editingEmailConfigId.value, payload);
+      notifySuccess("已更新邮件配置");
+    } else {
+      await emailApi.createConfig(payload);
+      notifySuccess("已保存邮件配置");
+    }
+    await loadEmailConfigs();
+  } catch (error) {
+    notifyError(error instanceof Error ? error.message : "保存邮件配置失败");
+  } finally {
+    isSavingEmailConfig.value = false;
+  }
+}
+
+async function loadScreeningRules() {
+  loadingScreeningRules.value = true;
+  try {
+    const data = await screeningTemplatesApi.listGroups();
+    screeningRuleGroups.value = data.items;
+  } catch (error) {
+    screeningRuleGroups.value = [];
+    notifyError(error instanceof Error ? error.message : "加载筛选规则失败");
+  } finally {
+    loadingScreeningRules.value = false;
+  }
+}
+
+function formatEndpointTestLabel(status: "testing" | "success" | "failure" | undefined) {
+  if (status === "testing") {
+    return "测试中";
+  }
+  if (status === "success") {
+    return "连接正常";
+  }
+  if (status === "failure") {
+    return "连接失败";
+  }
+  return "未测试";
+}
+
+function endpointTestClass(status: "testing" | "success" | "failure" | undefined) {
+  if (status === "testing") {
+    return "bg-[#EEF4FF] text-[#0062FF]";
+  }
+  if (status === "success") {
+    return "bg-emerald-50 text-emerald-700";
+  }
+  if (status === "failure") {
+    return "bg-red-50 text-red-700";
+  }
+  return "bg-[#F3F4F6] text-[#4B5563]";
+}
+
+function buildGatewayEndpointFromValues(payload?: { providerId: string; apiKey: string; modelId: string; isDefault?: boolean }): GatewayEndpoint {
   const providerId = payload?.providerId?.trim() || gatewayEndpointForm.providerId;
   const apiKey = payload?.apiKey?.trim() || gatewayEndpointForm.apiKey.trim();
   const modelId = payload?.modelId?.trim() || gatewayEndpointForm.modelId.trim();
@@ -1275,7 +1613,7 @@ function handleGatewayEndpointDialogOpenChange(open: boolean) {
   }
 }
 
-async function saveGatewayEndpoint(payload: { providerId: string; apiKey: string; modelId: string }) {
+async function saveGatewayEndpoint(payload: { providerId: string; apiKey: string; modelId: string; isDefault?: boolean }) {
   const endpoint: GatewayEndpoint = {
     ...buildGatewayEndpointFromValues(payload),
   };
@@ -1297,6 +1635,9 @@ async function saveGatewayEndpoint(payload: { providerId: string; apiKey: string
       await luiStore.registerCustomEndpoint(endpoint);
       notifySuccess("已保存自定义端点");
     }
+    if (payload.isDefault) {
+      await luiStore.setDefaultCustomEndpoint(endpoint.id);
+    }
     closeGatewayEndpointDialog();
   } catch (error) {
     notifyError(error instanceof Error ? error.message : "保存自定义端点失败");
@@ -1315,20 +1656,53 @@ async function runGatewayEndpointTest(
 
   if (options?.fromDialog) {
     isTestingGatewayEndpoint.value = true;
+    gatewayDialogTestStatus.value = "testing";
+    gatewayDialogTestMessage.value = "正在测试连接，验证 Provider、Base URL 与默认模型";
   } else {
     testingEndpointId.value = endpoint.id;
+    endpointTestStatuses.value = {
+      ...endpointTestStatuses.value,
+      [endpoint.id]: "testing",
+    };
   }
 
   try {
     const result = await luiStore.testCustomEndpoint(endpoint);
     if (result.modelCount > 0) {
+      if (options?.fromDialog) {
+        gatewayDialogTestStatus.value = "success";
+        gatewayDialogTestMessage.value = `连接成功，发现 ${result.providerCount} 个 Provider、${result.modelCount} 个模型`;
+      } else {
+        endpointTestStatuses.value = {
+          ...endpointTestStatuses.value,
+          [endpoint.id]: "success",
+        };
+      }
       notifySuccess(
         `连接成功，发现 ${result.providerCount} 个 Provider、${result.modelCount} 个模型`,
       );
     } else {
+      if (options?.fromDialog) {
+        gatewayDialogTestStatus.value = "success";
+        gatewayDialogTestMessage.value = "连接成功，但当前端点未返回任何模型";
+      } else {
+        endpointTestStatuses.value = {
+          ...endpointTestStatuses.value,
+          [endpoint.id]: "success",
+        };
+      }
       notifyWarning("连接成功，但当前端点未返回任何模型");
     }
   } catch (error) {
+    if (options?.fromDialog) {
+      gatewayDialogTestStatus.value = "failure";
+      gatewayDialogTestMessage.value = error instanceof Error ? error.message : "测试端点连接失败";
+    } else {
+      endpointTestStatuses.value = {
+        ...endpointTestStatuses.value,
+        [endpoint.id]: "failure",
+      };
+    }
     notifyError(error instanceof Error ? error.message : "测试端点连接失败");
   } finally {
     if (options?.fromDialog) {
@@ -1343,7 +1717,7 @@ async function testGatewayEndpoint(endpoint: GatewayEndpoint) {
   await runGatewayEndpointTest(endpoint);
 }
 
-async function testGatewayEndpointFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
+async function testGatewayEndpointFromDialog(payload: { providerId: string; apiKey: string; modelId: string; isDefault?: boolean }) {
   try {
     const endpoint = buildGatewayEndpointFromValues(payload);
     if (!validateGatewayEndpoint(endpoint, true)) {

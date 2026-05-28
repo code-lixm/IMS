@@ -16,7 +16,7 @@ const emits = defineEmits<{
   (e: "update:modelValue", payload: string | number): void
 }>()
 
-const modelValue = useVModel(props, "modelValue", emits, {
+const textareaValue = useVModel(props, "modelValue", emits, {
   passive: true,
   defaultValue: props.defaultValue,
 })
@@ -24,10 +24,10 @@ const modelValue = useVModel(props, "modelValue", emits, {
 
 <template>
   <textarea
-    v-model="modelValue"
+    v-model="textareaValue"
     :placeholder="placeholder"
     :disabled="disabled"
     :rows="rows"
-    :class="cn('flex min-h-[80px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50', props.class)"
+    :class="cn('flex min-h-[80px] w-full resize-y rounded-md border-0 bg-background px-3 py-2 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white/8 dark:text-slate-100 dark:placeholder:text-slate-400', props.class)"
   />
 </template>

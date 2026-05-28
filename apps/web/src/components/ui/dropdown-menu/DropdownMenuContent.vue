@@ -26,7 +26,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
   <DropdownMenuPortal>
     <DropdownMenuContent
       v-bind="forwarded"
-      :class="cn('z-50 min-w-32 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2', props.class)"
+      :class="cn('z-50 min-w-32 overflow-hidden rounded-[8px] border-0 bg-white/95 p-1 text-[#1A1A1A] shadow-[0_14px_32px_-18px_rgba(15,23,42,0.45)] ring-1 ring-[#E0E9F3]/80 backdrop-blur-[18px] dark:border dark:border-white/10 dark:bg-[#132237]/95 dark:text-slate-100 dark:ring-white/10 dark:shadow-[0_18px_36px_-28px_rgba(15,23,42,0.8)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2', props.class)"
     >
       <slot />
     </DropdownMenuContent>

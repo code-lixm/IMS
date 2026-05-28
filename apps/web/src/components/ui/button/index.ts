@@ -4,19 +4,19 @@ import { cva } from "class-variance-authority"
 export { default as Button } from "./Button.vue"
 
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[6px] text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "border-0 bg-primary text-primary-foreground shadow-none hover:bg-primary/90",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "border border-[#FECACA] bg-[#FEE2E2] text-[#E7000B] shadow-none hover:bg-[#FEF2F2] hover:text-[#E7000B] dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-200",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+          "border border-[#0063ff14] bg-white text-foreground shadow-none hover:bg-[#F8FAFD] hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+          "border border-[#0063ff14] bg-[#F8FAFD] text-secondary-foreground shadow-none hover:bg-[#F3F4F6] hover:text-secondary-foreground dark:border-white/8 dark:bg-white/6 dark:hover:bg-white/10",
+        ghost: "border-0 shadow-none hover:bg-[#F8FAFD] hover:text-foreground dark:hover:bg-white/6",
+        link: "border-0 text-primary underline-offset-4 hover:underline",
       },
       size: {
         "default": "h-9 px-4 py-2",

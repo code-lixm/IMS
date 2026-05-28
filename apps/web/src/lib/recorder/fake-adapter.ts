@@ -1,5 +1,5 @@
 import type { RecorderLevelUpdateEventPayload, RecorderLiveTranscriptSegmentUpdateEventPayload, RecorderStateSnapshot, RecorderStatus } from "@ims/shared";
-import type { IRecorderAdapter } from "./types";
+import type { IRecorderAdapter, RecorderDiagnosticsData } from "./types";
 
 type Listener<T> = (payload: T) => void;
 
@@ -60,6 +60,26 @@ export class FakeRecorderAdapter implements IRecorderAdapter {
 
   async getStatus(): Promise<RecorderStateSnapshot> {
     return this.snapshot();
+  }
+
+  async runDiagnostics(): Promise<RecorderDiagnosticsData> {
+    return {
+      checkedAt: Date.now(),
+      desktopRuntime: false,
+      activeRecording: this._status === "recording",
+      deviceAvailable: true,
+      deviceName: "Fake Recorder Device",
+      configAvailable: true,
+      sampleRate: 48_000,
+      channels: 1,
+      permissionGranted: true,
+      inputSignalDetected: this._peakLevel > 0.01,
+      peakLevel: this._peakLevel,
+      muted: this._muted,
+      errorCode: null,
+      errorMessage: null,
+      notes: ["当前是浏览器 / 测试环境，诊断结果来自 fake adapter。"],
+    };
   }
 
   subscribeLevel(callback: Listener<RecorderLevelUpdateEventPayload>): () => void {

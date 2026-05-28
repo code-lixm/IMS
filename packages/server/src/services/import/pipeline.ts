@@ -1009,7 +1009,7 @@ export async function cancelImportBatch(batchId: string) {
   await refreshBatchProgress(batchId);
 }
 
-export async function rerunImportBatchScreening(batchId: string, groupId?: string | null, templateId?: string): Promise<{ retriedCount: number }> {
+export async function rerunImportBatchScreening(batchId: string, groupId?: string | null, templateId?: string | null): Promise<{ retriedCount: number }> {
   const [batch] = await db.select().from(importBatches).where(eq(importBatches.id, batchId)).limit(1);
   if (!batch) {
     return { retriedCount: 0 };
@@ -1023,7 +1023,7 @@ export async function rerunImportBatchScreening(batchId: string, groupId?: strin
     await db.update(importBatches).set({ groupId: effectiveGroupId }).where(eq(importBatches.id, batchId));
   }
 
-  const effectiveTemplateId = templateId ?? batch.templateId ?? undefined;
+  const effectiveTemplateId = templateId === null ? undefined : templateId ?? batch.templateId ?? undefined;
 
   const rows = await db.select().from(importFileTasks).where(eq(importFileTasks.batchId, batchId));
   const runnableTasks = rows
@@ -1103,35 +1103,23 @@ export async function rerunImportBatchScreening(batchId: string, groupId?: strin
     await refreshBatchProgress(batchId);
 
     try {
-      const reusable = task.fileHash && nextResult.screeningReuseKey
-        ? await findReusableCompletedScreening({
-            excludeTaskId: task.id,
-            fileHash: task.fileHash,
-            screeningReuseKey: nextResult.screeningReuseKey,
-          })
-        : null;
-
-      if (reusable) {
-        nextResult = buildReusedScreeningResult(nextResult, reusable);
-      } else {
-        const confidence = await resolveTaskConfidence(task, result);
-        const learningFeedback = await buildLearningFeedbackContext({
-          enabled: batchScreeningConfig.learningEnabled,
-          groupId: effectiveGroupId,
-          matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
-          excludeTaskId: task.id,
-        });
-        const aiConclusion = await generateImportScreeningConclusionWithRetry({
-          parsed: result.parsedResume,
-          confidence,
-          fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
-          groupId: effectiveGroupId,
-          templateId: effectiveTemplateId,
-          resolvedContext: screeningReuseMetadata.resolvedContext,
-          learningFeedback,
-        }, { taskId: task.id, candidateId: task.candidateId });
-        nextResult = buildCompletedAiScreeningResult(nextResult, aiConclusion);
-      }
+      const confidence = await resolveTaskConfidence(task, result);
+      const learningFeedback = await buildLearningFeedbackContext({
+        enabled: batchScreeningConfig.learningEnabled,
+        groupId: effectiveGroupId,
+        matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
+        excludeTaskId: task.id,
+      });
+      const aiConclusion = await generateImportScreeningConclusionWithRetry({
+        parsed: result.parsedResume,
+        confidence,
+        fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+        groupId: effectiveGroupId,
+        templateId: effectiveTemplateId,
+        resolvedContext: screeningReuseMetadata.resolvedContext,
+        learningFeedback,
+      }, { taskId: task.id, candidateId: task.candidateId });
+      nextResult = buildCompletedAiScreeningResult(nextResult, aiConclusion);
     } catch (error) {
       nextResult = buildAiScreeningFailedResult(nextResult, error);
     }
@@ -1242,7 +1230,7 @@ export async function startRerunImportBatchScreening(batchId: string, groupId?: 
 
 
 
-export async function rerunFileScreening(taskId: string, groupId?: string | null, templateId?: string): Promise<{ retried: boolean; screeningStatus: string }> {
+export async function rerunFileScreening(taskId: string, groupId?: string | null, templateId?: string | null): Promise<{ retried: boolean; screeningStatus: string }> {
   const [task] = await db.select().from(importFileTasks).where(eq(importFileTasks.id, taskId)).limit(1);
   if (!task) {
     return { retried: false, screeningStatus: "not_requested" };
@@ -1263,7 +1251,7 @@ export async function rerunFileScreening(taskId: string, groupId?: string | null
     await db.update(importBatches).set({ groupId: effectiveGroupId }).where(eq(importBatches.id, task.batchId));
   }
 
-  const effectiveTemplateId = templateId ?? batch?.templateId ?? undefined;
+  const effectiveTemplateId = templateId === null ? undefined : templateId ?? batch?.templateId ?? undefined;
 
   const result = parseImportTaskResult(task.resultJson);
   if (!result?.parsedResume) {
@@ -1296,35 +1284,23 @@ export async function rerunFileScreening(taskId: string, groupId?: string | null
   await updateBatchProgress(taskId);
 
   try {
-    const reusable = task.fileHash && nextResult.screeningReuseKey
-      ? await findReusableCompletedScreening({
-          excludeTaskId: taskId,
-          fileHash: task.fileHash,
-          screeningReuseKey: nextResult.screeningReuseKey,
-        })
-      : null;
-
-    if (reusable) {
-      Object.assign(nextResult, buildReusedScreeningResult(nextResult, reusable));
-    } else {
-      const confidence = await resolveTaskConfidence(task, result);
-      const learningFeedback = await buildLearningFeedbackContext({
-        enabled: batchScreeningConfig.learningEnabled,
-        groupId: effectiveGroupId,
-        matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
-        excludeTaskId: taskId,
-      });
-      const aiConclusion = await generateImportScreeningConclusionWithRetry({
-        parsed: result.parsedResume,
-        confidence,
-        fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
-        groupId: effectiveGroupId,
-        templateId: effectiveTemplateId,
-        resolvedContext: screeningReuseMetadata.resolvedContext,
-        learningFeedback,
-      }, { taskId, candidateId: task.candidateId });
-      Object.assign(nextResult, buildCompletedAiScreeningResult(nextResult, aiConclusion));
-    }
+    const confidence = await resolveTaskConfidence(task, result);
+    const learningFeedback = await buildLearningFeedbackContext({
+      enabled: batchScreeningConfig.learningEnabled,
+      groupId: effectiveGroupId,
+      matchedTemplateId: screeningReuseMetadata.matchedTemplateId,
+      excludeTaskId: taskId,
+    });
+    const aiConclusion = await generateImportScreeningConclusionWithRetry({
+      parsed: result.parsedResume,
+      confidence,
+      fileName: basename(task.originalPath.split("#").pop() ?? task.originalPath),
+      groupId: effectiveGroupId,
+      templateId: effectiveTemplateId,
+      resolvedContext: screeningReuseMetadata.resolvedContext,
+      learningFeedback,
+    }, { taskId, candidateId: task.candidateId });
+    Object.assign(nextResult, buildCompletedAiScreeningResult(nextResult, aiConclusion));
   } catch (error) {
     Object.assign(nextResult, buildAiScreeningFailedResult(nextResult, error));
   }

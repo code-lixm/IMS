@@ -119,6 +119,9 @@ type BuiltInMatchingTemplate = Omit<MatchingTemplate, "createdAt" | "updatedAt" 
   keywordsJson?: string | null;
 };
 
+const BUILT_IN_SCREENING_TEMPLATE_GROUP_ID = "builtin:screening-template-group:default-v1";
+const BUILT_IN_SCREENING_TEMPLATE_GROUP_CREATED_AT = 1_734_000_100_000;
+
 export const BUILT_IN_SCREENING_TEMPLATES: BuiltInMatchingTemplate[] = [
   {
     id: "builtin:ai:screener:tech-engineer-v1",
@@ -557,7 +560,69 @@ function getBuiltInTemplates(hasDbDefaultTemplate: boolean): MatchingTemplate[] 
   }));
 }
 
+function buildBuiltInDefaultGroup(): ScreeningTemplateGroup {
+  return {
+    id: BUILT_IN_SCREENING_TEMPLATE_GROUP_ID,
+    name: "内置默认筛选分组",
+    description: "首个导入默认可用的内置筛选分组，包含系统内置模板。",
+    passThreshold: 80,
+    reviewThreshold: 70,
+    learningEnabled: false,
+    createdAt: BUILT_IN_SCREENING_TEMPLATE_GROUP_CREATED_AT,
+    updatedAt: BUILT_IN_SCREENING_TEMPLATE_GROUP_CREATED_AT,
+  };
+}
+
 export class ScreeningTemplatesService {
+  private async ensureBuiltInDefaultGroup(): Promise<ScreeningTemplateGroupDetailData> {
+    const existingBuiltInGroup = await this.getGroup(BUILT_IN_SCREENING_TEMPLATE_GROUP_ID);
+    if (existingBuiltInGroup) {
+      return existingBuiltInGroup;
+    }
+
+    const [existingGroup] = await db
+      .select()
+      .from(screeningTemplateGroups)
+      .orderBy(screeningTemplateGroups.createdAt)
+      .limit(1);
+
+    if (existingGroup) {
+      const detail = await this.getGroup(existingGroup.id);
+      if (!detail) {
+        throw new Error(`Failed to load screening template group ${existingGroup.id}`);
+      }
+      return detail;
+    }
+
+    const group = buildBuiltInDefaultGroup();
+    const builtInTemplates = BUILT_IN_SCREENING_TEMPLATES.map((template) => materializeBuiltInTemplate(template));
+    const defaultTemplateId = builtInTemplates.find((template) => template.isDefault)?.id ?? builtInTemplates[0]?.id ?? null;
+
+    await db.transaction(async (tx) => {
+      await tx.insert(screeningTemplateGroups).values(group);
+      await tx.insert(screeningTemplateGroupTemplates).values(
+        builtInTemplates.map((template, index) => ({
+          id: `stgl_builtin_${index + 1}`,
+          groupId: group.id,
+          templateId: template.id,
+          isDefault: template.id === defaultTemplateId,
+          createdAt: group.createdAt + index,
+          updatedAt: group.updatedAt + index,
+        })),
+      );
+    });
+
+    const detail = await this.getGroup(group.id);
+    if (!detail) {
+      throw new Error("Failed to load built-in screening template group");
+    }
+    return detail;
+  }
+
+  async ensureUsableGroup(): Promise<ScreeningTemplateGroupDetailData> {
+    return this.ensureBuiltInDefaultGroup();
+  }
+
   async listTemplates(): Promise<MatchingTemplate[]> {
     const hasDbDefaultTemplate = Boolean(await getActiveDbDefaultTemplate());
     const templates = await listTemplateRows();
@@ -739,7 +804,8 @@ export class ScreeningTemplatesService {
   async listGroups(): Promise<ScreeningTemplateGroupListData> {
     const groups = await db.select().from(screeningTemplateGroups).orderBy(screeningTemplateGroups.createdAt);
     if (!groups.length) {
-      return { items: [] };
+      await this.ensureBuiltInDefaultGroup();
+      return this.listGroups();
     }
 
     const groupIds = groups.map((group) => group.id);

@@ -141,7 +141,8 @@ export function useInterviewImportForm(options: UseInterviewImportFormOptions = 
       : []
   ));
 
-  const canSubmit = computed(() => !submitting.value && submissionState.value.phase !== "processing");
+  const isBusy = computed(() => submitting.value || submissionState.value.phase === "processing");
+  const canSubmit = computed(() => !isBusy.value);
   const confirming = ref(false);
   const canConfirm = computed(() => (
     !confirming.value
@@ -377,6 +378,7 @@ export function useInterviewImportForm(options: UseInterviewImportFormOptions = 
     resumePdf,
     fieldErrors,
     generalWarnings,
+    isBusy,
     canSubmit,
     submitting,
     confirming,

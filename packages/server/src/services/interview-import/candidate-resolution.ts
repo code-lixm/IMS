@@ -215,6 +215,79 @@ function normalizeCandidateName(value: string | undefined | null) {
   return normalized ? normalized : "未命名候选人";
 }
 
+function isPlaceholderCandidateName(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return true;
+  }
+
+  return ["未命名候选人", "未知候选人", "候选人"].includes(normalized);
+}
+
+async function backfillCandidateProfileFromResume(
+  candidateId: string,
+  parsed: {
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    position: string | null;
+    yearsOfExperience: number | null;
+    skills: string[];
+  },
+) {
+  const [current] = await db
+    .select({
+      name: candidates.name,
+      phone: candidates.phone,
+      email: candidates.email,
+      position: candidates.position,
+      yearsOfExperience: candidates.yearsOfExperience,
+      tagsJson: candidates.tagsJson,
+    })
+    .from(candidates)
+    .where(eq(candidates.id, candidateId))
+    .limit(1);
+
+  if (!current) {
+    return;
+  }
+
+  const updates: Partial<typeof candidates.$inferInsert> = {};
+
+  if (isPlaceholderCandidateName(current.name) && parsed.name?.trim()) {
+    updates.name = parsed.name.trim();
+  }
+  if (!current.phone && parsed.phone?.trim()) {
+    updates.phone = parsed.phone.trim();
+  }
+  if (!current.email && parsed.email?.trim()) {
+    updates.email = parsed.email.trim();
+  }
+  if (!current.position && parsed.position?.trim()) {
+    updates.position = parsed.position.trim();
+  }
+  if (current.yearsOfExperience == null && parsed.yearsOfExperience != null) {
+    updates.yearsOfExperience = parsed.yearsOfExperience;
+  }
+
+  let currentTags: string[] = [];
+  try {
+    currentTags = current.tagsJson ? JSON.parse(current.tagsJson) as string[] : [];
+  } catch {
+    currentTags = [];
+  }
+  if (currentTags.length === 0 && parsed.skills.length > 0) {
+    updates.tagsJson = JSON.stringify(parsed.skills.slice(0, 10));
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return;
+  }
+
+  updates.updatedAt = Date.now();
+  await db.update(candidates).set(updates).where(eq(candidates.id, candidateId));
+}
+
 async function resolveCandidateResume(
   candidateId: string,
   payload: InterviewImportPayload,
@@ -234,6 +307,7 @@ async function resolveCandidateResume(
     const imported = await importResumeForCandidate(candidateId, sourcePath, {
       originalFileName: upload?.name ?? basename(sourcePath),
     });
+    await backfillCandidateProfileFromResume(candidateId, imported.parsed);
 
     return { resumeId: imported.resumeId };
   } catch (error) {
@@ -246,7 +320,7 @@ async function resolveCandidateResume(
   }
 }
 
-async function saveInterviewImportUploadToLocal(batchId: string, file: File): Promise<string> {
+export async function saveInterviewImportUploadToLocal(batchId: string, file: File): Promise<string> {
   const dirPath = join(config.dataDir, "import-uploads", batchId);
   await mkdir(dirPath, { recursive: true });
 

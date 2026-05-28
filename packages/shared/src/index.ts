@@ -38,6 +38,9 @@ export * from "./baobao-types";
 // Shared constants
 export * from "./constants";
 
+// Shared AI provider presets
+export * from "./ai-provider-presets";
+
 // Import screening helpers
 export * from "./import-screening";
 

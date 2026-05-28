@@ -1,15 +1,16 @@
 <template>
   <Dialog
     :open="open"
-    content-class="max-h-[92vh] max-w-5xl gap-0 overflow-hidden rounded-xl border border-border/60 bg-card/90 p-0 shadow-lg sm:rounded-xl"
+    content-class="max-h-[92vh] max-w-5xl gap-0 overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
     @update:open="handleOpenChange"
   >
     <template #content>
-      <div class="flex min-h-0 flex-col bg-card/85">
-        <DialogHeader class="space-y-2 px-6 pb-4 pt-5 sm:px-8 sm:pb-4 sm:pt-6">
+      <AppDialogLayout body-class="py-5 pb-0 sm:py-6 sm:pb-0">
+        <template #header>
+          <DialogHeader class="space-y-2">
           <div class="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
             <div class="min-w-0 space-y-1">
-              <DialogTitle class="text-[1.45rem] font-semibold tracking-tight text-foreground">导入历史面试数据</DialogTitle>
+              <DialogTitle class="text-[1.45rem] font-semibold tracking-tight text-foreground">导入面试记录</DialogTitle>
               <DialogDescription class="max-w-2xl text-sm leading-6 text-muted-foreground">
                 {{ description }}
               </DialogDescription>
@@ -21,19 +22,25 @@
               </Badge>
             </div>
           </div>
-        </DialogHeader>
+          </DialogHeader>
+        </template>
 
-        <Separator class="opacity-50" />
-
-        <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6">
-          <InterviewImportForm
-            :open="open"
-            :candidate-id="candidateId"
-            :candidate-name="candidateName"
-            :next-round-number="nextRoundNumber"
-            :existing-interview-count="existingInterviewCount"
-            @submitted="emit('submitted', $event)"
-          />
+        <InterviewImportForm
+          :open="open"
+          :candidate-id="candidateId"
+          :candidate-name="candidateName"
+          :next-round-number="nextRoundNumber"
+          :existing-interview-count="existingInterviewCount"
+          class="min-h-full"
+          @submitted="emit('submitted', $event)"
+          @update:busy="isBusy = $event"
+        />
+      </AppDialogLayout>
+      <div v-if="isBusy" class="absolute inset-0 z-50 flex items-center justify-center rounded-[8px] bg-white/70 backdrop-blur-[4px]">
+        <div class="flex flex-col items-center gap-3">
+          <div class="h-8 w-8 animate-spin rounded-full border-[3px] border-[#C7D8FF] border-t-[#0062FF]" />
+          <p class="text-sm font-medium text-[#1A1A1A]">正在解析面试记录…</p>
+          <p class="text-xs text-muted-foreground">请勿关闭此窗口</p>
         </div>
       </div>
     </template>
@@ -41,15 +48,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import type { InterviewImportCreateResult } from "@/api/interview-import";
 import InterviewImportForm from "@/components/import/interview-import-form.vue";
 import { Badge } from "@/components/ui/badge";
+import { AppDialogLayout } from "@/components/ui/dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { DialogDescription } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";
 import { DialogTitle } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 
 interface InterviewImportDrawerProps {
   open: boolean;
@@ -71,13 +78,16 @@ const emit = defineEmits<{
   (e: "submitted", result: InterviewImportCreateResult): void;
 }>();
 
+const isBusy = ref(false);
+
 const description = computed(() => (
   props.candidateId
-    ? `将 PDF 和会议纪要追加到${props.candidateName || "当前候选人"}，系统会自动处理后续轮次与结果状态。`
-    : "在同一个面板里完成 PDF 与会议纪要导入；候选人和轮次会由系统自动识别，低置信度时只需确认一次。"
+    ? `给${props.candidateName || "当前候选人"}上传简历或会议纪要，系统会自动生成面试记录。`
+    : "上传简历或会议纪要，系统会自动识别候选人和轮次。"
 ));
 
 function handleOpenChange(nextOpen: boolean) {
+  if (isBusy.value && !nextOpen) return;
   emit("update:open", nextOpen);
 }
 </script>

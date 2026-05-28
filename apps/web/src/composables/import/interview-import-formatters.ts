@@ -159,6 +159,10 @@ export function buildInterviewImportOverviewItems(
   summary: InterviewImportBatchSummary | null | undefined,
 ): InterviewImportOverviewItem[] {
   const candidate = interviewImportCandidateState(summary);
+  const totalRounds =
+    (summary?.appendedRounds ?? 0)
+    + (summary?.skippedRounds ?? 0)
+    + (summary?.failedRounds ?? 0);
 
   return [
     {
@@ -167,19 +171,14 @@ export function buildInterviewImportOverviewItems(
       hint: candidate.hint,
     },
     {
-      label: "新增轮次数",
-      value: String(summary?.appendedRounds ?? 0),
-      hint: "成功写入的面试轮次",
+      label: "总轮次",
+      value: String(totalRounds),
+      hint: `新增 ${summary?.appendedRounds ?? 0} / 跳过 ${summary?.skippedRounds ?? 0}`,
     },
     {
-      label: "跳过轮次数",
-      value: String(summary?.skippedRounds ?? 0),
-      hint: "与历史重复而跳过",
-    },
-    {
-      label: "失败轮次数",
+      label: "失败",
       value: String(summary?.failedRounds ?? 0),
-      hint: "写入失败或未能落库",
+      hint: (summary?.failedRounds ?? 0) > 0 ? "需复核失败原因" : "暂无失败轮次",
     },
     {
       label: "Workflow",

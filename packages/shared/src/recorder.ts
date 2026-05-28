@@ -63,6 +63,24 @@ export interface RecorderStateData {
   state: RecorderStateSnapshot;
 }
 
+export interface RecorderDiagnosticsData {
+  checkedAt: number;
+  desktopRuntime: boolean;
+  activeRecording: boolean;
+  deviceAvailable: boolean;
+  deviceName: string | null;
+  configAvailable: boolean;
+  sampleRate: number | null;
+  channels: number | null;
+  permissionGranted: boolean | null;
+  inputSignalDetected: boolean | null;
+  peakLevel: number | null;
+  muted: boolean | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  notes: string[];
+}
+
 export interface RecorderListItem {
   id: string;
   status: RecorderStatus;

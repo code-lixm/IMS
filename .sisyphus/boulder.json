@@ -1,54 +1,29 @@
 {
-  "active_plan": "/Users/lixiaoming/Desktop/desktop/personal/IMS/.sisyphus/plans/interview-import-simplification.md",
-  "started_at": "2026-05-09T17:08:02.097Z",
+  "active_plan": "/Users/lixiaoming/Desktop/desktop/personal/IMS/.sisyphus/plans/design-implementation.md",
+  "started_at": "2026-05-18T14:09:37.517Z",
   "session_ids": [
-    "ses_1f24a2697ffelQ2YZDbaPtS4Eq",
-    "ses_1f249043effdghvzvcLZpn7DFL",
-    "ses_1f2490436ffebIWnfyh1rMSrSt"
+    "ses_1c494425bffeegXXc67BnWsgZV",
+    "ses_1c49384c8ffemxGPGqO5Ll6cQ3",
+    "ses_1c4938492ffeG7VY5gjyRnSIJ9",
+    "ses_1c493846cffe57dBLJHXaXwK5q"
   ],
   "session_origins": {
-    "ses_1f24a2697ffelQ2YZDbaPtS4Eq": "direct",
-    "ses_1f249043effdghvzvcLZpn7DFL": "appended",
-    "ses_1f2490436ffebIWnfyh1rMSrSt": "appended"
+    "ses_1c494425bffeegXXc67BnWsgZV": "direct",
+    "ses_1c49384c8ffemxGPGqO5Ll6cQ3": "appended",
+    "ses_1c4938492ffeG7VY5gjyRnSIJ9": "appended",
+    "ses_1c493846cffe57dBLJHXaXwK5q": "appended"
   },
-  "plan_name": "interview-import-simplification",
+  "plan_name": "design-implementation",
   "agent": "atlas",
   "task_sessions": {
-    "todo:1": {
-      "task_key": "todo:1",
-      "task_label": "1",
-      "task_title": "定义 raw input / AI draft / confirmation / persistence 四层契约",
-      "session_id": "ses_1f2465d8fffeXh7engVAy4v9tc",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-09T17:20:02.206Z"
-    },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "重做 AI draft 驱动的后端导入编排与落库",
-      "session_id": "ses_1f23d1297ffemrDpp1kTxSAOyA",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-09T17:45:04.633Z"
-    },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "收敛前端导入入口为单输入工作台",
-      "session_id": "ses_1f2249921ffecMq17vwTgOIxwS",
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "全量类型检查",
+      "session_id": "ses_1c41023e5ffepAACa8D55A5jAk",
       "agent": "Sisyphus-Junior",
       "category": "visual-engineering",
-      "updated_at": "2026-05-09T18:08:59.922Z"
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "加低置信度确认与入口清理",
-      "session_id": "ses_1f20da048ffe9efjszhv7lJswa",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-09T18:18:08.968Z"
+      "updated_at": "2026-05-18T16:34:27.290Z"
     }
   }
 }

@@ -88,6 +88,26 @@ struct RecorderLevelUpdateEventPayload {
     timestamp: u64,
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecorderDiagnosticsData {
+    checked_at: u64,
+    desktop_runtime: bool,
+    active_recording: bool,
+    device_available: bool,
+    device_name: Option<String>,
+    config_available: bool,
+    sample_rate: Option<u32>,
+    channels: Option<u16>,
+    permission_granted: Option<bool>,
+    input_signal_detected: Option<bool>,
+    peak_level: Option<f32>,
+    muted: Option<bool>,
+    error_code: Option<String>,
+    error_message: Option<String>,
+    notes: Vec<String>,
+}
+
 #[cfg(feature = "local-transcription")]
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -266,7 +286,7 @@ enum WorkerCommand {
     },
     Stop {
         app: AppHandle,
-        reply: SyncSender<Result<(), String>>,
+        reply: Option<SyncSender<Result<(), String>>>,
         error: Option<RecorderErrorState>,
     },
     RuntimeError {
@@ -327,12 +347,22 @@ impl RecorderManager {
         reply_rx.recv().map_err(|err| err.to_string())?
     }
 
-    pub fn stop(&self, app: &AppHandle) -> Result<(), String> {
+    pub fn request_stop(&self, app: &AppHandle) -> Result<(), String> {
+        self.sender_clone()?
+            .send(WorkerCommand::Stop {
+                app: app.clone(),
+                reply: None,
+                error: None,
+            })
+            .map_err(|err| err.to_string())
+    }
+
+    pub fn stop_blocking(&self, app: &AppHandle) -> Result<(), String> {
         let (reply_tx, reply_rx) = mpsc::sync_channel(1);
         self.sender_clone()?
             .send(WorkerCommand::Stop {
                 app: app.clone(),
-                reply: reply_tx,
+                reply: Some(reply_tx),
                 error: None,
             })
             .map_err(|err| err.to_string())?;
@@ -340,7 +370,7 @@ impl RecorderManager {
     }
 
     pub fn cleanup(&self, app: &AppHandle) -> Result<(), String> {
-        self.stop(app)
+        self.stop_blocking(app)
     }
 
     pub fn get_status(&self) -> Result<RecorderStateSnapshot, String> {
@@ -385,7 +415,9 @@ fn recorder_worker_loop(
                 }
                 WorkerCommand::Stop { app, reply, error } => {
                     let result = stop_active_recording(&app, &snapshot, &mut active, error);
-                    let _ = reply.send(result);
+                    if let Some(reply) = reply {
+                        let _ = reply.send(result);
+                    }
                 }
                 WorkerCommand::RuntimeError { app, error } => {
                     let _ = stop_active_recording(&app, &snapshot, &mut active, Some(error));
@@ -1160,6 +1192,93 @@ fn emit_level_update(app: &AppHandle, payload: RecorderLevelUpdateEventPayload) 
     let _ = app.emit(LEVEL_EVENT_NAME, payload);
 }
 
+fn probe_input_signal(
+    device: &cpal::Device,
+    supported_config: &cpal::SupportedStreamConfig,
+) -> Result<(f32, bool), RecorderErrorState> {
+    let config = supported_config.config();
+    let peak_level = Arc::new(Mutex::new(0.0_f32));
+    let runtime_error = Arc::new(Mutex::new(None::<RecorderErrorState>));
+
+    let stream = match supported_config.sample_format() {
+        cpal::SampleFormat::F32 => {
+            let peak_level = Arc::clone(&peak_level);
+            let runtime_error = Arc::clone(&runtime_error);
+            device.build_input_stream(
+                &config,
+                move |data: &[f32], _| {
+                    if let Ok(mut peak) = peak_level.lock() {
+                        for sample in data {
+                            *peak = peak.max(sample.abs().clamp(0.0, 1.0)).to_owned();
+                        }
+                    }
+                },
+                move |error: cpal::StreamError| {
+                    if let Ok(mut slot) = runtime_error.lock() {
+                        *slot = Some(map_stream_runtime_error(&error.to_string()));
+                    }
+                },
+                None,
+            )
+        }
+        cpal::SampleFormat::I16 => {
+            let peak_level = Arc::clone(&peak_level);
+            let runtime_error = Arc::clone(&runtime_error);
+            device.build_input_stream(
+                &config,
+                move |data: &[i16], _| {
+                    if let Ok(mut peak) = peak_level.lock() {
+                        for sample in data {
+                            *peak = peak.max(((*sample as f32 / i16::MAX as f32).abs()).clamp(0.0, 1.0)).to_owned();
+                        }
+                    }
+                },
+                move |error: cpal::StreamError| {
+                    if let Ok(mut slot) = runtime_error.lock() {
+                        *slot = Some(map_stream_runtime_error(&error.to_string()));
+                    }
+                },
+                None,
+            )
+        }
+        cpal::SampleFormat::U16 => {
+            let peak_level = Arc::clone(&peak_level);
+            let runtime_error = Arc::clone(&runtime_error);
+            device.build_input_stream(
+                &config,
+                move |data: &[u16], _| {
+                    if let Ok(mut peak) = peak_level.lock() {
+                        for sample in data {
+                            *peak = peak.max(normalize_u16_sample(*sample).abs().clamp(0.0, 1.0)).to_owned();
+                        }
+                    }
+                },
+                move |error: cpal::StreamError| {
+                    if let Ok(mut slot) = runtime_error.lock() {
+                        *slot = Some(map_stream_runtime_error(&error.to_string()));
+                    }
+                },
+                None,
+            )
+        }
+        _ => unreachable!(),
+    }
+    .map_err(|error| map_build_stream_error(&error))?;
+
+    stream.play().map_err(|error| map_play_stream_error(&error))?;
+    thread::sleep(Duration::from_millis(350));
+    drop(stream);
+
+    if let Ok(mut error) = runtime_error.lock() {
+        if let Some(error) = error.take() {
+            return Err(error);
+        }
+    }
+
+    let peak = peak_level.lock().map(|value| *value).unwrap_or(0.0);
+    Ok((peak, peak <= MUTED_THRESHOLD))
+}
+
 #[cfg(feature = "local-transcription")]
 fn emit_live_transcript_segment_update(
     app: &AppHandle,
@@ -1346,15 +1465,6 @@ fn spawn_final_transcription(
                     Some("正在整理最终转写结果".to_string()),
                 );
 
-                let _ = update_snapshot(&snapshot, |state| {
-                    state.status = RecorderStatus::Completed;
-                    state.final_transcript_text = result.final_text;
-                    state.error_code = None;
-                    state.error_message = None;
-                    state.updated_at = Some(now_unix_ms());
-                });
-                let _ = emit_state_update(&app, &snapshot);
-
                 let _ = write_transcript_sidecar(
                     &request.file_path,
                     &request.recording_id,
@@ -1391,6 +1501,15 @@ fn spawn_final_transcription(
                         );
                     }
                 }
+
+                let _ = update_snapshot(&snapshot, |state| {
+                    state.status = RecorderStatus::Completed;
+                    state.final_transcript_text = result.final_text;
+                    state.error_code = None;
+                    state.error_message = None;
+                    state.updated_at = Some(now_unix_ms());
+                });
+                let _ = emit_state_update(&app, &snapshot);
             }
             Err(error) => {
                 let _ = set_error_state(&snapshot, &app, &error.code, &error.message);
@@ -1852,6 +1971,33 @@ fn map_stream_runtime_error(message: &str) -> RecorderErrorState {
     }
 }
 
+fn build_diagnostics_from_error(
+    active_recording: bool,
+    device_name: Option<String>,
+    sample_rate: Option<u32>,
+    channels: Option<u16>,
+    error: RecorderErrorState,
+    notes: Vec<String>,
+) -> RecorderDiagnosticsData {
+    RecorderDiagnosticsData {
+        checked_at: now_unix_ms(),
+        desktop_runtime: true,
+        active_recording,
+        device_available: device_name.is_some(),
+        device_name,
+        config_available: sample_rate.is_some() && channels.is_some(),
+        sample_rate,
+        channels,
+        permission_granted: Some(error.code != "RECORDING_PERMISSION_DENIED"),
+        input_signal_detected: None,
+        peak_level: None,
+        muted: None,
+        error_code: Some(error.code),
+        error_message: Some(error.message),
+        notes,
+    }
+}
+
 fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1889,7 +2035,7 @@ pub fn start_recording(
 
 #[tauri::command]
 pub fn stop_recording(app: AppHandle, recorder: State<'_, RecorderManager>) -> Result<(), String> {
-    recorder.inner().stop(&app)
+    recorder.inner().request_stop(&app)
 }
 
 #[tauri::command]
@@ -1897,6 +2043,100 @@ pub fn get_recorder_status(
     recorder: State<'_, RecorderManager>,
 ) -> Result<RecorderStateSnapshot, String> {
     recorder.inner().get_status()
+}
+
+#[tauri::command]
+pub fn run_recorder_diagnostics(
+    recorder: State<'_, RecorderManager>,
+) -> Result<RecorderDiagnosticsData, String> {
+    let snapshot = recorder.inner().get_status()?;
+    let active_recording = matches!(snapshot.status, RecorderStatus::Recording | RecorderStatus::Stopping | RecorderStatus::Transcribing)
+        || snapshot.active_recording_id.is_some();
+
+    if active_recording {
+        return Ok(RecorderDiagnosticsData {
+            checked_at: now_unix_ms(),
+            desktop_runtime: true,
+            active_recording: true,
+            device_available: true,
+            device_name: None,
+            config_available: true,
+            sample_rate: None,
+            channels: None,
+            permission_granted: Some(true),
+            input_signal_detected: Some(snapshot.peak_level > MUTED_THRESHOLD),
+            peak_level: Some(snapshot.peak_level),
+            muted: Some(snapshot.muted),
+            error_code: snapshot.error_code,
+            error_message: snapshot.error_message,
+            notes: vec!["当前正在录音或后处理，已直接复用当前会话状态。".to_string()],
+        });
+    }
+
+    let host = cpal::default_host();
+    let device = match host.default_input_device() {
+        Some(device) => device,
+        None => {
+            return Ok(build_diagnostics_from_error(
+                false,
+                None,
+                None,
+                None,
+                RecorderErrorState {
+                    code: "RECORDING_DEVICE_UNAVAILABLE".to_string(),
+                    message: "未找到默认麦克风设备".to_string(),
+                },
+                vec!["请确认系统已连接并启用至少一个输入设备。".to_string()],
+            ));
+        }
+    };
+
+    let device_name = device.name().ok();
+    let supported_config = match device.default_input_config() {
+        Ok(config) => config,
+        Err(error) => {
+            return Ok(build_diagnostics_from_error(
+                false,
+                device_name,
+                None,
+                None,
+                map_config_error(&error),
+                vec!["已检测到默认设备，但无法读取默认输入配置。".to_string()],
+            ));
+        }
+    };
+
+    match probe_input_signal(&device, &supported_config) {
+        Ok((peak_level, muted)) => Ok(RecorderDiagnosticsData {
+            checked_at: now_unix_ms(),
+            desktop_runtime: true,
+            active_recording: false,
+            device_available: true,
+            device_name,
+            config_available: true,
+            sample_rate: Some(supported_config.sample_rate().0),
+            channels: Some(supported_config.channels()),
+            permission_granted: Some(true),
+            input_signal_detected: Some(!muted),
+            peak_level: Some(peak_level),
+            muted: Some(muted),
+            error_code: None,
+            error_message: None,
+            notes: if muted {
+                vec!["麦克风可访问，但本次 350ms 探测窗口内没有检测到明显输入信号。".to_string()]
+            } else {
+                vec!["麦克风可访问，且已检测到输入信号。".to_string()]
+            },
+        }),
+        Err(error) => Ok(build_diagnostics_from_error(
+            false,
+            device_name,
+            Some(supported_config.sample_rate().0),
+            Some(supported_config.channels()),
+            error,
+            vec!["已检测到默认设备和输入配置，但探测输入流时失败。".to_string()],
+        )),
+    }
 }
 
 pub fn cleanup_recorder(app: &AppHandle) -> Result<(), String> {

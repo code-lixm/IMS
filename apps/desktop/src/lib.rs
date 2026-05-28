@@ -1322,6 +1322,7 @@ pub fn run() {
             recorder::start_recording,
             recorder::stop_recording,
             recorder::get_recorder_status,
+            recorder::run_recorder_diagnostics,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

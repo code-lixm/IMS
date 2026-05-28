@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex h-screen w-full overflow-hidden bg-background"
+    :class="imsDesign.luiShell"
     :data-user-phone="userPhone ?? undefined"
   >
     <ResizablePanelGroup
@@ -17,22 +17,37 @@
         :default-size="leftPanelWidth"
         :min-size="22"
         :max-size="42"
-        class="border-r bg-background"
+        :class="`border-r ${imsDesign.luiPanel}`"
       >
         <div class="flex h-full min-h-0 flex-col">
-          <div class="flex h-16 items-center justify-between border-b px-4">
+          <div :class="`flex h-12 items-center justify-between border-b px-3 ${imsDesign.luiToolbar}`">
             <AppBrandLink to="/candidates" />
             <div class="flex items-center gap-2">
               <Button
-                variant="ghost"
+                variant="default"
                 size="sm"
-                class="h-8 w-8 shrink-0 rounded-md"
+                class="h-8 shrink-0 rounded-[6px] bg-[#0062FF] px-3 text-xs font-semibold text-[#FFFFFF] shadow-[0_8px_18px_-12px_#0B6BFF66] hover:bg-[#0057E6]"
                 title="新建会话"
                 @click="onConversationCreate"
               >
                 <Plus class="h-4 w-4" />
+                <span class="hidden xl:inline">新建</span>
               </Button>
               <AppUserActions />
+            </div>
+          </div>
+
+          <div :class="`border-b px-3 py-2 ${imsDesign.luiSubPanel}`">
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-xs font-semibold text-[#1A1A1A] dark:text-slate-100">会话历史</p>
+                <p class="truncate text-[11px] leading-4 text-[#4B5563] dark:text-slate-300">
+                  {{ visibleConversations.length }} 个工作台记录
+                </p>
+              </div>
+              <Badge variant="outline" class="h-6 rounded-[6px] bg-[#F8FAFD] px-2 text-[11px] text-[#4B5563] dark:bg-white/8 dark:text-slate-200">
+                LUI
+              </Badge>
             </div>
           </div>
 
@@ -50,6 +65,7 @@
             >
               <ConversationList
                 data-onboarding="conversation-list"
+                class="lui-conversation-list"
                 :conversations="visibleConversations"
                 :selected-id="store.selectedId"
                 @select="onConversationSelect"
@@ -73,13 +89,27 @@
               id="lui-workbench-panel"
               :default-size="100 - leftTopPaneSize"
               :min-size="25"
-              class="min-h-0 border-t bg-muted/20 p-3"
+              :class="`min-h-0 border-t p-3 ${imsDesign.luiSubPanel}`"
             >
+              <div
+                v-if="artifactPills.length"
+                class="mb-3 flex flex-wrap gap-1.5"
+              >
+                <Badge
+                  v-for="artifact in artifactPills"
+                  :key="artifact.id"
+                  variant="outline"
+                  class="h-6 max-w-full rounded-[6px] border-transparent bg-[#F8FAFD] px-2 text-[11px] font-semibold text-[#4B5563] shadow-[0_2px_6px_#00000008] dark:bg-white/8 dark:text-slate-200"
+                >
+                  <span class="shrink-0 text-[#0062FF]">{{ artifact.stage }}</span>
+                  <span class="truncate">{{ artifact.title }}</span>
+                </Badge>
+              </div>
               <WorkflowArtifacts
                 v-if="store.selectedWorkflow"
                 :workflow="store.selectedWorkflow"
                 :files="store.currentFiles"
-                class="rounded-xl border border-border/70 bg-card/80 p-4 shadow-sm"
+                class="lui-workflow-artifacts rounded-[6px] border border-[#E5E7EB] bg-white p-4 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7"
               />
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -88,10 +118,10 @@
 
       <ResizableHandle
         id="lui-main-handle"
-        class="w-4 cursor-col-resize bg-transparent hover:bg-muted/15"
+        class="w-3 cursor-col-resize bg-transparent hover:bg-[#D1D5DB]/60 dark:hover:bg-white/20"
       >
         <div
-          class="h-15 w-1.5 rounded-full bg-border/90 shadow-md transition-colors group-hover/handle:bg-primary/75"
+          class="h-15 w-1 rounded-full bg-[#D1D5DB] shadow-md transition-colors dark:bg-white/30 group-hover/handle:bg-[#0062FF]/75"
         />
       </ResizableHandle>
 
@@ -101,13 +131,13 @@
         :min-size="58"
         class="min-h-0"
       >
-        <main class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-          <div class="flex h-16 items-center gap-2 border-b px-4">
+        <main class="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white dark:bg-background">
+          <div :class="`lui-toolbar flex h-12 items-center gap-2 border-b px-3 ${imsDesign.luiToolbar}`">
             <div class="flex shrink-0 items-center gap-1.5">
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-8 w-8 shrink-0 rounded-md"
+                :class="`h-8 w-8 shrink-0 ${imsDesign.luiControl}`"
                 :title="
                   leftPanelRef?.isCollapsed ? '展开会话列表' : '收起会话列表'
                 "
@@ -124,7 +154,7 @@
                 <Button
                   variant="ghost"
                   size="sm"
-                  class="h-8 shrink-0 rounded-md px-2 text-xs font-medium"
+                  :class="`h-8 shrink-0 px-2 text-xs font-semibold ${imsDesign.luiControl}`"
                 >
                   <ArrowLeft class="h-4 w-4" />
                   <span class="hidden md:inline">返回</span>
@@ -134,23 +164,29 @@
 
             <div class="min-w-0 flex-1 px-1">
               <div v-if="store.selectedConversation" class="min-w-0">
-                <p class="truncate text-sm font-medium leading-6">
+                <p class="truncate text-sm font-semibold leading-6 text-[#1A1A1A] dark:text-slate-100">
                   {{ formatToolbarTitle(store.selectedConversation.title) }}
                 </p>
               </div>
 
               <span
                 v-else-if="interviewScene.currentCandidate.value"
-                class="truncate text-sm font-medium"
+                class="truncate text-sm font-semibold text-[#1A1A1A] dark:text-slate-100"
               >
                 当前候选人工作区
               </span>
-              <span v-else class="text-sm text-muted-foreground">
+              <span v-else class="text-sm text-[#4B5563] dark:text-slate-300">
                 选择或创建一个会话
               </span>
             </div>
 
             <div class="flex shrink-0 items-center gap-1.5">
+              <Badge
+                variant="outline"
+                class="hidden h-8 rounded-[6px] border-transparent bg-[#F8FAFD] px-2.5 text-[11px] font-semibold text-[#4B5563] lg:inline-flex dark:bg-white/8 dark:text-slate-200"
+              >
+                队列 {{ store.tasks.length }}
+              </Badge>
               <CandidateSelector
                 v-if="showCandidateSelector"
                 :model-value="workspaceCandidateId"
@@ -161,7 +197,7 @@
                 type="button"
                 variant="outline"
                 size="sm"
-                class="gap-1.5"
+                class="h-8 gap-1.5 rounded-[6px] border-transparent bg-[#F8FAFD] px-2.5 text-xs font-semibold text-[#4B5563] shadow-none hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/14 dark:hover:text-white"
                 :disabled="!currentSourceResume"
                 @click="openSourceDocumentPreview"
               >
@@ -179,52 +215,16 @@
           </div>
 
           <Conversation
-            class="flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-background via-background to-muted/20"
+            class="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <ConversationContent
-              class="mx-auto min-h-0 w-full max-w-4xl flex-1 px-4 py-6 sm:px-6"
+              class="mx-auto min-h-0 w-full max-w-4xl flex-1 px-4 py-5 sm:px-6"
             >
-              <div
-                v-if="showAssessmentReminder"
-                class="mb-4 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 shadow-sm"
-              >
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                  <div class="space-y-1">
-                    <p class="text-sm font-semibold text-foreground">
-                      把本轮面试纪要丢到输入框
-                    </p>
-                    <p class="text-xs leading-5 text-muted-foreground">
-                      直接把视频面试记录、候选人回答要点或你记下的纪要粘贴到下方输入框，我会按当前轮次生成评分报告和微信可复制文本；也可以上传文件。
-                    </p>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      class="shrink-0"
-                      @click="focusPromptInput"
-                    >
-                      去输入
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      class="shrink-0"
-                      @click="openInterviewNotesUpload"
-                    >
-                      上传纪要
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
               <ConversationEmptyState
                 v-if="uiMessages.length === 0"
                 title="今天想一起推进什么？"
                 description="我可以基于你当前输入的内容、已选择的上下文和可用模型，帮你分析问题、整理信息、生成提纲，或继续把这段对话往前推进。"
-                class="min-h-[320px]"
+                class="lui-empty-state min-h-[320px]"
               >
                 <template #icon>
                   <Bot class="h-12 w-12 opacity-30" />
@@ -246,7 +246,7 @@
                       :suggestion="suggestion"
                       size="default"
                       variant="outline"
-                      class="lui-suggestion-card h-auto w-full min-w-0 justify-center whitespace-normal break-words rounded-2xl border-border/80 bg-card/92 px-6 py-6 text-center text-lg font-medium leading-8 text-card-foreground shadow-sm transition-all duration-300 hover:scale-[1.01] hover:border-primary/20 hover:bg-card hover:shadow-md"
+                      class="lui-suggestion-card h-auto w-full min-w-0 justify-center whitespace-normal break-words rounded-[6px] border-[#E5E7EB] bg-[#F8FAFD] px-6 py-5 text-center text-base font-semibold leading-7 text-[#1A1A1A] shadow-[0_2px_6px_#00000008] transition-all duration-300 hover:scale-[1.01] hover:border-[#0062FF]/30 hover:bg-[#F9FAFB] hover:shadow-md dark:border-white/10 dark:bg-white/8 dark:text-slate-100 dark:hover:bg-white/14"
                       @click="applySuggestion(suggestion)"
                     />
                   </Suggestions>
@@ -288,7 +288,7 @@
 
                   <MessageContent
                     v-if="shouldRenderMessageContent(message)"
-                    class="w-full max-w-none space-y-3 group-[.is-user]:max-w-[80%] group-[.is-user]:rounded-2xl group-[.is-user]:border group-[.is-user]:border-border/70 group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]: group-[.is-user]:shadow-sm group-[.is-assistant]:rounded-2xl group-[.is-assistant]:border group-[.is-assistant]:border-border/70 group-[.is-assistant]:bg-card group-[.is-assistant]:px-4 group-[.is-assistant]:py-3 group-[.is-assistant]:shadow-sm"
+                    class="w-full max-w-none space-y-3 group-[.is-user]:max-w-[80%] group-[.is-user]:rounded-[6px] group-[.is-user]:border group-[.is-user]:border-[#E5E7EB] group-[.is-user]:bg-[#F9FAFB] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:shadow-[0_2px_6px_#00000008] group-[.is-assistant]:p-0 group-[.is-assistant]:shadow-none dark:group-[.is-user]:border-white/10 dark:group-[.is-user]:bg-white/7"
                   >
                     <div
                       v-if="
@@ -297,7 +297,7 @@
                         !message.primaryContent &&
                         !message.reasoning
                       "
-                      class="flex items-center gap-2 text-sm"
+                      class="flex items-center gap-2 text-sm text-[#4B5563] dark:text-slate-300"
                     >
                       <Loader2 class="h-4 w-4 animate-spin" />
                       正在生成
@@ -307,20 +307,29 @@
                       v-if="message.primaryContent"
                       :content="message.primaryContent"
                       :is-streaming="message.status === 'streaming'"
-                      class="break-words text-sm leading-7"
+                      class="lui-message-response break-words"
                     />
 
                     <div v-if="message.tools?.length" class="space-y-2">
                       <div
                         v-for="(tool, index) in message.tools"
                         :key="`${message.key}-tool-${index}`"
-                        class="rounded-xl border border-border/70 bg-background/70 px-3 py-2"
+                        class="rounded-[6px] border border-[#E5E7EB] bg-[#F8FAFD] px-3 py-2 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7"
                       >
-                        <p class="text-xs font-medium">
-                          工具调用 {{ index + 1 }}
-                        </p>
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                          <p class="text-xs font-semibold text-[#1A1A1A] dark:text-slate-100">
+                            工具调用 {{ index + 1 }}
+                          </p>
+                          <Badge
+                            variant="outline"
+                            class="h-6 rounded-[6px] border-transparent px-2 text-[11px] font-semibold"
+                            :class="toolStatusBadgeClass(tool)"
+                          >
+                            {{ toolStatusLabel(tool) }}
+                          </Badge>
+                        </div>
                         <pre
-                          class="mt-2 overflow-x-auto whitespace-pre-wrap text-xs leading-relaxed"
+                          class="mt-2 overflow-x-auto whitespace-pre-wrap text-xs leading-relaxed text-[#4B5563] dark:text-slate-300"
                           >{{ stringifyTool(tool) }}</pre
                         >
                       </div>
@@ -328,7 +337,7 @@
 
                     <div
                       v-if="message.status === 'error'"
-                      class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                      class="rounded-[6px] border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
                     >
                       响应失败，请重试。
                     </div>
@@ -338,9 +347,50 @@
                       :workflow="store.selectedWorkflow"
                       :files="store.currentFiles"
                       :candidate-detail="currentSourceCandidateDetail"
+                      class="lui-workflow-action-card"
                       @updated="refreshSelectedConversationWorkflow"
                     />
                   </MessageContent>
+                </div>
+              </Message>
+
+              <Message
+                v-if="showAssessmentReminder"
+                from="assistant"
+              >
+                <div class="min-w-0 flex-1">
+                  <div class="rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                      <div class="space-y-1">
+                        <p class="text-sm font-semibold text-foreground">
+                          把本轮面试纪要丢到输入框
+                        </p>
+                        <p class="text-xs leading-5 text-muted-foreground">
+                          直接把视频面试记录、候选人回答要点或你记下的纪要粘贴到下方输入框，我会按当前轮次生成评分报告和微信可复制文本；也可以上传文件。
+                        </p>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          class="shrink-0"
+                          @click="focusPromptInput"
+                        >
+                          去输入
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          class="shrink-0"
+                          @click="openInterviewNotesUpload"
+                        >
+                          上传纪要
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </Message>
             </ConversationContent>
@@ -352,11 +402,11 @@
             <template #after>
               <TaskQueueIndicator :tasks="store.tasks" />
 
-              <div class="shrink-0 border-t bg-background px-4 pb-1.5 pt-2">
+              <div :class="`shrink-0 border-t px-4 pb-2 pt-2 ${imsDesign.luiToolbar}`">
                 <div class="mx-auto w-full">
                   <div data-onboarding="prompt-input">
                     <PromptInput
-                      class="w-full rounded-3xl border border-border/70 bg-background/95 p-2 shadow-sm backdrop-blur"
+                      class="lui-prompt-input w-full rounded-[6px] border border-[#0063ff14] bg-white p-1.5 shadow-none dark:border-white/10 dark:bg-white/8"
                       :accept="acceptedFileTypes"
                       :multiple="true"
                       :max-files="20"
@@ -389,13 +439,13 @@
                           chatStatus === 'submitted' || chatStatus === 'streaming'
                         "
                         placeholder="输入消息，输入 / 使用命令"
-                        class="min-h-[96px] border-0 bg-transparent px-3 py-3 text-sm caret-foreground shadow-none focus-visible:ring-0"
+                        class="min-h-[52px] border-0 bg-transparent px-3 py-2 text-sm caret-[#1A1A1A] shadow-none focus-visible:ring-0 dark:text-slate-100 dark:caret-slate-100 dark:placeholder:text-slate-400"
                         data-lui-prompt-input
                       />
                       </PromptInputBody>
 
                       <PromptInputFooter
-                        class="mt-2 flex items-center justify-between gap-3 px-1 pb-1"
+                        class="mt-1 flex items-center justify-between gap-3 px-1 pb-1"
                       >
                         <PromptInputTools
                           class="min-w-0 flex-1 flex-wrap items-center gap-2"
@@ -436,6 +486,12 @@
                                       v-for="model in provider.models"
                                       :key="model.id"
                                       :value="`${provider.name} ${model.displayName}`"
+                                      :class="[
+                                        'lui-model-selector-item min-h-9 rounded-[6px]',
+                                        store.selectedModelId === model.id && store.selectedModelProvider === provider.id
+                                          ? 'bg-[#EEF4FF] text-[#1A1A1A]'
+                                          : 'text-[#4B5563] hover:bg-[#F9FAFB]',
+                                      ]"
                                       @select="selectModel(model.id)"
                                     >
                                       <div class="flex min-w-0 items-center gap-2">
@@ -472,7 +528,7 @@
                             v-model="store.customModelName"
                             type="text"
                             placeholder="输入模型名称（如 MiniMax-M2.7）"
-                            class="h-8 max-w-[240px] rounded-full text-xs"
+                            class="h-8 max-w-[240px] rounded-[6px] border-[#E5E7EB] bg-white text-xs"
                             :disabled="
                               chatStatus === 'submitted' || chatStatus === 'streaming'
                             "
@@ -497,7 +553,7 @@
                             !canSubmitPrompt
                           "
                           :status="chatStatus"
-                          class="rounded-full"
+                          class="h-8 w-8 rounded-[6px] bg-[#0062FF] text-[#FFFFFF] hover:bg-[#0057E6]"
                         />
                       </PromptInputFooter>
                     </PromptInput>
@@ -512,34 +568,31 @@
 
     <Dialog
       :open="sourceDocumentPreviewOpen"
-      content-class="flex h-[80vh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden p-0"
+      content-class="flex h-[80vh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
       @update:open="handleSourceDocumentPreviewOpenChange"
     >
       <template #content>
-        <div v-if="currentSourceResume" class="flex min-h-0 flex-1 flex-col">
-          <DialogHeader class="shrink-0 border-b px-4 py-3 sm:px-5">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <DialogTitle class="truncate pr-2 text-sm font-semibold">
-                  {{ currentSourceResumeDisplayName }}
-                </DialogTitle>
-                <DialogDescription class="pt-1 text-xs">
-                  {{ formatResumeSize(currentSourceResume.fileSize) }}
-                </DialogDescription>
-              </div>
-              <div class="flex shrink-0 items-center gap-2">
+        <AppDialogLayout v-if="currentSourceResume" class="min-h-0 flex-1" body-class="overflow-hidden py-0">
+          <template #header>
+            <DialogHeader>
+              <div class="flex items-start justify-between gap-3 pr-8">
+                <div class="min-w-0">
+                  <DialogTitle class="truncate pr-2 text-sm font-semibold">
+                    {{ currentSourceResumeDisplayName }}
+                  </DialogTitle>
+                  <DialogDescription class="pt-1 text-xs">
+                    {{ formatResumeSize(currentSourceResume.fileSize) }}
+                  </DialogDescription>
+                </div>
                 <Button type="button" variant="outline" size="sm" class="gap-1.5" @click="downloadSourceDocument">
                   <Download class="h-4 w-4" />
                   <span class="hidden sm:inline">下载</span>
                 </Button>
-                <Button type="button" variant="outline" size="icon" class="shrink-0" @click="handleSourceDocumentPreviewOpenChange(false)">
-                  <X class="h-4 w-4" />
-                </Button>
               </div>
-            </div>
-          </DialogHeader>
+            </DialogHeader>
+          </template>
 
-          <div class="min-h-0 flex-1 overflow-hidden bg-background">
+          <div class="h-full min-h-0 overflow-hidden bg-white">
             <div
               v-if="sourcePreviewLoading"
               class="flex h-full items-center justify-center px-6 text-sm text-muted-foreground"
@@ -576,7 +629,7 @@
               当前原件暂不支持内嵌阅读，请使用右上角下载按钮查看。
             </div>
           </div>
-        </div>
+        </AppDialogLayout>
       </template>
     </Dialog>
 
@@ -612,7 +665,6 @@ import {
   Loader2,
   PanelLeft,
   Plus,
-  X,
 } from "lucide-vue-next";
 import {
   Attachment,
@@ -672,6 +724,7 @@ import {
 } from "@/components/ai-elements/sources";
 import AppUserActions from "@/components/app-user-actions.vue";
 import AppBrandLink from "@/components/layout/app-brand-link.vue";
+import { imsDesign } from "@/components/layout/ims-design";
 import AgentSelector from "@/components/lui/agent-selector.vue";
 import CandidateSelector from "@/components/lui/candidate-selector.vue";
 import ConversationList from "@/components/lui/conversation-list.vue";
@@ -680,7 +733,9 @@ import WorkflowActionCard from "@/components/lui/workflow-action-card.vue";
 import WorkflowArtifacts from "@/components/lui/workflow-artifacts.vue";
 import TaskQueueIndicator from "@/components/lui/task-queue-indicator.vue";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AppDialogLayout } from "@/components/ui/dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { DialogDescription } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";
@@ -740,7 +795,7 @@ interface UiMessageItem {
 const STALE_STREAMING_MESSAGE_MS = 2 * 60 * 1000;
 const STREAMING_LEAVE_WARNING = "AI 正在回复中，离开当前页面可能会让你看不到完整的流式输出。确定要离开吗？";
 
-const acceptedFileTypes = ".pdf,.png,.jpg,.jpeg,.webp,.zip,.imr";
+const acceptedFileTypes = ".png,.jpg,.jpeg,.webp,.imr";
 const interviewConversationPolicy = createInterviewConversationPolicy();
 const GENERIC_AGENT_SELECTOR_PROFILE: LuiAgentSelectorProfile = {
   title: "通用工作区 Agent",
@@ -1001,6 +1056,14 @@ const uiMessages = computed<UiMessageItem[]>(() => {
     reasoning: message.reasoning,
     tools: message.tools,
     sources: extractSources(message.tools),
+  }));
+});
+
+const artifactPills = computed(() => {
+  return (store.selectedWorkflow?.artifacts ?? []).map((artifact) => ({
+    id: artifact.id,
+    stage: artifact.stage,
+    title: artifact.title || artifact.fileName,
   }));
 });
 
@@ -2054,6 +2117,58 @@ function stringifyTool(tool: unknown): string {
   }
 }
 
+function toolStatusLabel(tool: unknown) {
+  const status = resolveToolStatus(tool);
+  switch (status) {
+    case "approval-requested":
+      return "approval-requested";
+    case "output-available":
+      return "output-available";
+    default:
+      return "input-available";
+  }
+}
+
+function toolStatusBadgeClass(tool: unknown) {
+  const status = resolveToolStatus(tool);
+  switch (status) {
+    case "approval-requested":
+      return "bg-amber-50 text-amber-700";
+    case "output-available":
+      return "bg-[#EEF4FF] text-[#0062FF]";
+    default:
+      return "bg-[#F3F4F6] text-[#4B5563]";
+  }
+}
+
+function resolveToolStatus(tool: unknown) {
+  if (!tool || typeof tool !== "object") {
+    return "input-available" as const;
+  }
+
+  const candidate = tool as Record<string, unknown>;
+  const rawStatus = [candidate.status, candidate.state, candidate.type]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  if (rawStatus.includes("approval") || rawStatus.includes("confirm")) {
+    return "approval-requested" as const;
+  }
+
+  if (
+    rawStatus.includes("output")
+    || rawStatus.includes("result")
+    || rawStatus.includes("complete")
+    || candidate.output
+    || candidate.result
+  ) {
+    return "output-available" as const;
+  }
+
+  return "input-available" as const;
+}
+
 function sanitizeMessageContent(content: string | null | undefined): string {
   if (!content) {
     return "";
@@ -2130,5 +2245,192 @@ onBeforeUnmount(() => {
 
 .lui-suggestion-card {
   animation: luiSuggestionFadeUp 0.5s ease-out both;
+}
+
+.lui-toolbar :deep(button),
+.lui-prompt-input :deep(button) {
+  min-height: 32px;
+  border-radius: 6px;
+}
+
+.lui-toolbar :deep(button) {
+  background: #ffffff;
+  color: #4b5563;
+  box-shadow: none;
+}
+
+.lui-toolbar :deep(button:hover) {
+  background: #eef4ff;
+  color: #0062ff;
+}
+
+.lui-conversation-list :deep(aside) {
+  background: #ffffff;
+}
+
+.lui-conversation-list :deep(ul) {
+  padding: 8px;
+}
+
+.lui-conversation-list :deep(.conversation-row-button) {
+  min-height: 40px;
+  border-radius: 6px;
+  color: #4b5563;
+}
+
+.lui-conversation-list :deep(.conversation-row-button.bg-accent) {
+  background: #eef4ff;
+  color: #1a1a1a;
+  box-shadow: 0 2px 6px #00000008;
+}
+
+.lui-conversation-list :deep(.conversation-row-button:hover) {
+  background: #f9fafb;
+  color: #1a1a1a;
+}
+
+.lui-conversation-list :deep(.conversation-row-button.bg-accent:hover) {
+  background: #eef4ff;
+}
+
+.lui-conversation-list :deep(.conversation-action-button) {
+  min-height: 28px;
+  color: #9ca3af;
+  box-shadow: none;
+}
+
+.lui-empty-state :deep(svg) {
+  width: 28px;
+  height: 28px;
+  color: #4b5563;
+}
+
+.lui-empty-state :deep(h2),
+.lui-empty-state :deep(h3) {
+  color: #1a1a1a;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.lui-empty-state :deep(p) {
+  color: #4b5563;
+}
+
+.lui-workflow-action-card:deep(> div) {
+  border-radius: 6px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+:global(.dark) .lui-workflow-action-card:deep(> div) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.lui-workflow-action-card :deep(button) {
+  border-radius: 6px;
+}
+
+.lui-message-response {
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.lui-message-response :deep(p) {
+  margin: 0 0 10px;
+}
+
+.lui-message-response :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.lui-message-response :deep(code) {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid #d7e0ee;
+  border-radius: 5px;
+  background: #eef3fb;
+  padding: 1px 6px;
+  color: #27364a;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: normal;
+  word-break: break-all;
+}
+
+:global(.dark) .lui-message-response {
+  color: rgb(226 232 240 / 0.92);
+}
+
+:global(.dark) .lui-message-response :deep(code) {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(15 23 42 / 0.55);
+  color: rgb(241 245 249 / 0.95);
+}
+
+.lui-workflow-artifacts :deep(article),
+.lui-workflow-artifacts :deep(header > div:nth-child(2)) {
+  border-color: #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+:global(.dark) .lui-workflow-artifacts :deep(article),
+:global(.dark) .lui-workflow-artifacts :deep(header > div:nth-child(2)) {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.07);
+}
+
+.lui-workflow-artifacts :deep([class*="rounded-lg"]),
+.lui-workflow-artifacts :deep([class*="rounded-xl"]) {
+  border-radius: 6px;
+}
+
+.lui-prompt-input :deep(textarea) {
+  min-height: 52px;
+}
+
+.lui-prompt-input :deep(button) {
+  background: #f9fafb;
+  color: #1a1a1a;
+}
+
+.lui-prompt-input :deep(button:hover) {
+  background: #eef4ff;
+  color: #0062ff;
+}
+
+:deep([cmdk-input-wrapper]),
+:deep([data-slot="command-input-wrapper"]) {
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+:deep([cmdk-input]),
+:deep([data-slot="command-input"]) {
+  height: 32px;
+  color: #1a1a1a;
+}
+
+:deep([cmdk-item]),
+:deep([data-slot="command-item"]) {
+  min-height: 36px;
+  border-radius: 6px;
+}
+
+:deep([cmdk-item][data-selected="true"]),
+:deep([data-slot="command-item"][data-selected="true"]) {
+  background: #eef4ff;
+  color: #1a1a1a;
+}
+
+:deep(.lui-model-selector-item) {
+  min-height: 36px;
+  border-radius: 6px;
 }
 </style>

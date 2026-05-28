@@ -1,4 +1,4 @@
-import { readonly, ref } from "vue";
+import { computed, readonly, ref } from "vue";
 import {
   normalizeAppError,
   type AppErrorDetails,
@@ -12,12 +12,52 @@ export interface AppNotification {
   title?: string;
   message: string;
   durationMs: number;
+  dismissible: boolean;
+  timestamp: number;
+  read: boolean;
 }
+
+export interface ToastToneConfig {
+  bg: string;
+  text: string;
+  border: string;
+  icon: string;
+}
+
+/** Tone color mapping per design toast spec (M1pa1p node).
+ * success=green, info=blue, warning=amber, error=red */
+export const TONE_COLORS: Record<AppNotificationTone, ToastToneConfig> = {
+  success: {
+    bg: "bg-emerald-500",
+    text: "text-emerald-600 dark:text-emerald-400",
+    border: "border-emerald-200 dark:border-emerald-900/70",
+    icon: "i-lucide-check-circle",
+  },
+  info: {
+    bg: "bg-blue-500",
+    text: "text-blue-600 dark:text-blue-400",
+    border: "border-blue-200 dark:border-blue-900/70",
+    icon: "i-lucide-info",
+  },
+  warning: {
+    bg: "bg-amber-500",
+    text: "text-amber-600 dark:text-amber-400",
+    border: "border-amber-200 dark:border-amber-900/70",
+    icon: "i-lucide-alert-triangle",
+  },
+  error: {
+    bg: "bg-red-500",
+    text: "text-red-600 dark:text-red-400",
+    border: "border-red-200 dark:border-red-900/70",
+    icon: "i-lucide-x-circle",
+  },
+};
 
 interface NotifyOptions {
   title?: string;
   tone?: AppNotificationTone;
   durationMs?: number;
+  dismissible?: boolean;
 }
 
 interface NotifyErrorOptions {
@@ -30,6 +70,10 @@ const DEFAULT_DURATION_MS = 4000;
 
 const notifications = ref<AppNotification[]>([]);
 const dismissTimers = new Map<string, number>();
+
+const unreadCount = computed(() =>
+  notifications.value.filter((n) => !n.read).length,
+);
 
 function dismiss(id: string) {
   notifications.value = notifications.value.filter(
@@ -68,6 +112,9 @@ function notify(message: string, options: NotifyOptions = {}): string {
       title: options.title,
       message,
       durationMs,
+      dismissible: options.dismissible ?? true,
+      timestamp: Date.now(),
+      read: false,
     },
   ];
 
@@ -96,9 +143,23 @@ function clear() {
   notifications.value = [];
 }
 
+function markRead(id: string) {
+  const notification = notifications.value.find((n) => n.id === id);
+  if (notification) {
+    notification.read = true;
+  }
+}
+
+function markAllRead() {
+  notifications.value.forEach((n) => {
+    n.read = true;
+  });
+}
+
 export function useAppNotifications() {
   return {
     notifications: readonly(notifications),
+    unreadCount,
     notify,
     notifySuccess(message: string, options: Omit<NotifyOptions, "tone"> = {}) {
       return notify(message, { ...options, tone: "success" });
@@ -112,5 +173,7 @@ export function useAppNotifications() {
     notifyError,
     dismiss,
     clear,
+    markRead,
+    markAllRead,
   };
 }

@@ -4,7 +4,7 @@
       <Button
         variant="ghost"
         size="sm"
-        class="h-8 max-w-[13rem] gap-1.5 rounded-md px-2.5 text-xs font-medium shadow-none"
+        class="h-8 max-w-[13rem] gap-1.5 rounded-md px-2.5 text-xs font-medium shadow-none dark:text-slate-200 dark:hover:bg-white/8 dark:hover:text-slate-100"
       >
         <Bot class="h-3.5 w-3.5 shrink-0" />
         <span class="hidden truncate sm:inline">{{ selectedAgentTitle }}</span>
@@ -38,8 +38,8 @@
           class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors"
           :class="
             agent.id === selectedAgent?.id
-              ? 'bg-primary/10 hover:bg-primary/15'
-              : 'hover:bg-muted/60'
+              ? 'bg-primary/10 hover:bg-primary/15 dark:bg-primary/18 dark:text-slate-100 dark:hover:bg-primary/24'
+              : 'hover:bg-muted/60 dark:text-slate-300 dark:hover:bg-white/8 dark:hover:text-slate-100'
           "
           @click="selectAgent(agent)"
         >

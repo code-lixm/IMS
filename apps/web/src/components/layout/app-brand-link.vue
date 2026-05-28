@@ -1,15 +1,15 @@
 <template>
   <RouterLink :to="to" class="flex items-center gap-2 shrink-0">
-    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground">
-      <Briefcase class="h-4 w-4" />
-    </div>
+    <AppBrandIcon
+      container-class="h-8 w-8 rounded-lg bg-primary/10 p-1 dark:bg-primary/20"
+    />
     <span v-if="label" class="hidden text-lg font-semibold tracking-tight text-foreground sm:block">{{ label }}</span>
   </RouterLink>
 </template>
 
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
-import { Briefcase } from "lucide-vue-next";
+import AppBrandIcon from "@/components/layout/app-brand-icon.vue";
 
 withDefaults(
   defineProps<{

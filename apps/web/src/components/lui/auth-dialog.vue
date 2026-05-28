@@ -1,14 +1,19 @@
 <template>
-  <Dialog v-model:open="open">
+  <Dialog
+    v-model:open="open"
+    content-class="sm:max-w-md max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
+  >
     <template #content>
-      <DialogHeader>
-        <DialogTitle>授权 {{ providerName }}</DialogTitle>
-        <DialogDescription>
-          请输入您的 API Key 以使用 {{ providerName }} 模型
-        </DialogDescription>
-      </DialogHeader>
+      <AppDialogLayout body-class="space-y-4">
+        <template #header>
+          <DialogHeader>
+            <DialogTitle>授权 {{ providerName }}</DialogTitle>
+            <DialogDescription>
+              请输入您的 API Key 以使用 {{ providerName }} 模型
+            </DialogDescription>
+          </DialogHeader>
+        </template>
 
-      <div class="space-y-4 py-4">
         <div class="space-y-2">
           <Label for="api-key">API Key</Label>
           <div class="relative">
@@ -34,20 +39,20 @@
           </p>
         </div>
 
-        <Alert v-if="error" variant="destructive">
+        <Alert v-if="error" variant="destructive" class="border-0 bg-red-50">
           <AlertCircle class="h-4 w-4" />
           <AlertTitle>授权失败</AlertTitle>
           <AlertDescription>{{ error }}</AlertDescription>
         </Alert>
-      </div>
 
-      <DialogFooter>
-        <Button variant="outline" @click="handleCancel">取消</Button>
-        <Button :disabled="!apiKey || isLoading" @click="handleConfirm">
-          <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
-          确认授权
-        </Button>
-      </DialogFooter>
+        <template #footer>
+          <Button variant="outline" @click="handleCancel">取消</Button>
+          <Button :disabled="!apiKey || isLoading" @click="handleConfirm">
+            <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
+            确认授权
+          </Button>
+        </template>
+      </AppDialogLayout>
     </template>
   </Dialog>
 </template>
@@ -59,10 +64,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog } from "@/components/ui/dialog"
+import { AppDialogLayout } from "@/components/ui/dialog"
 import { DialogHeader } from "@/components/ui/dialog"
 import { DialogTitle } from "@/components/ui/dialog"
 import { DialogDescription } from "@/components/ui/dialog"
-import { DialogFooter } from "@/components/ui/dialog"
 import { Alert } from "@/components/ui/alert"
 import { AlertTitle } from "@/components/ui/alert"
 import { AlertDescription } from "@/components/ui/alert"

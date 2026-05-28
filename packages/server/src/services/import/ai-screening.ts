@@ -13,6 +13,7 @@ import type {
   TemplateEvidenceMatchedItem,
   TemplateEvidenceUnmatchedItem,
 } from "../../../../shared/src/api-types";
+import { PRESET_PROVIDER_BASE_URLS, resolvePresetProviderBaseUrl } from "../../../../shared/src/ai-provider-presets";
 import {
   screeningTemplatesService,
   shortlistScreeningTemplatesByResume,
@@ -61,6 +62,8 @@ interface ResolvedImportScreeningRunContext extends ImportScreeningReuseContext 
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https://ai-gateway.vercel.com/v1";
 const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.env.VERCEL_AI_GATEWAY_TOKEN || "";
 const DEFAULT_IMPORT_SCREENING_MODEL = process.env.IMPORT_SCREENING_MODEL || process.env.CUSTOM_MODEL_ID || "gpt-4o-mini";
+const MINIMAX_BASE_URL = resolvePresetProviderBaseUrl("minimax", process.env.MINIMAX_API_HOST) || "https://api.minimaxi.com/v1";
+const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY?.trim() || "";
 const IMPORT_SCREENING_SYSTEM_LINES = [
   "你是批量简历初筛 Agent。",
   "你只输出 JSON，不输出额外解释。",
@@ -365,13 +368,25 @@ export async function resolveImportAiEndpoint() {
   }
 
   const [user] = await db.select({ settingsJson: users.settingsJson }).from(users).limit(1);
-  const customEndpoint = extractFirstCustomEndpoint(user?.settingsJson);
+  const customEndpoint = extractPreferredCustomEndpoint(user?.settingsJson);
   if (customEndpoint?.apiKey?.trim()) {
+    const resolvedApiKey = customEndpoint.providerId === "minimax" && MINIMAX_API_KEY
+      ? MINIMAX_API_KEY
+      : customEndpoint.apiKey;
     return {
       baseURL: customEndpoint.baseURL || DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
-      apiKey: customEndpoint.apiKey,
-      model: customEndpoint.providerId === "minimax" ? "MiniMax-M2.7" : DEFAULT_IMPORT_SCREENING_MODEL,
+      apiKey: resolvedApiKey,
+      model: customEndpoint.modelId || (customEndpoint.providerId === "minimax" ? "MiniMax-M2.7" : DEFAULT_IMPORT_SCREENING_MODEL),
       providerId: customEndpoint.providerId ?? "openai-compatible",
+    };
+  }
+
+  if (MINIMAX_API_KEY) {
+    return {
+      baseURL: MINIMAX_BASE_URL,
+      apiKey: MINIMAX_API_KEY,
+      model: "MiniMax-M2.7",
+      providerId: "minimax",
     };
   }
 
@@ -831,7 +846,7 @@ function stripMarkdownCodeFence(content: string) {
   return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 }
 
-function extractFirstCustomEndpoint(settingsJson: string | null | undefined) {
+function extractPreferredCustomEndpoint(settingsJson: string | null | undefined) {
   if (!settingsJson?.trim()) {
     return null;
   }
@@ -839,10 +854,14 @@ function extractFirstCustomEndpoint(settingsJson: string | null | undefined) {
   try {
     const parsed = JSON.parse(settingsJson) as {
       lui?: {
+        defaultEndpointId?: string | null;
         customEndpoints?: Array<{
+          id?: string;
           baseURL?: string;
           apiKey?: string;
+          provider?: string;
           providerId?: string;
+          modelId?: string;
         }>;
       };
     };
@@ -850,7 +869,24 @@ function extractFirstCustomEndpoint(settingsJson: string | null | undefined) {
     if (!Array.isArray(endpoints)) {
       return null;
     }
-    return endpoints.find(endpoint => typeof endpoint?.apiKey === "string" && endpoint.apiKey.trim()) ?? null;
+
+    const withApiKey = endpoints.filter(endpoint => typeof endpoint?.apiKey === "string" && endpoint.apiKey.trim());
+    const defaultEndpoint = withApiKey.find(endpoint => endpoint.id && endpoint.id === parsed.lui?.defaultEndpointId);
+    const selected = defaultEndpoint ?? withApiKey[0] ?? null;
+    if (!selected) {
+      return null;
+    }
+
+    const providerId = selected.providerId?.trim() || selected.provider?.trim() || null;
+    const presetBaseURL = providerId
+      ? (providerId === "minimax" ? MINIMAX_BASE_URL : PRESET_PROVIDER_BASE_URLS[providerId])
+      : undefined;
+    return {
+      baseURL: presetBaseURL || selected.baseURL?.trim(),
+      apiKey: selected.apiKey,
+      providerId,
+      modelId: selected.modelId?.trim() || undefined,
+    };
   } catch {
     return null;
   }

@@ -18,10 +18,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  AppDialogLayout,
   Dialog,
-  DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -384,16 +383,22 @@ function toggleEliminateReason(reasonId: number, checked: boolean) {
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="handleOpenChange">
-    <DialogContent class="sm:max-w-[860px]">
-      <DialogHeader>
-        <DialogTitle>面试评价</DialogTitle>
-        <DialogDescription>
-          将当前轮次的打分结果同步到抱抱，表单会优先读取当前 S2 评分报告中的微信复制文案。
-        </DialogDescription>
-      </DialogHeader>
+  <Dialog
+    :open="open"
+    content-class="sm:max-w-[860px] max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
+    @update:open="handleOpenChange"
+  >
+    <template #content>
+      <AppDialogLayout body-class="space-y-5">
+        <template #header>
+          <DialogHeader>
+            <DialogTitle>面试评价</DialogTitle>
+            <DialogDescription>
+              将当前轮次的打分结果同步到抱抱，表单会优先读取当前 S2 评分报告中的微信复制文案。
+            </DialogDescription>
+          </DialogHeader>
+        </template>
 
-      <div class="space-y-5 py-2">
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-2">
             <Label>候选人：</Label>
@@ -465,7 +470,7 @@ function toggleEliminateReason(reasonId: number, checked: boolean) {
 
         <div v-if="isEliminateReasonRequired" class="space-y-3">
           <Label for="eliminate-reason">淘汰原因<span class="text-destructive">（必选，可多选）</span></Label>
-          <div class="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
+          <div class="grid gap-2 rounded-md border-0 bg-white p-3 sm:grid-cols-2">
             <label
               v-for="option in normalizedEliminateReasonOptions"
               :key="option.id"
@@ -483,25 +488,25 @@ function toggleEliminateReason(reasonId: number, checked: boolean) {
         <p v-if="loadError" class="text-sm text-destructive">
           {{ loadError }}
         </p>
-      </div>
 
-      <DialogFooter class="gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          :disabled="isSubmitting"
-          @click="emit('update:open', false)"
-        >
-          取消
-        </Button>
-        <Button
-          type="button"
-          :disabled="isSubmitting || isLoadingMeta || !canSubmit"
-          @click="handleSubmit"
-        >
-          {{ isSubmitting ? "提交中..." : "提交" }}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
+        <template #footer>
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="isSubmitting"
+            @click="emit('update:open', false)"
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            :disabled="isSubmitting || isLoadingMeta || !canSubmit"
+            @click="handleSubmit"
+          >
+            {{ isSubmitting ? "提交中..." : "提交" }}
+          </Button>
+        </template>
+      </AppDialogLayout>
+    </template>
   </Dialog>
 </template>

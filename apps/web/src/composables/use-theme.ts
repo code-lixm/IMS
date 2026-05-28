@@ -22,173 +22,58 @@ const AVAILABLE_RADII: ThemeRadius[] = [0, 0.3, 0.5, 0.75, 1];
 
 type ThemeVariableSet = Record<string, string>;
 
+const IMS_DESIGN_LIGHT_THEME: ThemeVariableSet = {
+  "--background": "216 100% 98.4%",
+  "--foreground": "0 0% 10.2%",
+  "--card": "0 0% 100%",
+  "--card-foreground": "0 0% 10.2%",
+  "--popover": "0 0% 100%",
+  "--popover-foreground": "0 0% 10.2%",
+  "--primary": "216.9 100% 50%",
+  "--primary-foreground": "0 0% 100%",
+  "--secondary": "218.8 100% 96.7%",
+  "--secondary-foreground": "216.9 100% 35%",
+  "--muted": "210 20% 98%",
+  "--muted-foreground": "215 16.3% 46.9%",
+  "--accent": "218.8 100% 96.7%",
+  "--accent-foreground": "216.9 100% 35%",
+  "--border": "216 100% 93.5%",
+  "--input": "216 100% 91.8%",
+  "--ring": "216.9 100% 50%",
+};
+
+const IMS_DESIGN_DARK_THEME: ThemeVariableSet = {
+  "--background": "219 29% 22%",
+  "--foreground": "214 40% 94%",
+  "--card": "218 28% 27%",
+  "--card-foreground": "214 40% 94%",
+  "--popover": "218 28% 25%",
+  "--popover-foreground": "214 40% 94%",
+  "--primary": "216.9 100% 62%",
+  "--primary-foreground": "0 0% 100%",
+  "--secondary": "218 22% 32%",
+  "--secondary-foreground": "214 40% 94%",
+  "--muted": "218 22% 32%",
+  "--muted-foreground": "216 20% 74%",
+  "--accent": "217 24% 36%",
+  "--accent-foreground": "214 40% 96%",
+  "--border": "217 21% 38%",
+  "--input": "217 21% 38%",
+  "--ring": "216.9 100% 62%",
+};
+
 const COLOR_THEME_MAP: Record<ThemeColor, { light: ThemeVariableSet; dark: ThemeVariableSet }> = {
-  neutral: {
-    light: {
-      "--background": "0 0% 100%",
-      "--foreground": "0 0% 3.9%",
-      "--card": "0 0% 100%",
-      "--card-foreground": "0 0% 3.9%",
-      "--popover": "0 0% 100%",
-      "--popover-foreground": "0 0% 3.9%",
-      "--primary": "0 0% 9%",
-      "--primary-foreground": "0 0% 98%",
-      "--secondary": "0 0% 96.1%",
-      "--secondary-foreground": "0 0% 9%",
-      "--muted": "0 0% 96.1%",
-      "--muted-foreground": "0 0% 45.1%",
-      "--accent": "0 0% 96.1%",
-      "--accent-foreground": "0 0% 9%",
-      "--border": "0 0% 89.8%",
-      "--input": "0 0% 89.8%",
-      "--ring": "0 0% 3.9%",
-    },
-    dark: {
-      "--background": "0 0% 3.9%",
-      "--foreground": "0 0% 98%",
-      "--card": "0 0% 3.9%",
-      "--card-foreground": "0 0% 98%",
-      "--popover": "0 0% 3.9%",
-      "--popover-foreground": "0 0% 98%",
-      "--primary": "0 0% 98%",
-      "--primary-foreground": "0 0% 9%",
-      "--secondary": "0 0% 14.9%",
-      "--secondary-foreground": "0 0% 98%",
-      "--muted": "0 0% 14.9%",
-      "--muted-foreground": "0 0% 63.9%",
-      "--accent": "0 0% 14.9%",
-      "--accent-foreground": "0 0% 98%",
-      "--border": "0 0% 14.9%",
-      "--input": "0 0% 14.9%",
-      "--ring": "0 0% 83.1%",
-    },
-  },
-  zinc: {
-    light: {
-      "--background": "240 10% 98.5%",
-      "--foreground": "240 10% 3.9%",
-      "--card": "240 10% 99.2%",
-      "--card-foreground": "240 10% 3.9%",
-      "--popover": "240 10% 99.2%",
-      "--popover-foreground": "240 10% 3.9%",
-      "--primary": "240 5.9% 10%",
-      "--primary-foreground": "0 0% 98%",
-      "--secondary": "240 5% 94.8%",
-      "--secondary-foreground": "240 5.9% 10%",
-      "--muted": "240 5% 95.8%",
-      "--muted-foreground": "240 3.8% 46.1%",
-      "--accent": "240 5% 93.8%",
-      "--accent-foreground": "240 5.9% 10%",
-      "--border": "240 6% 88%",
-      "--input": "240 6% 88%",
-      "--ring": "240 5.9% 10%",
-    },
-    dark: {
-      "--background": "240 10% 3.9%",
-      "--foreground": "0 0% 98%",
-      "--card": "240 10% 3.9%",
-      "--card-foreground": "0 0% 98%",
-      "--popover": "240 10% 3.9%",
-      "--popover-foreground": "0 0% 98%",
-      "--primary": "0 0% 98%",
-      "--primary-foreground": "240 5.9% 10%",
-      "--secondary": "240 3.7% 15.9%",
-      "--secondary-foreground": "0 0% 98%",
-      "--muted": "240 3.7% 15.9%",
-      "--muted-foreground": "240 5% 64.9%",
-      "--accent": "240 3.7% 15.9%",
-      "--accent-foreground": "0 0% 98%",
-      "--border": "240 3.7% 15.9%",
-      "--input": "240 3.7% 15.9%",
-      "--ring": "240 4.9% 83.9%",
-    },
-  },
-  stone: {
-    light: {
-      "--background": "30 25% 98.2%",
-      "--foreground": "20 14.3% 4.1%",
-      "--card": "30 30% 99.2%",
-      "--card-foreground": "20 14.3% 4.1%",
-      "--popover": "30 30% 99.2%",
-      "--popover-foreground": "20 14.3% 4.1%",
-      "--primary": "24 9.8% 10%",
-      "--primary-foreground": "60 9.1% 97.8%",
-      "--secondary": "32 18% 93.8%",
-      "--secondary-foreground": "24 9.8% 10%",
-      "--muted": "32 18% 95%",
-      "--muted-foreground": "25 5.3% 44.7%",
-      "--accent": "28 20% 92.4%",
-      "--accent-foreground": "24 9.8% 10%",
-      "--border": "24 10% 86%",
-      "--input": "24 10% 86%",
-      "--ring": "24 9.8% 10%",
-    },
-    dark: {
-      "--background": "20 14.3% 4.1%",
-      "--foreground": "60 9.1% 97.8%",
-      "--card": "20 14.3% 4.1%",
-      "--card-foreground": "60 9.1% 97.8%",
-      "--popover": "20 14.3% 4.1%",
-      "--popover-foreground": "60 9.1% 97.8%",
-      "--primary": "60 9.1% 97.8%",
-      "--primary-foreground": "24 9.8% 10%",
-      "--secondary": "12 6.5% 15.1%",
-      "--secondary-foreground": "60 9.1% 97.8%",
-      "--muted": "12 6.5% 15.1%",
-      "--muted-foreground": "24 5.4% 63.9%",
-      "--accent": "12 6.5% 15.1%",
-      "--accent-foreground": "60 9.1% 97.8%",
-      "--border": "12 6.5% 15.1%",
-      "--input": "12 6.5% 15.1%",
-      "--ring": "24 5.7% 82.9%",
-    },
-  },
-  slate: {
-    light: {
-      "--background": "210 25% 97.8%",
-      "--foreground": "222.2 84% 4.9%",
-      "--card": "210 30% 99.1%",
-      "--card-foreground": "222.2 84% 4.9%",
-      "--popover": "210 30% 99.1%",
-      "--popover-foreground": "222.2 84% 4.9%",
-      "--primary": "222.2 47.4% 11.2%",
-      "--primary-foreground": "210 40% 98%",
-      "--secondary": "214 32% 93.6%",
-      "--secondary-foreground": "222.2 47.4% 11.2%",
-      "--muted": "214 30% 95.2%",
-      "--muted-foreground": "215.4 16.3% 46.9%",
-      "--accent": "214 28% 91.8%",
-      "--accent-foreground": "222.2 47.4% 11.2%",
-      "--border": "214 26% 86%",
-      "--input": "214 26% 86%",
-      "--ring": "222.2 84% 4.9%",
-    },
-    dark: {
-      "--background": "222.2 84% 4.9%",
-      "--foreground": "210 40% 98%",
-      "--card": "222.2 84% 4.9%",
-      "--card-foreground": "210 40% 98%",
-      "--popover": "222.2 84% 4.9%",
-      "--popover-foreground": "210 40% 98%",
-      "--primary": "210 40% 98%",
-      "--primary-foreground": "222.2 47.4% 11.2%",
-      "--secondary": "217.2 32.6% 17.5%",
-      "--secondary-foreground": "210 40% 98%",
-      "--muted": "217.2 32.6% 17.5%",
-      "--muted-foreground": "215 20.2% 65.1%",
-      "--accent": "217.2 32.6% 17.5%",
-      "--accent-foreground": "210 40% 98%",
-      "--border": "217.2 32.6% 17.5%",
-      "--input": "217.2 32.6% 17.5%",
-      "--ring": "212.7 26.8% 83.9%",
-    },
-  },
+  neutral: { light: IMS_DESIGN_LIGHT_THEME, dark: IMS_DESIGN_DARK_THEME },
+  zinc: { light: IMS_DESIGN_LIGHT_THEME, dark: IMS_DESIGN_DARK_THEME },
+  stone: { light: IMS_DESIGN_LIGHT_THEME, dark: IMS_DESIGN_DARK_THEME },
+  slate: { light: IMS_DESIGN_LIGHT_THEME, dark: IMS_DESIGN_DARK_THEME },
 };
 
 // ── State ──────────────────────────────────────────────────────────────────────
 
 const color = ref<ThemeColor>("neutral");
 const radius = ref<ThemeRadius>(0.5);
+const isDark = ref(false);
 let initialized = false;
 
 function resolveStoredDark() {
@@ -259,9 +144,9 @@ function applyRadius(r: ThemeRadius) {
 
 export function initTheme() {
   if (initialized) return;
-  const isDark = resolveStoredDark();
+  isDark.value = resolveStoredDark();
   if (typeof document !== "undefined") {
-    document.documentElement.classList.toggle("dark", isDark);
+    document.documentElement.classList.toggle("dark", isDark.value);
   }
   color.value = resolveStoredColor();
   radius.value = resolveStoredRadius();
@@ -270,7 +155,7 @@ export function initTheme() {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(COLOR_STORAGE_KEY, color.value);
     window.localStorage.setItem(RADIUS_STORAGE_KEY, String(radius.value));
-    window.localStorage.setItem(MODE_STORAGE_KEY, isDark ? "dark" : "light");
+    window.localStorage.setItem(MODE_STORAGE_KEY, isDark.value ? "dark" : "light");
   }
   initialized = true;
 }
@@ -282,7 +167,7 @@ export function useTheme() {
     initTheme();
   }
 
-  const isDark = ref(document.documentElement.classList.contains("dark"));
+  isDark.value = document.documentElement.classList.contains("dark");
 
   function toggleDark() {
     isDark.value = !isDark.value;

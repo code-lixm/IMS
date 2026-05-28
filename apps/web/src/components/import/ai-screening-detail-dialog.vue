@@ -1,25 +1,27 @@
 <template>
   <Dialog
     :open="open"
-    content-class="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col"
+    content-class="max-w-4xl max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
     @update:open="onUpdateOpen"
   >
     <template #content>
-      <div class="flex-1 grid gap-4 overflow-hidden">
-        <div class="flex items-start justify-between gap-3 pr-8">
-          <div class="min-w-0">
-            <h2 class="truncate text-lg font-semibold leading-none">{{ dialogTitle }}</h2>
+      <AppDialogLayout class="h-[85vh] max-h-[85vh]" body-class="flex min-h-0 flex-col overflow-hidden py-0" footer-class="shrink-0">
+        <template #header>
+          <div class="flex items-start justify-between gap-3 pr-8">
+            <DialogHeader class="min-w-0">
+              <DialogTitle class="truncate">{{ dialogTitle }}</DialogTitle>
+            </DialogHeader>
+            <span
+              v-if="showPositionIndicator"
+              class="inline-flex shrink-0 items-center rounded-md border-0 bg-[#F1F5FB] px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums"
+            >
+              {{ currentPosition }} / {{ totalPositions }}
+            </span>
           </div>
-          <span
-            v-if="showPositionIndicator"
-            class="inline-flex shrink-0 items-center rounded-md border border-border/50 bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums"
-          >
-            {{ currentPosition }} / {{ totalPositions }}
-          </span>
-        </div>
+        </template>
 
-        <Tabs v-model="activeTab" default-value="screening" class="flex-1 flex flex-col min-h-0">
-          <div class="flex items-center justify-between border-b pb-2">
+        <Tabs v-model="activeTab" default-value="screening" class="flex min-h-0 flex-1 flex-col">
+          <div class="flex items-center justify-between rounded-[6px] bg-[#F1F5FB] p-2">
             <TabsList>
               <TabsTrigger value="screening">
                 <span class="inline-flex items-center gap-1.5">
@@ -36,28 +38,28 @@
             </TabsList>
           </div>
 
-          <div class="relative mt-4 flex-1 min-h-0 overflow-hidden">
+          <div class="relative mt-4 min-h-0 flex-1 overflow-hidden">
             <button
               type="button"
-              class="absolute -left-5 inset-y-2 z-10 inline-flex w-14 items-center justify-center bg-gradient-to-r from-transparent via-background/5 to-transparent text-foreground/15 transition hover:from-muted/20 hover:via-muted/35 hover:to-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-10"
+              class="absolute -left-7 top-1/2 z-10 inline-flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-full bg-gradient-to-r from-transparent via-background/4 to-transparent text-foreground/10 transition hover:via-muted/20 hover:text-foreground/30 disabled:cursor-not-allowed disabled:opacity-5"
               :disabled="!hasPrev"
               aria-label="查看上一份报告"
               @click="emit('navigate-prev')"
             >
-              <ChevronLeft class="h-11 w-11" />
+              <ChevronLeft class="h-8 w-8" />
             </button>
             <button
               type="button"
-              class="absolute -right-5 inset-y-2 z-10 inline-flex w-14 items-center justify-center bg-gradient-to-l from-transparent via-background/5 to-transparent text-foreground/15 transition hover:from-muted/20 hover:via-muted/35 hover:to-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-10"
+              class="absolute -right-7 top-1/2 z-10 inline-flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-l-full bg-gradient-to-l from-transparent via-background/4 to-transparent text-foreground/10 transition hover:via-muted/20 hover:text-foreground/30 disabled:cursor-not-allowed disabled:opacity-5"
               :disabled="!hasNext"
               aria-label="查看下一份报告"
               @click="emit('navigate-next')"
             >
-              <ChevronRight class="h-11 w-11" />
+              <ChevronRight class="h-8 w-8" />
             </button>
 
           <!-- AI Screening Tab -->
-          <TabsContent value="screening" class="flex h-full overflow-hidden flex-col">
+          <TabsContent value="screening" class="flex h-full min-h-0 flex-col overflow-hidden">
             <div class="flex-1 overflow-y-auto space-y-4 py-2 px-4">
               <!-- 未初筛空态 -->
               <div v-if="!hasScreeningConclusion && !isScreeningRunning" class="flex flex-col items-center justify-center h-full gap-4 py-12">
@@ -96,139 +98,47 @@
               <!-- 有结论状态 -->
               <template v-else-if="hasScreeningConclusion && screeningData">
                 <!-- Match degree card -->
-                <div class="rounded-lg border bg-muted/30 p-4">
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div class="flex items-baseline gap-2">
-                      <span class="text-3xl font-bold" :class="matchDegreeColorClass">{{ score }}%</span>
-                      <span class="text-sm font-medium text-muted-foreground">{{ matchDegreeLabel }}</span>
-                    </div>
-                    <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                      <p v-if="templateInfo">模板：{{ screeningTemplateLabel(templateInfo) }}</p>
-                      <p>来源：{{ screeningSourceLabel(screeningData.screeningSource) }}</p>
-                      <p v-if="recommendationThresholdText">推荐规则：{{ recommendationThresholdText }}</p>
-                    </div>
+                <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
+                  <div class="rounded-lg border-0 bg-[#F1F5FB] p-4">
+                  <div class="flex items-baseline gap-2">
+                    <span class="text-3xl font-bold" :class="matchDegreeColorClass">{{ score }}%</span>
+                    <span class="text-sm font-semibold text-foreground">{{ matchDegreeLabel }}</span>
+                  </div>
+                  <p v-if="displayRecommendedAction" class="mt-2 text-sm leading-6 text-[#4B5563]">
+                    {{ displayRecommendedAction }}
+                  </p>
+                  <div class="mt-3 space-y-1 text-xs text-[#64748B]">
+                    <p v-if="templateInfo">模板：{{ screeningTemplateLabel(templateInfo) }}</p>
+                    <p>来源：{{ screeningSourceLabel(screeningData.screeningSource) }}</p>
+                    <p v-if="recommendationThresholdText">推荐规则：{{ recommendationThresholdText }}</p>
                   </div>
                 </div>
 
-                <div class="rounded-lg border bg-muted/30 p-4 space-y-4">
-                  <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">人工改分与学习反馈</h3>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        原始 AI 分数会保留，人工改分只作为覆盖层参与推荐判断。
-                      </p>
-                    </div>
-                    <Badge variant="outline" class="w-fit">
-                      {{ learningStatusText }}
-                    </Badge>
-                  </div>
-
-                  <div class="grid gap-3 sm:grid-cols-3">
-                    <div class="rounded-lg border border-border/60 bg-background/80 p-3">
-                      <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">原始 AI 分数</p>
-                      <p class="mt-1 text-lg font-semibold text-foreground">{{ rawScore }}%</p>
-                    </div>
-                    <div class="rounded-lg border border-border/60 bg-background/80 p-3">
-                      <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">当前生效分数</p>
-                      <p class="mt-1 text-lg font-semibold" :class="matchDegreeColorClass">{{ score }}%</p>
-                    </div>
-                    <div class="rounded-lg border border-border/60 bg-background/80 p-3">
-                      <p class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">覆盖状态</p>
-                      <p class="mt-1 text-sm font-medium text-foreground">{{ currentOverride ? '已人工改分' : '使用原始 AI 结果' }}</p>
-                    </div>
-                  </div>
-
-                  <div v-if="currentOverride" class="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm space-y-1.5">
-                    <p class="font-medium text-foreground">最近一次改分：{{ currentOverride.originalScore }} → {{ currentOverride.overriddenScore }}</p>
-                    <p v-if="currentOverride.reason" class="text-muted-foreground break-words">原因：{{ currentOverride.reason }}</p>
-                    <p class="text-xs text-muted-foreground">
-                      {{ formatFeedbackTime(currentOverride.createdAt) }}
-                      <span v-if="currentOverride.learningEnabledSnapshot">· 当时已开启本地学习</span>
-                    </p>
-                  </div>
-
-                  <div class="grid gap-3 md:grid-cols-[140px_minmax(0,1fr)] md:items-start">
-                    <div class="space-y-2">
-                      <Label for="override-score-input">修改后分数</Label>
-                      <Input id="override-score-input" v-model="overrideScoreInput" inputmode="numeric" placeholder="0-100" />
-                    </div>
-                    <div class="space-y-2">
-                      <Label for="override-reason-input">修改原因</Label>
-                      <Textarea id="override-reason-input" v-model="overrideReasonInput" rows="3" placeholder="例如：项目经历比 AI 判断更贴近岗位，补充了低代码平台实战经验" />
-                    </div>
-                  </div>
-
-                  <p v-if="overrideValidationMessage" class="text-sm text-destructive">{{ overrideValidationMessage }}</p>
-
-                  <div class="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      v-if="currentOverride"
-                      type="button"
-                      variant="secondary"
-                      :disabled="scoreActionPending"
-                      @click="file?.id && emit('clear-score-override', file.id)"
-                    >
-                      清除当前改分
-                    </Button>
-                    <Button
-                      type="button"
-                      :disabled="Boolean(overrideValidationMessage) || scoreActionPending || !file?.id"
-                      @click="submitScoreOverride"
-                    >
-                      {{ scoreActionPending ? '保存中...' : '保存人工改分' }}
-                    </Button>
-                  </div>
-
-                  <div v-if="feedbackHistory.length > 0" class="space-y-2">
-                    <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">改分记录</h4>
-                    <div class="space-y-2">
-                      <div v-for="item in feedbackHistory" :key="item.id" class="rounded-lg border border-border/60 bg-background/80 p-3 text-sm space-y-1">
-                        <p class="font-medium text-foreground">{{ item.originalScore }} → {{ item.overriddenScore }}</p>
-                        <p v-if="item.reason" class="break-words text-muted-foreground">原因：{{ item.reason }}</p>
-                        <p class="text-xs text-muted-foreground">
-                          {{ formatFeedbackTime(item.createdAt) }}
-                          <span v-if="item.learningEnabledSnapshot">· 已纳入本地学习样本</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="rounded-lg border bg-muted/30 p-4 space-y-3">
-                  <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">基础信息</h3>
-                  <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <div
-                      v-for="item in candidateOverviewItems"
-                      :key="item.label"
-                      class="min-w-0 space-y-1"
-                    >
-                      <dt class="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                        {{ item.label }}
-                      </dt>
-                      <dd
-                        :class="[
-                          item.label === '学历/学校'
-                            ? 'line-clamp-2 break-words text-sm font-medium leading-relaxed'
-                            : 'truncate text-sm font-medium leading-relaxed',
-                        ]"
+                  <div class="space-y-3 rounded-lg border-0 bg-[#F1F5FB] p-4">
+                    <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">基础信息</h3>
+                    <dl class="space-y-2">
+                      <div
+                        v-for="item in candidateOverviewItems"
+                        :key="item.label"
+                        class="text-sm leading-6"
                       >
-                        {{ item.value }}
-                      </dd>
-                    </div>
-                  </dl>
+                        <dt class="inline text-muted-foreground">{{ item.label }}：</dt>
+                        <dd class="inline font-medium text-foreground break-words">{{ item.value }}</dd>
+                      </div>
+                    </dl>
+                  </div>
                 </div>
 
-                <!-- University verification -->
-                <div class="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div class="rounded-lg border-0 bg-[#F1F5FB] p-4">
                   <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">院校信息</h3>
-                  <div class="space-y-2">
-                    <p class="text-base font-semibold">{{ universityDisplayName }}</p>
+                  <div class="mt-3 space-y-2">
+                    <p class="text-base font-semibold leading-tight">{{ universityDisplayName }}</p>
                     <div class="flex items-center gap-2 flex-wrap">
                       <template v-if="verdictBadge">
                         <Badge :variant="verdictBadge.variant" :class="verdictBadge.class">{{ verdictBadge.label }}</Badge>
                       </template>
                       <template v-else-if="isMissingUniversityInfo">
-                        <Badge variant="outline" class="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">院校信息缺失</Badge>
+                        <Badge variant="outline" class="border-0 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">院校信息缺失</Badge>
                       </template>
                       <Badge v-else variant="outline">{{ universityFallbackBadge }}</Badge>
                       <Badge v-for="tag in universityTags" :key="tag" variant="secondary">{{ tag }}</Badge>
@@ -240,7 +150,7 @@
                         type="button"
                         variant="outline"
                         size="sm"
-                        class="h-7 gap-1.5 border-amber-200 px-2 text-xs text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/20"
+                        class="h-7 gap-1.5 border-0 px-2 text-xs text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20"
                         @click="emit('retry-university-verification', file.id)"
                       >
                         <RefreshCw class="h-3 w-3" />
@@ -250,7 +160,7 @@
                     <p v-else-if="isUniversityNotFound" class="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
                       {{ universityNotFoundHint }}
                     </p>
-                    <p v-else-if="universityDetail" class="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                    <p v-else-if="universityDetail" class="text-xs text-muted-foreground leading-relaxed">
                       {{ universityDetail }}
                     </p>
                     <p v-else-if="isMissingUniversityInfo" class="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
@@ -263,105 +173,123 @@
                 </div>
 
                 <!-- Template Evidence Panel -->
-                <div v-if="hasTemplateEvidence" class="rounded-lg border bg-muted/30 p-4 space-y-4">
-                  <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">模板匹配证据</h3>
-
-                  <!-- Matched -->
-                  <div v-if="templateEvidence?.matched?.length" class="space-y-2">
-                    <h4 class="text-sm font-medium text-green-700 flex items-center gap-1.5">
-                      <Check class="h-4 w-4" />
-                      已匹配 ({{ templateEvidence.matched.length }})
-                    </h4>
-                    <ul class="space-y-2">
-                      <li
-                        v-for="(entry, idx) in templateEvidence.matched"
-                        :key="idx"
-                        class="text-sm flex items-start gap-2"
-                      >
-                        <Check class="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                        <div class="flex-1 min-w-0">
-                          <span class="font-medium text-foreground">{{ entry.item }}</span>
-                          <p v-if="entry.evidence" class="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                            {{ entry.evidence }}
-                          </p>
-                        </div>
-                      </li>
-                    </ul>
+                <Collapsible v-if="hasTemplateEvidence" class="rounded-lg border-0 bg-[#F1F5FB] p-4" :default-open="false">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">模板匹配证据</h3>
+                      <p class="mt-1 text-xs leading-5 text-[#64748B]">默认收起，只有在需要核对模板命中依据时再展开。</p>
+                    </div>
+                    <CollapsibleTrigger class="inline-flex items-center gap-1.5 rounded-[6px] bg-white px-3 py-1.5 text-xs font-semibold text-[#4B5563]">
+                      查看证据
+                    </CollapsibleTrigger>
                   </div>
 
-                  <!-- Unmatched -->
-                  <div v-if="templateEvidence?.unmatched?.length" class="space-y-2">
-                    <h4 class="text-sm font-medium text-amber-700 flex items-center gap-1.5">
-                      <AlertCircle class="h-4 w-4" />
-                      未匹配 ({{ templateEvidence.unmatched.length }})
-                    </h4>
-                    <ul class="space-y-2">
-                      <li
-                        v-for="(entry, idx) in templateEvidence.unmatched"
-                        :key="idx"
-                        class="text-sm flex items-start gap-2"
-                      >
-                        <XCircle class="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                        <div class="flex-1 min-w-0">
-                          <span class="font-medium text-foreground">{{ entry.item }}</span>
-                          <p v-if="entry.reason" class="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                            {{ entry.reason }}
-                          </p>
-                        </div>
-                      </li>
-                    </ul>
+                  <CollapsibleContent class="mt-4 space-y-4">
+                    <div v-if="templateEvidence?.matched?.length" class="space-y-2">
+                      <h4 class="text-sm font-medium text-green-700 flex items-center gap-1.5">
+                        <Check class="h-4 w-4" />
+                        已匹配 ({{ templateEvidence.matched.length }})
+                      </h4>
+                      <ul class="space-y-2">
+                        <li
+                          v-for="(entry, idx) in templateEvidence.matched"
+                          :key="idx"
+                          class="text-sm flex items-start gap-2"
+                        >
+                          <Check class="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                          <div class="flex-1 min-w-0">
+                            <span class="font-medium text-foreground">{{ entry.item }}</span>
+                            <p v-if="entry.evidence" class="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                              {{ entry.evidence }}
+                            </p>
+                          </div>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div v-if="templateEvidence?.unmatched?.length" class="space-y-2">
+                      <h4 class="text-sm font-medium text-amber-700 flex items-center gap-1.5">
+                        <AlertCircle class="h-4 w-4" />
+                        未匹配 ({{ templateEvidence.unmatched.length }})
+                      </h4>
+                      <ul class="space-y-2">
+                        <li
+                          v-for="(entry, idx) in templateEvidence.unmatched"
+                          :key="idx"
+                          class="text-sm flex items-start gap-2"
+                        >
+                          <XCircle class="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                          <div class="flex-1 min-w-0">
+                            <span class="font-medium text-foreground">{{ entry.item }}</span>
+                            <p v-if="entry.reason" class="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                              {{ entry.reason }}
+                            </p>
+                          </div>
+                        </li>
+                      </ul>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                <Collapsible v-if="hasAiConclusionDetails" v-slot="{ open }" class="rounded-lg border-0 bg-[#F1F5FB] p-4" :default-open="true">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">AI 结论详情</h3>
+                      <p class="mt-1 text-xs leading-5 text-[#64748B]">综合评价、优点、顾虑和建议可按需展开或收起。</p>
+                    </div>
+                    <CollapsibleTrigger class="inline-flex items-center gap-1.5 rounded-[6px] bg-white px-3 py-1.5 text-xs font-semibold text-[#4B5563]">
+                      {{ open ? "收起结论" : "查看结论" }}
+                    </CollapsibleTrigger>
                   </div>
-                </div>
 
-                <!-- Summary -->
-                <div v-if="screeningData.screeningConclusion?.summary" class="space-y-2">
-                  <h3 class="text-sm font-medium text-muted-foreground">综合评价</h3>
-                  <p class="text-sm">{{ screeningData.screeningConclusion.summary }}</p>
-                </div>
+                  <CollapsibleContent class="mt-4 space-y-4">
+                    <div v-if="screeningData.screeningConclusion?.summary" class="space-y-2">
+                      <h3 class="text-sm font-medium text-muted-foreground">综合评价</h3>
+                      <p class="text-sm">{{ screeningData.screeningConclusion.summary }}</p>
+                    </div>
 
-                <!-- Strengths -->
-                <div v-if="screeningData.screeningConclusion?.strengths?.length" class="space-y-2">
-                  <h3 class="text-sm font-medium text-green-600 flex items-center gap-1.5">
-                    <Check class="h-4 w-4" />
-                    优点
-                  </h3>
-                  <ul class="space-y-1.5">
-                    <li
-                      v-for="(strength, idx) in screeningData.screeningConclusion.strengths"
-                      :key="idx"
-                      class="text-sm flex items-start gap-2"
-                    >
-                      <Check class="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                      <span>{{ strength }}</span>
-                    </li>
-                  </ul>
-                </div>
+                    <div v-if="screeningData.screeningConclusion?.strengths?.length" class="space-y-2">
+                      <h3 class="text-sm font-medium text-green-600 flex items-center gap-1.5">
+                        <Check class="h-4 w-4" />
+                        优点
+                      </h3>
+                      <ul class="space-y-1.5">
+                        <li
+                          v-for="(strength, idx) in screeningData.screeningConclusion.strengths"
+                          :key="idx"
+                          class="text-sm flex items-start gap-2"
+                        >
+                          <Check class="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                          <span>{{ strength }}</span>
+                        </li>
+                      </ul>
+                    </div>
 
-                <!-- Concerns -->
-                <div v-if="screeningData.screeningConclusion?.concerns?.length" class="space-y-2">
-                  <h3 class="text-sm font-medium text-amber-600 flex items-center gap-1.5">
-                    <AlertCircle class="h-4 w-4" />
-                    顾虑
-                  </h3>
-                  <ul class="space-y-1.5">
-                    <li
-                      v-for="(concern, idx) in screeningData.screeningConclusion.concerns"
-                      :key="idx"
-                      class="text-sm flex items-start gap-2"
-                    >
-                      <AlertCircle class="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                      <span>{{ concern }}</span>
-                    </li>
-                  </ul>
-                </div>
+                    <div v-if="screeningData.screeningConclusion?.concerns?.length" class="space-y-2">
+                      <h3 class="text-sm font-medium text-amber-600 flex items-center gap-1.5">
+                        <AlertCircle class="h-4 w-4" />
+                        顾虑
+                      </h3>
+                      <ul class="space-y-1.5">
+                        <li
+                          v-for="(concern, idx) in screeningData.screeningConclusion.concerns"
+                          :key="idx"
+                          class="text-sm flex items-start gap-2"
+                        >
+                          <AlertCircle class="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                          <span>{{ concern }}</span>
+                        </li>
+                      </ul>
+                    </div>
 
-                <!-- Recommended action -->
-                <div v-if="screeningData.screeningConclusion?.recommendedAction" class="space-y-2">
-                  <h3 class="text-sm font-medium text-muted-foreground">建议操作</h3>
-                  <p class="text-sm text-foreground/80">
-                    {{ screeningData.screeningConclusion.recommendedAction }}
-                  </p>
-                </div>
+                    <div v-if="displayRecommendedAction" class="space-y-2">
+                      <h3 class="text-sm font-medium text-muted-foreground">建议操作</h3>
+                      <p class="text-sm text-foreground/80">
+                        {{ displayRecommendedAction }}
+                      </p>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
                 <!-- Error message -->
                 <div v-if="screeningData.screeningError" class="space-y-2">
@@ -370,13 +298,101 @@
                     {{ screeningData.screeningError }}
                   </p>
                 </div>
+
+                <div v-if="showLearningFeedbackPanel" class="space-y-4 rounded-[8px] border-0 bg-[#F1F5FB] p-4">
+                  <div class="flex flex-col gap-3">
+                    <div class="min-w-0">
+                      <h3 class="text-sm font-semibold text-[#1A1A1A]">人工改分与学习反馈</h3>
+                      <p class="mt-1 text-xs leading-5 text-[#64748B]">
+                        保留原始 AI 分数，人工改分作为覆盖层参与推荐判断。
+                      </p>
+                    </div>
+                    <Badge variant="secondary" class="w-fit rounded-[6px] border-0 bg-white px-3 py-1 text-xs font-semibold text-[#4B5563]">
+                      {{ learningStatusText }}
+                    </Badge>
+                  </div>
+
+                  <div class="space-y-3">
+                    <div class="grid gap-2 sm:grid-cols-3">
+                      <div class="rounded-[6px] border-0 bg-white p-3">
+                        <p class="text-[11px] text-[#64748B]">原始 AI</p>
+                        <p class="mt-1 text-xl font-semibold text-[#1A1A1A]">{{ rawScore }}%</p>
+                      </div>
+                      <div class="rounded-[6px] border-0 bg-white p-3">
+                        <p class="text-[11px] text-[#64748B]">当前生效</p>
+                        <p class="mt-1 text-xl font-semibold" :class="matchDegreeColorClass">{{ score }}%</p>
+                      </div>
+                      <div class="rounded-[6px] border-0 bg-white p-3">
+                        <p class="text-[11px] text-[#64748B]">覆盖状态</p>
+                        <p class="mt-1 text-sm font-semibold leading-6 text-[#1A1A1A]">{{ currentOverride ? '已改分' : '未覆盖' }}</p>
+                      </div>
+                    </div>
+
+                    <div v-if="currentOverride" class="space-y-1.5 rounded-[6px] border-0 bg-[#EEF4FF] p-3 text-sm">
+                      <p class="font-medium text-[#1A1A1A]">最近一次：{{ currentOverride.originalScore }} → {{ currentOverride.overriddenScore }}</p>
+                      <p v-if="currentOverride.reason" class="break-words text-[#64748B]">{{ currentOverride.reason }}</p>
+                      <p class="text-xs text-[#64748B]">
+                        {{ formatFeedbackTime(currentOverride.createdAt) }}
+                        <span v-if="currentOverride.learningEnabledSnapshot">· 已纳入本地学习</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div class="rounded-[6px] border-0 bg-white p-4">
+                    <div class="space-y-3">
+                      <div class="space-y-2">
+                        <Label for="override-score-input" class="text-xs font-semibold text-[#4B5563]">修改后分数</Label>
+                        <Input id="override-score-input" v-model="overrideScoreInput" class="h-10 rounded-[6px] border-0 bg-[#F8FAFD] text-base shadow-none" inputmode="numeric" placeholder="0-100" />
+                      </div>
+                      <div class="space-y-2">
+                        <Label for="override-reason-input" class="text-xs font-semibold text-[#4B5563]">修改原因</Label>
+                        <Textarea id="override-reason-input" v-model="overrideReasonInput" class="min-h-[116px] rounded-[6px] border-0 bg-[#F8FAFD] px-3 py-2 text-sm leading-6 shadow-none placeholder:text-[#6B7A90] focus:bg-white focus:ring-1 focus:ring-[#0062FF]/25" rows="4" placeholder="例如：项目经历比 AI 判断更贴近岗位，补充了低代码平台实战经验" />
+                      </div>
+                    </div>
+
+                    <p v-if="overrideValidationMessage" class="mt-3 text-sm text-destructive">{{ overrideValidationMessage }}</p>
+
+                    <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
+                      <Button
+                        v-if="currentOverride"
+                        type="button"
+                        variant="secondary"
+                        :disabled="scoreActionPending"
+                        @click="file?.id && emit('clear-score-override', file.id)"
+                      >
+                        清除当前改分
+                      </Button>
+                      <Button
+                        type="button"
+                        :disabled="Boolean(overrideValidationMessage) || scoreActionPending || !file?.id"
+                        @click="submitScoreOverride"
+                      >
+                        {{ scoreActionPending ? '保存中...' : '保存人工改分' }}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div v-if="feedbackHistory.length > 0" class="space-y-2">
+                    <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">改分记录</h4>
+                    <div class="space-y-2">
+                      <div v-for="item in feedbackHistory" :key="item.id" class="space-y-1 rounded-lg border-0 bg-white p-3 text-sm">
+                        <p class="font-medium text-foreground">{{ item.originalScore }} → {{ item.overriddenScore }}</p>
+                        <p v-if="item.reason" class="break-words text-muted-foreground">原因：{{ item.reason }}</p>
+                        <p class="text-xs text-muted-foreground">
+                          {{ formatFeedbackTime(item.createdAt) }}
+                          <span v-if="item.learningEnabledSnapshot">· 已纳入本地学习样本</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </template>
             </div>
           </TabsContent>
 
           <!-- Preview Tab -->
-          <TabsContent value="preview" class="flex h-full overflow-hidden flex-col">
-            <div class="flex-1 rounded-md border bg-muted/20 min-h-0 mx-4">
+          <TabsContent value="preview" class="flex h-full min-h-0 flex-col overflow-hidden">
+            <div class="mx-4 min-h-0 flex-1 rounded-md border-0 bg-[#F1F5FB]">
               <!-- Loading -->
               <div v-if="previewLoading" class="flex h-full items-center justify-center text-sm text-muted-foreground py-12">
                 <Loader2 class="h-5 w-5 mr-2 animate-spin" />
@@ -393,12 +409,12 @@
               <iframe
                 v-else-if="previewObjectUrl && isPdf"
                 :src="previewObjectUrl"
-                class="h-[60vh] w-full rounded-md"
+                class="h-full min-h-[56vh] w-full rounded-md"
                 title="PDF 预览"
               />
 
               <!-- Image Preview -->
-              <div v-else-if="previewObjectUrl && isImage" class="flex h-[60vh] items-center justify-center bg-background p-4">
+              <div v-else-if="previewObjectUrl && isImage" class="flex h-full min-h-[56vh] items-center justify-center bg-background p-4">
                 <img
                   :src="previewObjectUrl"
                   :alt="previewFileName || '原件预览'"
@@ -416,12 +432,12 @@
           </div>
         </Tabs>
 
-        <div class="flex justify-end pt-2 border-t">
+        <template #footer>
           <Button variant="outline" @click="emit('update:open', false)">
             关闭
           </Button>
-        </div>
-      </div>
+        </template>
+      </AppDialogLayout>
     </template>
   </Dialog>
 </template>
@@ -435,7 +451,8 @@ import { candidatesApi, resolveResumePreviewContentType } from "@/api/candidates
 import { AlertCircle, Check, ChevronLeft, ChevronRight, Loader2, FileText, ClipboardList, Sparkles, RefreshCw, XCircle } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { AppDialogLayout, Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs } from "@/components/ui/tabs";
 import { TabsList } from "@/components/ui/tabs";
 import { TabsTrigger } from "@/components/ui/tabs";
@@ -526,6 +543,10 @@ const learningStatusText = computed(() => {
   return props.batchScreeningConfig?.learningEnabled ? "本地学习已开启" : "本地学习未开启";
 });
 
+const showLearningFeedbackPanel = computed(() => {
+  return Boolean(props.batchScreeningConfig?.learningEnabled);
+});
+
 const overrideScoreInput = ref("");
 const overrideReasonInput = ref("");
 
@@ -578,6 +599,24 @@ const matchDegreeColorClass = computed(() => {
 
 const matchDegreeLabel = computed(() => {
   return derivedRecommendation.value ? `推荐${derivedRecommendation.value.label}` : "待确认";
+});
+
+const displayRecommendedAction = computed(() => {
+  const recommendation = derivedRecommendation.value;
+  if (recommendation?.verdict === "reject") {
+    return "建议先淘汰或转人工复核，不直接推进技术面试。";
+  }
+
+  if (recommendation?.verdict === "review") {
+    return "建议进入人工复核，重点核查边界信息和关键经历真实性。";
+  }
+
+  if (recommendation?.verdict === "pass") {
+    return props.screeningData?.screeningConclusion?.recommendedAction
+      ?? "建议安排技术面试，围绕岗位关键能力继续深挖。";
+  }
+
+  return props.screeningData?.screeningConclusion?.recommendedAction ?? "";
 });
 
 const recommendationThresholdText = computed(() => {
@@ -687,6 +726,15 @@ const templateEvidence = computed(() => {
 const hasTemplateEvidence = computed(() => {
   const te = templateEvidence.value;
   return !!te && (te.matched.length > 0 || te.unmatched.length > 0);
+});
+
+const hasAiConclusionDetails = computed(() => {
+  return Boolean(
+    props.screeningData?.screeningConclusion?.summary
+    || props.screeningData?.screeningConclusion?.strengths?.length
+    || props.screeningData?.screeningConclusion?.concerns?.length
+    || displayRecommendedAction.value,
+  );
 });
 
 const isScreeningRunning = computed(() => {

@@ -1,19 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue"
-import { Copy, History, LoaderCircle, MicOff, Radio, Sparkles, Trash2, Volume2 } from "lucide-vue-next"
-import type { RecorderListItem, RecorderStatus } from "@ims/shared"
-import { Badge } from "@/components/ui/badge"
+import { computed } from "vue"
+import { LoaderCircle, Mic, X } from "lucide-vue-next"
+import { recorderApi } from "@/api/recorder"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { useAppNotifications } from "@/composables/use-app-notifications"
-import { copyTextToClipboard } from "@/lib/clipboard"
-import { organizeRecorderText } from "@/lib/recorder/organize"
 import { cn } from "@/lib/utils"
 import { useRecorderStore } from "@/stores/recorder"
 
@@ -26,44 +16,9 @@ const emit = defineEmits<{
 }>()
 
 const recorderStore = useRecorderStore()
-const { notifyError, notifySuccess, notifyWarning } = useAppNotifications()
-
-const statusLabelMap: Record<RecorderStatus, string> = {
-  idle: "待命",
-  recording: "录制中",
-  stopping: "停止中",
-  transcribing: "转写中",
-  finalizing: "整理中",
-  completed: "已完成",
-  error: "异常",
-}
-
-const statusBadgeVariant = computed(() => {
-  if (recorderStore.status === "error") {
-    return "destructive"
-  }
-
-  if (recorderStore.status === "recording") {
-    return "default"
-  }
-
-  return "secondary"
-})
-
-const runtimeHint = computed(() => {
-  if (!props.desktopRuntime) {
-    return "需要在桌面端开启录音。"
-  }
-
-  if (recorderStore.status === "idle") {
-    return "点击后开始说话，结束录音后自动转写。"
-  }
-
-  return "录音状态会实时保留，转写完成后可整理或复制。"
-})
+const { notifyError } = useAppNotifications()
 
 const primaryActionBusy = computed(() => ["stopping", "transcribing", "finalizing"].includes(recorderStore.status))
-
 const primaryActionLabel = computed(() => {
   if (!props.desktopRuntime) {
     return "仅桌面端可用"
@@ -74,13 +29,89 @@ const primaryActionLabel = computed(() => {
   }
 
   if (recorderStore.status === "recording") {
-    return "结束录音"
+    return "停止"
   }
 
-  return displayFinalTranscript.value ? "继续补充" : "开始说话"
+  return "开始录音"
 })
 
 const primaryActionDisabled = computed(() => !props.desktopRuntime || primaryActionBusy.value)
+const diagnosticsBusy = computed(() => recorderStore.diagnosticsLoading)
+
+const compactStatusText = computed(() => {
+  if (!props.desktopRuntime) {
+    return "仅桌面"
+  }
+
+  if (recorderStore.status === "recording") {
+    return liveSignalLabel.value
+  }
+
+  if (primaryActionBusy.value) {
+    return "正在处理"
+  }
+
+  if (recorderStore.status === "completed") {
+    return "已保存"
+  }
+
+  if (recorderStore.status === "error") {
+    return recorderStore.errorMessage || "录音异常"
+  }
+
+  return "可录音"
+})
+
+const transcriptPreview = computed(() => {
+  return recorderStore.finalTranscriptText
+    || recorderStore.liveTranscriptText
+    || ""
+})
+const playbackUrl = computed(() => {
+  const recordingId = recorderStore.current?.recording.id
+  return recordingId ? recorderApi.playbackUrl(recordingId) : null
+})
+
+const liveLevelPercent = computed(() => {
+  const peak = Math.max(recorderStore.peakLevel, recorderStore.level, 0)
+  return Math.min(100, Math.round(peak * 100))
+})
+const liveSignalLabel = computed(() => {
+  if (recorderStore.status !== "recording") {
+    return "未在录音"
+  }
+  if (recorderStore.muted || liveLevelPercent.value <= 2) {
+    return "未检测到明显输入"
+  }
+  return "已检测到输入"
+})
+const diagnosticsSummary = computed(() => {
+  const data = recorderStore.diagnostics
+  if (!data) {
+    return "点击自检，检查默认麦克风、权限和输入信号。"
+  }
+  if (data.errorMessage) {
+    return data.errorMessage
+  }
+  if (data.inputSignalDetected === true) {
+    return "默认麦克风、权限和输入信号均正常。"
+  }
+  if (data.deviceAvailable && data.permissionGranted) {
+    return "设备和权限正常，但未检测到明显输入信号。"
+  }
+  return "请根据下方状态继续排查。"
+})
+
+async function handleDiagnostics() {
+  if (diagnosticsBusy.value || recorderStore.status === "stopping") {
+    return
+  }
+  try {
+    await recorderStore.runDiagnostics()
+  } catch {
+    // toast already emitted by store
+  }
+}
 
 async function handlePrimaryAction() {
   if (primaryActionDisabled.value) {
@@ -115,531 +146,218 @@ const durationLabel = computed(() => {
   return [minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":")
 })
 
-const levelBars = computed(() => {
-  const level = Math.max(0, Math.min(1, recorderStore.level))
-  const peakLevel = Math.max(level, Math.max(0, Math.min(1, recorderStore.peakLevel)))
-
-  return Array.from({ length: 16 }, (_, index) => {
-    const distance = Math.abs(index - 7.5)
-    const baseline = 18 + (index % 4) * 6
-    const liveBoost = Math.max(0, level * 64 - distance * 7)
-    const peakBoost = Math.max(0, peakLevel * 38 - distance * 4)
-    const height = Math.max(14, Math.min(100, baseline + liveBoost + peakBoost))
-
-    return {
-      id: `level-bar-${index}`,
-      height,
-      active: height > 34,
-      peak: peakBoost > 12,
-    }
-  })
-})
-
-const hasVoiceSignal = computed(() => {
-  return recorderStore.level > 0.06 || recorderStore.peakLevel > 0.18 || recorderStore.liveTranscriptText.trim().length > 0
-})
-
-const voiceState = computed(() => {
-  if (!props.desktopRuntime) {
-    return {
-      eyebrow: "桌面能力未启用",
-      title: "请在桌面端使用录音",
-      description: "浏览器环境暂时不能访问本地录音能力。打开 IMS 桌面端后，这里会显示麦克风状态。",
-      tone: "muted",
-    }
-  }
-
-  if (recorderStore.errorMessage || recorderStore.status === "error") {
-    return {
-      eyebrow: "需要处理",
-      title: "录音没有完成",
-      description: recorderStore.errorMessage ?? "请检查麦克风权限、输入设备或环境噪声后重试。",
-      tone: "danger",
-    }
-  }
-
-  if (recorderStore.status === "recording") {
-    return hasVoiceSignal.value
-      ? {
-          eyebrow: "已检测到声音",
-          title: "正在听，你可以继续说",
-          description: "音量反馈正在变化。说完后点击结束录音，系统会进入转写。",
-          tone: "active",
-        }
-      : {
-          eyebrow: "正在监听",
-          title: "请开始说话",
-          description: "如果长时间没有波形变化，请靠近麦克风或检查输入设备。",
-          tone: "listening",
-        }
-  }
-
-  if (recorderStore.status === "stopping") {
-    return {
-      eyebrow: "正在收尾",
-      title: "正在结束录音",
-      description: "请稍等，系统正在保存音频并准备转写。",
-      tone: "busy",
-    }
-  }
-
-  if (recorderStore.status === "transcribing") {
-    return {
-      eyebrow: "识别中",
-      title: "正在转写语音",
-      description: "转写完成后会在下方显示完整文本。",
-      tone: "busy",
-    }
-  }
-
-  if (recorderStore.status === "finalizing") {
-    return {
-      eyebrow: "整理中",
-      title: "正在整理记录",
-      description: "系统正在合并分段并保存最终文本。",
-      tone: "busy",
-    }
-  }
-
-  if (displayFinalTranscript.value) {
-    return {
-      eyebrow: "转写完成",
-      title: "请确认识别内容",
-      description: "你可以复制原文、继续补充，或整理成更易读的面试记录。",
-      tone: "success",
-    }
-  }
-
-  return {
-    eyebrow: "准备就绪",
-    title: "点击开始说话",
-    description: "建议在安静环境中靠近麦克风。录音结束后会自动生成转写文本。",
-    tone: "ready",
-  }
-})
-
-const voicePanelClass = computed(() => {
-  switch (voiceState.value.tone) {
-    case "active":
-      return "border-destructive/35 bg-destructive/[0.08] shadow-destructive/10"
-    case "listening":
-      return "border-primary/30 bg-primary/[0.06] shadow-primary/10"
-    case "busy":
-      return "border-amber-500/25 bg-amber-500/[0.08] shadow-amber-500/10"
-    case "success":
-      return "border-emerald-500/25 bg-emerald-500/[0.08] shadow-emerald-500/10"
-    case "danger":
-      return "border-destructive/45 bg-destructive/[0.10] shadow-destructive/10"
-    default:
-      return "border-border/70 bg-card/80 shadow-black/5"
-  }
-})
-
-const displaySegments = computed(() => recorderStore.liveTranscriptSegments.slice(-5))
-
-const historyItems = computed<RecorderListItem[]>(() => recorderStore.history)
-const selectedRecordingId = computed(() => recorderStore.current?.recording.id ?? null)
-
-const finalTranscript = computed(() => recorderStore.finalTranscriptText.trim())
-const organisedTranscript = computed(() => recorderStore.organisedText?.trim() ?? "")
-const displayFinalTranscript = computed(() => recorderStore.current?.recording.finalTranscriptText.trim() || finalTranscript.value)
-const displayOrganisedTranscript = computed(() => recorderStore.current?.recording.organisedText?.trim() ?? organisedTranscript.value)
-const organizeTargetRecordingId = computed(() => recorderStore.current?.recording.id ?? recorderStore.activeRecordingId ?? null)
-const organizeTargetSegments = computed(() => recorderStore.current?.recording.transcriptSegments ?? recorderStore.liveTranscriptSegments)
-const selectedRecordingLabel = computed(() => recorderStore.current?.recording.id ?? recorderStore.activeRecordingId ?? "当前录音")
-
-async function ensureHistoryLoaded() {
-  await recorderStore.loadRecordings()
-
-  if (!recorderStore.current && recorderStore.history[0]) {
-    await recorderStore.loadRecordingDetail(recorderStore.history[0].id)
-  }
-}
-
-async function handleCopy(text: string, label: string) {
-  if (!text.trim()) {
-    notifyWarning(`${label}为空，暂时无法复制`)
-    return
-  }
-
-  const copied = await copyTextToClipboard(text)
-  if (!copied) {
-    notifyWarning("当前环境不支持自动复制，请检查剪贴板权限")
-    return
-  }
-
-  notifySuccess(`已复制${label}`)
-}
-
-async function handleSelectHistoryItem(recordingId: string) {
-  if (selectedRecordingId.value === recordingId && recorderStore.current) {
-    return
-  }
-
-  await recorderStore.loadRecordingDetail(recordingId)
-}
-
-async function handleOrganize() {
-  const recordingId = organizeTargetRecordingId.value
-  if (!recordingId) {
-    notifyWarning("暂无可整理的录音记录")
-    return
-  }
-
-  const nextOrganisedText = organizeRecorderText({
-    finalTranscriptText: displayFinalTranscript.value,
-    segments: organizeTargetSegments.value,
-  })
-
-  if (!nextOrganisedText) {
-    notifyWarning("暂无可整理的文本内容")
-    return
-  }
-
-  await recorderStore.saveOrganisedText(recordingId, nextOrganisedText)
-  notifySuccess("整理结果已保存")
-}
-
-async function handleDeleteHistoryItem(recordingId: string) {
-  await recorderStore.deleteRecording(recordingId)
-
-  if (!recorderStore.current && recorderStore.history[0]) {
-    await recorderStore.loadRecordingDetail(recorderStore.history[0].id)
-  }
-
-  notifySuccess("录音记录已删除")
-}
-
-function formatHistoryTime(timestamp: number) {
-  return new Date(timestamp).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-onMounted(() => {
-  void ensureHistoryLoaded()
-})
-
-watch(
-  () => recorderStore.historyOpen,
-  (nextOpen) => {
-    if (nextOpen) {
-      void ensureHistoryLoaded()
-    }
-  },
-)
 </script>
 
 <template>
   <section
-    class="pointer-events-auto w-[24rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[1.75rem] border border-border/70 bg-background/95 shadow-2xl shadow-black/10 backdrop-blur-xl"
+    class="recorder-liquid-shell pointer-events-auto relative isolate w-[15.75rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[32px] bg-[rgba(236,242,249,0.2)] dark:bg-[#132237]/34"
   >
-    <div class="max-h-[72vh] overflow-y-auto">
-      <div class="border-b border-border/70 bg-gradient-to-br from-destructive/12 via-background to-background px-5 py-4">
-        <div class="flex items-start justify-between gap-3">
-          <div class="space-y-2">
-            <div class="flex items-center gap-2">
-              <Badge :variant="statusBadgeVariant">
-                {{ statusLabelMap[recorderStore.status] }}
-              </Badge>
-              <span class="text-xs text-muted-foreground">
-                {{ recorderStore.activeRecordingId ?? "尚未开始录音" }}
+    <svg class="pointer-events-none absolute h-0 w-0">
+      <filter id="ims-recorder-liquid-filter" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.012 0.02"
+          numOctaves="1"
+          seed="7"
+          result="noise"
+        />
+        <feGaussianBlur in="noise" stdDeviation="0.35" result="softNoise" />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="softNoise"
+          scale="16"
+          xChannelSelector="R"
+          yChannelSelector="G"
+        />
+      </filter>
+    </svg>
+    <div class="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(255,255,255,0.2)_24%,rgba(226,235,246,0.18)_58%,rgba(214,226,241,0.2)_100%)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(19,34,55,0.14)_30%,rgba(15,23,42,0.16)_100%)]" />
+    <div class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.56),rgba(255,255,255,0))]" />
+    <div class="pointer-events-none absolute -left-10 top-12 -z-10 h-36 w-36 rounded-full bg-[rgba(255,255,255,0.34)] blur-[40px]" />
+    <div class="pointer-events-none absolute -right-12 bottom-6 -z-10 h-32 w-32 rounded-full bg-[rgba(207,224,255,0.24)] blur-[38px]" />
+    <div class="pointer-events-none absolute inset-[1px] rounded-[31px] border border-white/28" />
+    <div class="relative px-4 pb-4 pt-4">
+      <div class="absolute right-3 top-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-7 w-7 rounded-full text-[#7A8699] shadow-none hover:bg-white/38 hover:text-[#334155] dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-slate-100"
+          aria-label="收起录音面板"
+          @click="emit('close')"
+        >
+          <X class="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div class="pt-8 text-center">
+        <button
+          type="button"
+          :disabled="primaryActionDisabled"
+          :class="cn(
+            'relative mx-auto grid h-[5.75rem] w-[5.75rem] place-items-center overflow-hidden rounded-full border backdrop-blur-xl transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-60',
+            recorderStore.status === 'recording'
+              ? 'border-[rgba(253,180,180,0.58)] bg-[linear-gradient(180deg,rgba(255,138,138,0.92),rgba(239,68,68,0.9)_60%,rgba(214,45,45,0.94)_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.44),0_14px_28px_-22px_rgba(239,68,68,0.42)] hover:scale-[1.01]'
+              : 'border-white/80 bg-[linear-gradient(180deg,rgba(155,183,238,0.96),rgba(123,151,214,0.94)_56%,rgba(107,132,196,0.98)_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.62),inset_0_-10px_20px_rgba(71,85,105,0.12),0_14px_28px_-22px_rgba(100,116,139,0.24)] hover:scale-[1.01]',
+          )"
+          :aria-label="primaryActionLabel"
+          @click="handlePrimaryAction"
+        >
+          <span class="pointer-events-none absolute inset-x-5 top-2.5 h-4 rounded-full bg-white/34 blur-md" />
+          <span
+            v-if="recorderStore.status === 'recording'"
+            class="absolute inset-[-5px] rounded-full border border-[rgba(252,165,165,0.2)]"
+          />
+          <LoaderCircle v-if="primaryActionBusy" class="relative z-10 h-8 w-8 animate-spin" />
+          <Mic v-else class="relative z-10 h-9 w-9" />
+        </button>
+
+        <div class="recorder-liquid-capsule mx-auto mt-5 max-w-[12.75rem] rounded-[22px] bg-[rgba(255,255,255,0.12)] px-3 py-2.5 dark:bg-white/7">
+          <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div class="flex min-w-0 items-center gap-1.5">
+              <span
+                class="h-1.5 w-1.5 rounded-full shadow-[0_0_0_3px_rgba(255,255,255,0.34)]"
+                :class="recorderStore.status === 'recording' ? 'bg-[#EF4444]' : 'bg-[#0062FF]'"
+              />
+              <span class="truncate text-[12px] font-medium text-[#5B677A] dark:text-slate-300">
+                {{ compactStatusText }}
               </span>
             </div>
-
-            <div>
-              <h2 class="text-base font-semibold tracking-tight text-foreground">
-                全局录音面板
-              </h2>
-              <p class="mt-1 text-sm leading-6 text-muted-foreground">
-                {{ runtimeHint }}
-              </p>
-            </div>
-          </div>
-
-          <div class="rounded-2xl border border-border/70 bg-background/80 px-3 py-2 text-right shadow-sm">
-            <p class="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-              Duration
-            </p>
-            <p class="mt-1 text-lg font-semibold tabular-nums text-foreground">
+            <span class="font-mono text-[18px] font-semibold tabular-nums tracking-[-0.05em] text-[#1F2937] dark:text-slate-50">
               {{ durationLabel }}
-            </p>
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="ml-auto h-7 rounded-full px-2.5 text-[12px] font-medium text-[#5B677A] shadow-none hover:bg-white/42 dark:text-slate-300 dark:hover:bg-white/10"
+              :disabled="diagnosticsBusy"
+              @click="handleDiagnostics"
+            >
+              {{ diagnosticsBusy ? "检测中" : "自检" }}
+            </Button>
+          </div>
+          <div class="mx-1 mt-2.5 h-[3px] overflow-hidden rounded-full bg-slate-900/8 dark:bg-white/10">
+            <div
+              class="h-full rounded-full transition-all duration-150"
+              :class="recorderStore.status === 'recording' ? 'bg-[#EF4444]/76' : 'bg-[#7C97C8]'"
+              :style="{ width: `${liveLevelPercent}%` }"
+            />
           </div>
         </div>
       </div>
 
-      <div class="space-y-4 p-5">
-        <div :class="cn('relative overflow-hidden rounded-[1.5rem] border px-4 py-5 shadow-lg', voicePanelClass)">
-          <div class="pointer-events-none absolute -right-12 -top-16 h-36 w-36 rounded-full bg-destructive/10 blur-2xl" />
-          <div class="pointer-events-none absolute -bottom-20 left-6 h-32 w-32 rounded-full bg-primary/10 blur-2xl" />
-
-          <div class="relative space-y-5">
-            <div class="flex items-start justify-between gap-4">
-              <div class="min-w-0">
-                <p class="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-                  {{ voiceState.eyebrow }}
-                </p>
-                <h3 class="mt-2 text-xl font-semibold tracking-tight text-foreground">
-                  {{ voiceState.title }}
-                </h3>
-                <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                  {{ voiceState.description }}
-                </p>
-              </div>
-
-              <div class="rounded-2xl border border-border/70 bg-background/75 px-3 py-2 text-right shadow-sm">
-                <p class="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Time</p>
-                <p class="mt-1 text-lg font-semibold tabular-nums text-foreground">{{ durationLabel }}</p>
-              </div>
-            </div>
-
-            <div class="flex flex-col items-center gap-4">
-              <button
-                type="button"
-                :disabled="primaryActionDisabled"
-                :class="cn(
-                  'group relative grid h-24 w-24 place-items-center rounded-full border transition-all duration-300 ease-out disabled:cursor-not-allowed disabled:opacity-60',
-                  recorderStore.status === 'recording'
-                    ? 'border-destructive/40 bg-destructive text-destructive-foreground shadow-2xl shadow-destructive/25 hover:scale-[1.03]'
-                    : 'border-primary/25 bg-primary text-primary-foreground shadow-2xl shadow-primary/20 hover:scale-[1.03]',
-                )"
-                @click="handlePrimaryAction"
-              >
-                <span
-                  v-if="recorderStore.status === 'recording'"
-                  class="absolute inset-[-10px] rounded-full border border-destructive/25 animate-ping"
-                />
-                <LoaderCircle v-if="primaryActionBusy" class="h-9 w-9 animate-spin" />
-                <Radio v-else-if="recorderStore.status === 'recording'" class="h-9 w-9" />
-                <Sparkles v-else class="h-9 w-9" />
-              </button>
-
-              <div class="text-center">
-                <p class="text-sm font-medium text-foreground">{{ primaryActionLabel }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">
-                  {{ recorderStore.status === 'recording' ? '说完后手动结束，系统随后转写。' : '点击后立刻开始监听。' }}
-                </p>
-              </div>
-            </div>
-
-            <div class="rounded-2xl border border-border/60 bg-background/65 px-3 py-3">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <MicOff v-if="!desktopRuntime" class="h-4 w-4 text-muted-foreground" />
-                  <Volume2 v-else class="h-4 w-4 text-muted-foreground" />
-                  <span>实时收音反馈</span>
-                </div>
-                <span class="text-xs tabular-nums text-muted-foreground">
-                  {{ recorderStore.level.toFixed(2) }} / {{ recorderStore.peakLevel.toFixed(2) }}
-                </span>
-              </div>
-
-              <div class="flex h-16 items-end gap-1.5 rounded-2xl bg-muted/45 px-3 py-3">
-                <span
-                  v-for="bar in levelBars"
-                  :key="bar.id"
-                  :class="cn(
-                    'block flex-1 rounded-full transition-all duration-200 ease-out',
-                    bar.peak ? 'bg-destructive/90' : bar.active ? 'bg-primary/75' : 'bg-muted-foreground/20',
-                  )"
-                  :style="{ height: `${bar.height}%` }"
-                />
-              </div>
-            </div>
-          </div>
+      <div v-if="transcriptPreview || playbackUrl || recorderStore.diagnostics" class="mt-3 space-y-2">
+        <div v-if="transcriptPreview" class="recorder-liquid-card rounded-[18px] bg-[rgba(255,255,255,0.12)] p-3 dark:bg-[#101A28]/38">
+          <p class="mb-2 text-[11px] font-medium text-[#7A8699] dark:text-slate-400">
+            {{ recorderStore.finalTranscriptText ? "最终转写" : "实时转写" }}
+          </p>
+          <p class="max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-[#334155] dark:text-slate-100">
+            {{ transcriptPreview }}
+          </p>
         </div>
 
-        <Card class="border-border/70 bg-card/75 shadow-sm">
-          <CardHeader class="pb-3">
-            <CardTitle class="text-sm">实时识别</CardTitle>
-            <CardDescription>系统听到声音后，会在这里显示最近的分段文本。</CardDescription>
-          </CardHeader>
-          <CardContent class="space-y-3">
-            <div v-if="displaySegments.length" class="space-y-2">
-              <div
-                v-for="segment in displaySegments"
-                :key="segment.id"
-                class="rounded-2xl border border-border/70 bg-background/80 px-3 py-2"
-              >
-                <div class="mb-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                  <span>片段 {{ segment.sequence + 1 }}</span>
-                  <span>{{ Math.floor(segment.startMs / 1000) }}s → {{ Math.floor(segment.endMs / 1000) }}s</span>
-                </div>
-                <p class="text-sm leading-6 text-foreground">
-                  {{ segment.text || "等待语音分段…" }}
-                </p>
-              </div>
-            </div>
-
-            <div
-              v-else
-              class="rounded-2xl border border-dashed border-border bg-background/60 px-3 py-4 text-sm leading-6 text-muted-foreground"
-            >
-              {{ recorderStore.liveTranscriptText || "开始说话后，这里会显示实时识别结果。" }}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card class="border-border/70 bg-card/75 shadow-sm">
-          <CardHeader class="pb-3">
-            <CardTitle class="text-sm">识别结果</CardTitle>
-            <CardDescription>当前查看：{{ selectedRecordingLabel }}</CardDescription>
-          </CardHeader>
-          <CardContent class="space-y-3">
-            <p class="min-h-24 whitespace-pre-wrap rounded-2xl bg-background/70 px-3 py-3 text-sm leading-6 text-foreground">
-              {{ displayFinalTranscript || "结束录音后，这里会显示完整转写文本。" }}
-            </p>
-
-            <div class="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="!displayFinalTranscript"
-                @click="handleCopy(displayFinalTranscript, '原文')"
-              >
-                <Copy class="mr-1.5 h-3.5 w-3.5" />
-                复制原文
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="primaryActionDisabled"
-                @click="handlePrimaryAction"
-              >
-                <Radio class="mr-1.5 h-3.5 w-3.5" />
-                {{ displayFinalTranscript ? "继续补充" : "重新尝试" }}
-              </Button>
-              <Button
-                size="sm"
-                :disabled="!organizeTargetRecordingId || !displayFinalTranscript || recorderStore.savingOrganised"
-                @click="handleOrganize"
-              >
-                <LoaderCircle v-if="recorderStore.savingOrganised" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                <Sparkles v-else class="mr-1.5 h-3.5 w-3.5" />
-                {{ recorderStore.savingOrganised ? "整理中" : "整理记录" }}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card class="border-border/70 bg-card/75 shadow-sm">
-          <CardHeader class="pb-3">
-            <CardTitle class="text-sm">整理结果</CardTitle>
-            <CardDescription>整理后会保存到当前录音记录。</CardDescription>
-          </CardHeader>
-          <CardContent class="space-y-3">
-            <div class="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="!displayOrganisedTranscript"
-                @click="handleCopy(displayOrganisedTranscript, '整理后文本')"
-              >
-                <Copy class="mr-1.5 h-3.5 w-3.5" />
-                复制整理结果
-              </Button>
-            </div>
-            <p class="min-h-20 whitespace-pre-wrap text-sm leading-6 text-foreground">
-              {{ displayOrganisedTranscript || "点击“整理记录”后，这里会显示更易读的文本。" }}
-            </p>
-          </CardContent>
-        </Card>
-
-        <div class="rounded-2xl border border-border/70 bg-card/70 shadow-sm">
-          <button
-            type="button"
-            class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/40"
-            @click="recorderStore.setHistoryOpen(!recorderStore.historyOpen)"
-          >
-            <div class="flex items-center gap-3">
-              <div class="rounded-xl bg-muted p-2 text-muted-foreground">
-                <History class="h-4 w-4" />
-              </div>
-              <div>
-                <p class="text-sm font-medium text-foreground">历史入口</p>
-                <p class="text-xs text-muted-foreground">
-                  共 {{ recorderStore.total || historyItems.length }} 条，点击记录可查看详情。
-                </p>
-              </div>
-            </div>
-
-            <span class="text-xs text-muted-foreground">
-              {{ recorderStore.historyOpen ? "收起" : "展开" }}
-            </span>
-          </button>
-
-          <div
-            v-if="recorderStore.historyOpen"
-            class="border-t border-border/70 px-4 py-3"
-          >
-            <div
-              v-if="recorderStore.historyLoading && !historyItems.length"
-              class="rounded-2xl border border-dashed border-border bg-background/70 px-3 py-4 text-sm text-muted-foreground"
-            >
-              正在加载录音历史…
-            </div>
-
-            <div v-if="historyItems.length" class="space-y-2">
-              <article
-                v-for="item in historyItems"
-                :key="item.id"
-                :class="cn(
-                  'rounded-2xl border bg-background/75 px-3 py-3 transition-colors',
-                  selectedRecordingId === item.id ? 'border-primary/50 bg-primary/5' : 'border-border/70 hover:bg-accent/30',
-                )"
-                @click="handleSelectHistoryItem(item.id)"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="truncate text-sm font-medium text-foreground">
-                      {{ item.finalTranscriptText || item.liveTranscriptText || item.organisedText || "未命名录音" }}
-                    </p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                      {{ formatHistoryTime(item.updatedAt) }} · {{ Math.floor(item.durationMs / 1000) }}s
-                    </p>
-                  </div>
-
-                  <div class="flex items-center gap-2">
-                    <Badge variant="outline">
-                      {{ statusLabelMap[item.status] }}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      class="h-8 px-2 text-muted-foreground hover:text-destructive"
-                      :disabled="recorderStore.deletingRecordingId === item.id"
-                      @click.stop="handleDeleteHistoryItem(item.id)"
-                    >
-                      <LoaderCircle v-if="recorderStore.deletingRecordingId === item.id" class="h-3.5 w-3.5 animate-spin" />
-                      <Trash2 v-else class="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-
-                <p class="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                  {{ item.organisedText || item.finalTranscriptText || item.liveTranscriptText || "暂无文本内容" }}
-                </p>
-              </article>
-            </div>
-
-            <div
-              v-else
-              class="rounded-2xl border border-dashed border-border bg-background/70 px-3 py-4 text-sm text-muted-foreground"
-            >
-              暂无录音记录。
-            </div>
-          </div>
+        <div
+          v-if="playbackUrl"
+          class="recorder-liquid-card space-y-2 rounded-[18px] bg-[rgba(255,255,255,0.12)] p-3 dark:bg-[#101A28]/38"
+        >
+          <audio
+            class="h-10 w-full"
+            :src="playbackUrl"
+            controls
+            preload="metadata"
+          />
         </div>
 
-        <div class="flex items-center justify-end gap-2 pt-1">
-          <Button variant="outline" size="sm" @click="emit('close')">
-            收起
-          </Button>
+        <div v-if="recorderStore.diagnostics" class="recorder-liquid-card space-y-2 rounded-[18px] bg-[rgba(255,255,255,0.12)] p-3 dark:bg-[#101A28]/38">
+          <p class="text-[12px] leading-5 text-[#5B677A] dark:text-slate-300">
+            {{ diagnosticsSummary }}
+          </p>
+          <div v-if="recorderStore.diagnostics" class="grid gap-2 text-[12px] text-[#5B677A] dark:text-slate-300">
+            <div class="grid grid-cols-2 gap-2">
+              <div class="rounded-[14px] bg-white/42 px-3 py-2 dark:bg-white/[0.04]">
+                <p class="text-[11px] text-[#7A8699] dark:text-slate-400">默认设备</p>
+                <p class="mt-1 font-medium">{{ recorderStore.diagnostics.deviceName ?? "未识别" }}</p>
+              </div>
+              <div class="rounded-[14px] bg-white/42 px-3 py-2 dark:bg-white/[0.04]">
+                <p class="text-[11px] text-[#7A8699] dark:text-slate-400">权限</p>
+                <p class="mt-1 font-medium">
+                  {{
+                    recorderStore.diagnostics.permissionGranted === null
+                      ? "未知"
+                      : recorderStore.diagnostics.permissionGranted
+                        ? "已授权"
+                        : "未授权"
+                  }}
+                </p>
+              </div>
+              <div class="rounded-[14px] bg-white/42 px-3 py-2 dark:bg-white/[0.04]">
+                <p class="text-[11px] text-[#7A8699] dark:text-slate-400">采样配置</p>
+                <p class="mt-1 font-medium">
+                  {{
+                    recorderStore.diagnostics.sampleRate && recorderStore.diagnostics.channels
+                      ? `${recorderStore.diagnostics.sampleRate} Hz / ${recorderStore.diagnostics.channels} ch`
+                      : "不可用"
+                  }}
+                </p>
+              </div>
+              <div class="rounded-[14px] bg-white/42 px-3 py-2 dark:bg-white/[0.04]">
+                <p class="text-[11px] text-[#7A8699] dark:text-slate-400">输入信号</p>
+                <p class="mt-1 font-medium">
+                  {{
+                    recorderStore.diagnostics.inputSignalDetected === null
+                      ? "未知"
+                      : recorderStore.diagnostics.inputSignalDetected
+                        ? "已检测到"
+                        : "未检测到"
+                  }}
+                </p>
+              </div>
+            </div>
+
+            <ul
+              v-if="recorderStore.diagnostics.notes.length"
+              class="space-y-1 rounded-[14px] border border-dashed border-[#D9E6F7] px-3 py-2 text-[11px] leading-5 text-[#7A8699] dark:border-white/10 dark:text-slate-400"
+            >
+              <li v-for="(note, index) in recorderStore.diagnostics.notes" :key="`${index}-${note}`">
+                {{ note }}
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
   </section>
 </template>
+
+<style scoped>
+.recorder-liquid-shell {
+  backdrop-filter: blur(14px) url(#ims-recorder-liquid-filter);
+  -webkit-backdrop-filter: blur(14px) url(#ims-recorder-liquid-filter);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.18),
+    inset 10px 10px 24px rgba(255, 255, 255, 0.1),
+    0 18px 42px rgba(15, 23, 42, 0.12);
+}
+
+.recorder-liquid-capsule,
+.recorder-liquid-card {
+  backdrop-filter: blur(4px) url(#ims-recorder-liquid-filter);
+  -webkit-backdrop-filter: blur(4px) url(#ims-recorder-liquid-filter);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 18px rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+}
+
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  .recorder-liquid-shell {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(244, 247, 251, 0.66));
+  }
+
+  .recorder-liquid-capsule,
+  .recorder-liquid-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.42));
+  }
+}
+</style>

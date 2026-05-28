@@ -4,7 +4,7 @@
       v-if="!currentCandidate"
       variant="ghost"
       size="sm"
-      class="h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60"
+      class="h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 dark:text-slate-300 dark:hover:bg-white/8 dark:hover:text-slate-100"
       @click="open = !open"
     >
       <User class="h-3.5 w-3.5" />
@@ -15,7 +15,7 @@
       <Button
         variant="outline"
         size="sm"
-        class="h-8 max-w-[16rem] rounded-md gap-1 border-border/60 bg-background px-1.5 text-xs font-medium leading-none text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground"
+        class="h-8 max-w-[16rem] rounded-md gap-1 border-border/60 bg-background px-1.5 text-xs font-medium leading-none text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground dark:border-white/10 dark:bg-white/8 dark:text-slate-100 dark:hover:bg-white/14"
         @click="open = true"
       >
         <User class="h-3.5 w-3.5" />
@@ -29,9 +29,12 @@
       </Button>
     </div>
 
-    <Dialog v-model:open="open">
+    <Dialog
+      v-model:open="open"
+      content-class="sm:max-w-lg max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)] dark:border-white/10 dark:bg-[#132237] dark:shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
+    >
       <template #content>
-        <div class="space-y-4">
+        <AppDialogLayout body-class="space-y-4">
           <div class="relative">
             <Search
               class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -44,7 +47,7 @@
             />
           </div>
 
-          <ScrollArea class="h-64">
+          <ScrollArea class="h-64 rounded-[6px] bg-white dark:bg-white/6">
             <div v-if="isLoading" class="flex items-center justify-center py-8">
               <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -61,7 +64,7 @@
               <li v-for="candidate in candidates" :key="candidate.id">
                 <div
                   class="rounded-md px-2 py-2 transition-colors"
-                  :class="selectedId === candidate.id ? 'bg-accent/70' : 'hover:bg-accent/50'"
+                  :class="selectedId === candidate.id ? 'bg-accent/70 dark:bg-white/12' : 'hover:bg-accent/50 dark:hover:bg-white/8'"
                 >
                   <button
                     type="button"
@@ -116,12 +119,12 @@
               </li>
             </ul>
           </ScrollArea>
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" @click="open = false">取消</Button>
-          <Button :disabled="!selectedId" @click="handleConfirm">确认</Button>
-        </DialogFooter>
+          <template #footer>
+            <Button variant="outline" @click="open = false">取消</Button>
+            <Button :disabled="!selectedId" @click="handleConfirm">确认</Button>
+          </template>
+        </AppDialogLayout>
       </template>
     </Dialog>
   </div>
@@ -137,7 +140,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog } from "@/components/ui/dialog";
-import { DialogFooter } from "@/components/ui/dialog";
+import { AppDialogLayout } from "@/components/ui/dialog";
 
 interface CandidateSelectorProps {
   modelValue?: string | null;

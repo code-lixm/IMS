@@ -150,9 +150,23 @@ watch(
 );
 
 watch(
-  () => [authStore.initialized, authStore.status, onboardingStore.canAutoStart] as const,
-  ([initialized, status, canAutoStart]) => {
-    if (!initialized || status !== "valid" || !canAutoStart) {
+  () => [authStore.initialized, authStore.status, onboardingStore.canAutoStart, onboardingStore.requestedRunId] as const,
+  ([initialized, status, canAutoStart, requestedRunId]) => {
+    if (!initialized || status !== "valid") {
+      return;
+    }
+
+    if (requestedRunId > handledRequestRunId) {
+      handledRequestRunId = requestedRunId;
+      autoStartAttempted = true;
+      scheduleStart({
+        force: true,
+        source: onboardingStore.lastRunSource ?? "manual",
+      });
+      return;
+    }
+
+    if (!canAutoStart) {
       return;
     }
 

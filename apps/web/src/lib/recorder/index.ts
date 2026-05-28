@@ -1,8 +1,8 @@
 import { FakeRecorderAdapter } from "./fake-adapter";
 import { TauriRecorderAdapter } from "./adapter";
-import type { IRecorderAdapter } from "./types";
+import type { IRecorderAdapter, RecorderDiagnosticsData } from "./types";
 
-export type { IRecorderAdapter };
+export type { IRecorderAdapter, RecorderDiagnosticsData };
 export { FakeRecorderAdapter };
 export { TauriRecorderAdapter };
 

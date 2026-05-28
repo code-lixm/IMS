@@ -11,14 +11,19 @@ import {
   validateInterviewImportAIDraft,
   validateInterviewImportPayload,
 } from "@ims/shared";
+import { generateText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { importBatches, importFileTasks, interviewAssessments, interviews } from "../../schema";
 import { logError, logInfo, logWarn } from "../../utils/logger";
+import { resolveImportAiEndpoint, normalizeOpenAIBaseURL } from "../import/ai-screening";
+import { extractPdfTextFromFile } from "../pdf-text";
 import {
   type InterviewImportCandidateResolutionResult,
   type ResolveInterviewImportCandidateOptions,
   resolveInterviewImportCandidate,
+  saveInterviewImportUploadToLocal,
 } from "./candidate-resolution";
 import {
   type InterviewRoundAppendedResult,
@@ -231,8 +236,640 @@ function buildCompatibilityAIDraft(
   };
 }
 
-function normalizeAIDraft(payload: InterviewImportPayload, rawInput: InterviewImportRawInput, systemContext: InterviewImportSystemContext, capturedAt: number) {
-  return payload.aiDraft ?? buildCompatibilityAIDraft(payload, rawInput, systemContext, capturedAt);
+const INTERVIEW_IMPORT_AI_PROMPT_LINES = [
+  "你是一个面试信息分析助手。你的任务是根据候选人简历文本和面试记录（会议纪要），生成结构化的面试导入数据。",
+  "",
+  "## 输入",
+  "- 简历文本（可能为空）",
+  "- 面试记录/会议纪要（可能为空）",
+  "- 系统上下文（候选人和已知信息）",
+  "",
+  "## 输出格式",
+  "你必须输出严格的 JSON，不要有任何多余文字。格式如下：",
+  "",
+  "```json",
+  '{',
+  '  "candidateOptions": [',
+  '    {',
+  '      "candidateName": "从简历或面试记录中提取的候选人姓名",',
+  '      "confidence": 0.85,',
+  '      "reason": "姓名提取来源说明",',
+  '      "evidence": ["支持该姓名的证据片段"]',
+  '    }',
+  '  ],',
+  '  "rounds": [',
+  '    {',
+  '      "inputIndex": 0,',
+  '      "resolvedRoundNumber": 1,',
+  '      "roundNumber": 1,',
+  '      "roundName": "技术一面",',
+  '      "interviewDate": "2024-01-15",',
+  '      "interviewerNames": ["张三"],',
+  '      "interviewType": "现场",',
+  '      "evaluationText": "根据面试记录生成的结构化评价（包含评价要点、候选人表现、优势与不足）",',
+  '      "resultLabel": "通过",',
+  '      "confidence": 0.9,',
+  '      "reason": "面试记录中有完整的第一轮评价信息"',
+  '    }',
+  '  ],',
+  '  "overallEvaluationText": "对候选人整体评价的综合描述",',
+  '  "confidence": 0.85,',
+  '  "reasons": ["面试记录信息较完整", "简历文本可提取有效信息"]',
+  '}',
+  "```",
+  "",
+  "## 分析要点",
+  "1. 从简历文本提取候选人姓名、职位、经验等信息",
+  "2. 从面试记录提取每轮面试的评价、面试官、日期等",
+  "3. 如果无法提取某轮面试信息，confidence 应降低",
+  "4. evaluationText 应该是结构化的评价文本，而不是简单复述原文",
+  "5. 如果输入材料不足以判断，宁可降低 confidence 而不是编造信息",
+  "6. roundNumber 从 1 开始递增",
+  "7. 整体 confidence 在 0-1 之间，0.7 以上为自动落库，0.7 以下需要人工确认",
+  "",
+  "## 重要",
+  "- 只输出 JSON，不要有其他文字",
+  "- confidence 必须 0-1 之间的数字",
+  "- evaluationText 不能为空",
+  "- 如果输入为空或无法解析，返回低 confidence 结果",
+].join("\n");
+
+function parseRuntimeModelName(modelId: string): string {
+  const separatorIndex = modelId.indexOf("::");
+  if (separatorIndex < 0) return modelId;
+  return modelId.slice(separatorIndex + 2);
+}
+
+async function generateInterviewImportAIDraft(
+  rawInput: InterviewImportRawInput,
+  systemContext: InterviewImportSystemContext,
+  capturedAt: number,
+): Promise<InterviewImportAIDraft | null> {
+  const resumeText = rawInput.resume?.extractedText?.trim();
+  const meetingNotes = rawInput.meetingNotesText?.trim();
+
+  if (!resumeText && !meetingNotes) {
+    logWarn("interview_import.ai_draft.no_input_text", {});
+    return null;
+  }
+
+  try {
+    const endpoint = await resolveImportAiEndpoint();
+
+    const sourceParts: string[] = [];
+    if (resumeText) {
+      sourceParts.push(`## 简历文本\n${resumeText}`);
+    }
+    if (meetingNotes) {
+      sourceParts.push(`## 面试记录/会议纪要\n${meetingNotes}`);
+    }
+    if (systemContext.candidateId) {
+      sourceParts.push(`## 已知候选人ID\n${systemContext.candidateId}`);
+    }
+    if (systemContext.candidateName) {
+      sourceParts.push(`## 已知候选人姓名\n${systemContext.candidateName}`);
+    }
+
+    const prompt = sourceParts.join("\n\n");
+    const sourceTextPreview = resumeText || meetingNotes || "";
+
+    if (endpoint.providerId === "minimax") {
+      const response = await fetch(`${normalizeOpenAIBaseURL(endpoint.baseURL)}/text/chatcompletion_v2`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${endpoint.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: parseRuntimeModelName(endpoint.model),
+          messages: [
+            { role: "system", content: INTERVIEW_IMPORT_AI_PROMPT_LINES },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.1,
+        }),
+        signal: AbortSignal.timeout(45_000),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(`MiniMax API error: ${response.status} ${errorText}`);
+      }
+
+      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const content = data?.choices?.[0]?.message?.content?.trim();
+      if (!content) {
+        throw new Error("MiniMax returned empty content");
+      }
+      const parsedDraft = parseAIDraftResponse(content, {
+        capturedAt,
+        sourceTextPreview,
+        rawInput,
+        systemContext,
+      });
+      if (!parsedDraft) {
+        logWarn("interview_import.ai_draft.minimax_parse_returned_null", {
+          model: endpoint.model,
+          contentPreview: content.slice(0, 1200),
+        });
+      } else {
+        logInfo("interview_import.ai_draft.generated", {
+          providerId: endpoint.providerId,
+          model: endpoint.model,
+          roundCount: parsedDraft.rounds.length,
+          candidateName: parsedDraft.candidateOptions[0]?.candidateName,
+        });
+      }
+      return parsedDraft;
+    }
+
+    const provider = createOpenAI({
+      name: endpoint.providerId || "interview-import-openai-compatible",
+      baseURL: normalizeOpenAIBaseURL(endpoint.baseURL),
+      apiKey: endpoint.apiKey,
+    });
+
+    const result = await generateText({
+      model: provider.chat(parseRuntimeModelName(endpoint.model)),
+      temperature: 0.1,
+      system: INTERVIEW_IMPORT_AI_PROMPT_LINES,
+      prompt,
+      abortSignal: AbortSignal.timeout(45_000),
+    });
+
+    const content = result.text?.trim();
+    if (!content) {
+      throw new Error("AI interview import draft returned empty content");
+    }
+
+    const parsedDraft = parseAIDraftResponse(content, {
+      capturedAt,
+      sourceTextPreview,
+      rawInput,
+      systemContext,
+    });
+    if (!parsedDraft) {
+      logWarn("interview_import.ai_draft.openai_parse_returned_null", {
+        model: endpoint.model,
+        contentPreview: content.slice(0, 1200),
+      });
+    } else {
+      logInfo("interview_import.ai_draft.generated", {
+        providerId: endpoint.providerId,
+        model: endpoint.model,
+        roundCount: parsedDraft.rounds.length,
+        candidateName: parsedDraft.candidateOptions[0]?.candidateName,
+      });
+    }
+    return parsedDraft;
+  } catch (error) {
+    logWarn("interview_import.ai_draft.generation_failed", {
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+function stripAssistantFormatting(content: string) {
+  const withoutThinking = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  return stripMarkdownCodeFence(withoutThinking);
+}
+
+function stripMarkdownCodeFence(content: string) {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("```")) {
+    return trimmed;
+  }
+
+  return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+}
+
+function normalizeConfidence(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value > 1 && value <= 100) {
+      return Math.max(0, Math.min(1, value / 100));
+    }
+    return Math.max(0, Math.min(1, value));
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["high", "strong", "高", "高置信度"].includes(normalized)) return 0.9;
+    if (["medium", "mid", "moderate", "中", "中等", "中等置信度"].includes(normalized)) return 0.7;
+    if (["low", "weak", "低", "低置信度"].includes(normalized)) return 0.45;
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) {
+      if (parsed > 1 && parsed <= 100) {
+        return Math.max(0, Math.min(1, parsed / 100));
+      }
+      return Math.max(0, Math.min(1, parsed));
+    }
+  }
+
+  return fallback;
+}
+
+function splitInterviewerNames(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const names = value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+    return names.length > 0 ? names : undefined;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const names = value
+    .split(/[\/,，、;&和]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return names.length > 0 ? names : undefined;
+}
+
+function extractCandidateNameFromSource(text: string | undefined): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  const patterns = [
+    /姓名[:：]\s*([\u4e00-\u9fa5A-Za-z·]{2,30})/,
+    /候选人[:：]\s*([\u4e00-\u9fa5A-Za-z·]{2,30})/,
+    /面试人[:：]\s*([\u4e00-\u9fa5A-Za-z·]{2,30})/,
+    /^([\u4e00-\u9fa5·]{2,8})\s+(?:意向岗位|电话|手机号|邮箱|工作年限|现居住地)/m,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const candidateName = match?.[1]?.trim();
+    if (candidateName) {
+      return candidateName;
+    }
+  }
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  for (const line of lines) {
+    const match = line.match(/^([\u4e00-\u9fa5]{2,8}|[A-Za-z]+(?:\s+[A-Za-z]+){0,2})$/);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return undefined;
+}
+
+function ensureNonEmptyString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeRoundResultLabel(value: unknown, fallback?: string): string | undefined {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return fallback;
+}
+
+function buildRoundEvaluationText(round: Record<string, unknown>): string {
+  const directEvaluation = typeof round.evaluationText === "string" ? round.evaluationText.trim() : "";
+  if (directEvaluation) {
+    return directEvaluation;
+  }
+
+  const roundName = typeof round.roundName === "string"
+    ? round.roundName.trim()
+    : typeof round.type === "string"
+      ? round.type.trim()
+      : "本轮面试";
+  const focus = typeof round.focus === "string" ? round.focus.trim() : "";
+  const duration = typeof round.duration === "string" ? round.duration.trim() : "";
+  const summaryParts = [
+    `${roundName}。`,
+    focus ? `重点考察：${focus}。` : "",
+    duration ? `建议时长：${duration}。` : "",
+  ].filter(Boolean);
+
+  return summaryParts.join(" ").trim() || "（无评价内容）";
+}
+
+function inferCandidateName(
+  parsed: Record<string, unknown>,
+  rawInput: InterviewImportRawInput,
+  systemContext: InterviewImportSystemContext,
+): string {
+  const snakeCaseName = typeof parsed.candidate_name === "string" ? parsed.candidate_name.trim() : "";
+  if (snakeCaseName) {
+    return snakeCaseName;
+  }
+
+  const parsedName = typeof parsed.candidateName === "string" ? parsed.candidateName.trim() : "";
+  if (parsedName) {
+    return parsedName;
+  }
+
+  const basicInfo = typeof parsed.basic_info === "object" && parsed.basic_info !== null
+    ? parsed.basic_info as Record<string, unknown>
+    : typeof parsed.basicInfo === "object" && parsed.basicInfo !== null
+      ? parsed.basicInfo as Record<string, unknown>
+      : typeof parsed.candidate_info === "object" && parsed.candidate_info !== null
+        ? parsed.candidate_info as Record<string, unknown>
+        : typeof parsed.candidateInfo === "object" && parsed.candidateInfo !== null
+          ? parsed.candidateInfo as Record<string, unknown>
+      : null;
+  const basicInfoName = typeof basicInfo?.name === "string" ? basicInfo.name.trim() : "";
+  if (basicInfoName) {
+    return basicInfoName;
+  }
+
+  return systemContext.candidateName?.trim()
+    || extractCandidateNameFromSource(rawInput.resume?.extractedText)
+    || extractCandidateNameFromSource(rawInput.meetingNotesText)
+    || "未知候选人";
+}
+
+function readStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildAnalysisBackfillRound(parsed: Record<string, unknown>): Record<string, unknown> | null {
+  const analysis = typeof parsed.interview_analysis === "object" && parsed.interview_analysis !== null
+    ? parsed.interview_analysis as Record<string, unknown>
+    : typeof parsed.interviewAnalysis === "object" && parsed.interviewAnalysis !== null
+      ? parsed.interviewAnalysis as Record<string, unknown>
+      : null;
+  const selfEvaluation = typeof parsed.self_evaluation === "object" && parsed.self_evaluation !== null
+    ? parsed.self_evaluation as Record<string, unknown>
+    : typeof parsed.selfEvaluation === "object" && parsed.selfEvaluation !== null
+      ? parsed.selfEvaluation as Record<string, unknown>
+      : null;
+
+  const strengths = analysis
+    ? readStringList(analysis.strengths)
+    : readStringList(selfEvaluation?.strengths);
+  const concernPoints = analysis
+    ? readStringList(analysis.concern_points ?? analysis.concernPoints)
+    : readStringList(selfEvaluation?.potential_concerns ?? selfEvaluation?.potentialConcerns);
+  const suggestedQuestions = analysis
+    ? readStringList(analysis.suggested_questions ?? analysis.suggestedQuestions)
+    : readStringList(parsed.interview_focus_suggestions ?? parsed.interviewFocusSuggestions);
+  const keyHighlights = readStringList(parsed.key_data_highlights ?? parsed.keyDataHighlights);
+  const personalStrengths = readStringList(parsed.personal_strengths ?? parsed.personalStrengths);
+  const interviewFocusAreas = readStringList(parsed.interview_focus_areas ?? parsed.interviewFocusAreas);
+  const positionMatchAnalysis = typeof parsed.position_match_analysis === "string"
+    ? parsed.position_match_analysis.trim()
+    : typeof parsed.positionMatchAnalysis === "string"
+      ? parsed.positionMatchAnalysis.trim()
+      : "";
+  const keyMetricsRaw = parsed.key_metrics ?? parsed.keyMetrics;
+  const keyMetrics = typeof keyMetricsRaw === "object" && keyMetricsRaw !== null
+    ? Object.entries(keyMetricsRaw as Record<string, unknown>)
+      .map(([key, value]) => {
+        const normalized = typeof value === "string"
+          ? value.trim()
+          : typeof value === "number"
+            ? String(value)
+            : "";
+        return normalized ? `${key}: ${normalized}` : "";
+      })
+      .filter(Boolean)
+    : [];
+  const sections = [
+    strengths.length > 0 ? `优势：${strengths.join("；")}` : "",
+    personalStrengths.length > 0 ? `个人优势：${personalStrengths.join("；")}` : "",
+    concernPoints.length > 0 ? `风险点：${concernPoints.join("；")}` : "",
+    suggestedQuestions.length > 0 ? `建议追问：${suggestedQuestions.join("；")}` : "",
+    interviewFocusAreas.length > 0 ? `面试关注点：${interviewFocusAreas.join("；")}` : "",
+    keyHighlights.length > 0 ? `关键亮点：${keyHighlights.join("；")}` : "",
+    keyMetrics.length > 0 ? `关键数据：${keyMetrics.join("；")}` : "",
+    positionMatchAnalysis ? `岗位匹配分析：${positionMatchAnalysis}` : "",
+  ].filter(Boolean);
+
+  const overallEvaluationText = typeof parsed.overallEvaluationText === "string"
+    ? parsed.overallEvaluationText.trim()
+    : typeof parsed.position_match_analysis === "string"
+      ? parsed.position_match_analysis.trim()
+      : typeof parsed.positionMatchAnalysis === "string"
+        ? parsed.positionMatchAnalysis.trim()
+        : "";
+  const reasonTexts = Array.isArray(parsed.reasons)
+    ? parsed.reasons
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean)
+    : [];
+
+  if (overallEvaluationText) {
+    sections.push(`综合评价：${overallEvaluationText}`);
+  }
+  if (reasonTexts.length > 0) {
+    sections.push(`判断依据：${reasonTexts.join("；")}`);
+  }
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  return {
+    roundNumber: 1,
+    roundName: "AI导入分析",
+    evaluationText: sections.join("\n"),
+    confidence: parsed.confidence,
+    reason: "根据简历分析结果自动生成结构化评价",
+  };
+}
+
+function parseAIDraftResponse(
+  text: string,
+  context: {
+    capturedAt: number;
+    sourceTextPreview?: string;
+    rawInput: InterviewImportRawInput;
+    systemContext: InterviewImportSystemContext;
+  },
+): InterviewImportAIDraft | null {
+  try {
+    const cleanedText = stripAssistantFormatting(text);
+    const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      logWarn("interview_import.ai_draft.no_json_found", { textPreview: cleanedText.slice(0, 200) });
+      return null;
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const inferredCandidateName = inferCandidateName(parsed, context.rawInput, context.systemContext);
+
+    const basicInfo = typeof parsed.basic_info === "object" && parsed.basic_info !== null
+      ? parsed.basic_info as Record<string, unknown>
+      : typeof parsed.basicInfo === "object" && parsed.basicInfo !== null
+        ? parsed.basicInfo as Record<string, unknown>
+        : typeof parsed.candidate_info === "object" && parsed.candidate_info !== null
+          ? parsed.candidate_info as Record<string, unknown>
+          : typeof parsed.candidateInfo === "object" && parsed.candidateInfo !== null
+            ? parsed.candidateInfo as Record<string, unknown>
+        : null;
+
+    const candidateOptions = Array.isArray(parsed.candidateOptions)
+      ? parsed.candidateOptions
+        .filter((opt): opt is Record<string, unknown> => typeof opt === "object" && opt !== null)
+        .map((opt, index: number) => ({
+          candidateId: typeof opt.candidateId === "string" ? opt.candidateId : undefined,
+          candidateName: ensureNonEmptyString(
+            opt.candidateName ?? opt.name,
+            inferredCandidateName,
+          ),
+          confidence: normalizeConfidence(opt.confidence, index === 0 ? 0.82 : 0.55),
+          reason: ensureNonEmptyString(
+            opt.reason,
+            typeof opt.optionText === "string" && opt.optionText.trim()
+              ? `AI 候选选项：${opt.optionText.trim()}`
+              : "根据简历与面试记录综合推断",
+          ),
+          evidence: Array.isArray(opt.evidence) ? opt.evidence.filter((e): e is string => typeof e === "string") : undefined,
+        }))
+      : [];
+
+    if (candidateOptions.length === 0 && basicInfo) {
+      candidateOptions.push({
+        candidateId: undefined,
+        candidateName: ensureNonEmptyString(basicInfo.name, inferredCandidateName),
+        confidence: normalizeConfidence(parsed.confidence, 0.8),
+        reason: "根据 AI 返回的 basic_info 生成候选人信息",
+        evidence: undefined,
+      });
+    }
+
+    const parsedRounds = Array.isArray(parsed.rounds)
+      ? (parsed.rounds.length > 0
+          ? parsed.rounds
+          : (() => {
+              const analysisRound = buildAnalysisBackfillRound(parsed);
+              return analysisRound ? [analysisRound] : [];
+            })())
+      : (() => {
+          const analysisRound = buildAnalysisBackfillRound(parsed);
+          return analysisRound ? [analysisRound] : [];
+        })();
+
+    const rounds = Array.isArray(parsedRounds)
+      ? parsedRounds
+        .filter((round): round is Record<string, unknown> => typeof round === "object" && round !== null)
+        .map((round, index: number) => ({
+          inputIndex: typeof round.inputIndex === "number"
+            ? round.inputIndex
+            : typeof round.order === "number"
+              ? Math.max(0, round.order - 1)
+              : typeof round.round === "number"
+                ? Math.max(0, round.round - 1)
+                : index,
+          resolvedRoundNumber: typeof round.resolvedRoundNumber === "number"
+            ? round.resolvedRoundNumber
+            : typeof round.roundNumber === "number"
+              ? Math.max(1, round.roundNumber)
+              : typeof round.order === "number" && Number.isFinite(round.order)
+                ? Math.max(1, round.order)
+                : typeof round.round === "number" && Number.isFinite(round.round)
+                  ? Math.max(1, round.round)
+                  : index + 1,
+          roundNumber: typeof round.roundNumber === "number"
+            ? round.roundNumber
+            : typeof round.round === "number" && Number.isFinite(round.round)
+              ? Math.max(1, round.round)
+              : typeof round.order === "number" && Number.isFinite(round.order)
+                ? Math.max(1, round.order)
+                : index + 1,
+          roundName: typeof round.roundName === "string"
+            ? round.roundName
+            : typeof round.type === "string"
+              ? round.type
+              : undefined,
+          interviewDate: typeof round.interviewDate === "string" ? round.interviewDate : undefined,
+          interviewerNames: splitInterviewerNames(round.interviewerNames ?? round.evaluator ?? round.interviewer),
+          interviewType: typeof round.interviewType === "string"
+            ? round.interviewType
+            : typeof round.type === "string"
+              ? round.type
+              : undefined,
+          evaluationText: buildRoundEvaluationText(round),
+          resultLabel: normalizeRoundResultLabel(round.resultLabel, typeof round.optionText === "string" ? round.optionText.trim() : undefined),
+          confidence: normalizeConfidence(round.confidence, 0.78),
+          reason: ensureNonEmptyString(round.reason, "根据面试记录和简历内容自动生成"),
+          auditSnapshot: {
+            sourceText: typeof parsed.overallEvaluationText === "string" ? parsed.overallEvaluationText.slice(0, 500) : undefined,
+            model: "ai_generated",
+            promptVersion: "interview_import_v1",
+            capturedAt: context.capturedAt,
+          },
+        }))
+          .filter((round) => Boolean(round.evaluationText.trim()))
+      : [];
+
+    if (candidateOptions.length === 0) {
+      candidateOptions.push({
+        candidateId: undefined,
+        candidateName: inferredCandidateName,
+        confidence: 0.7,
+        reason: "AI 返回结构不完整，已根据原始文本兜底候选人姓名",
+        evidence: undefined,
+      });
+    }
+
+    const overallEvaluationText = typeof parsed.overallEvaluationText === "string"
+      ? parsed.overallEvaluationText
+      : typeof parsed.position_match_analysis === "string"
+        ? parsed.position_match_analysis
+        : typeof parsed.positionMatchAnalysis === "string"
+          ? parsed.positionMatchAnalysis
+          : undefined;
+
+    if (rounds.length === 0) {
+      return null;
+    }
+
+    return {
+      candidateOptions,
+      rounds,
+      overallEvaluationText,
+      confidence: normalizeConfidence(parsed.confidence, 0.72),
+      reasons: Array.isArray(parsed.reasons) ? parsed.reasons.filter((r): r is string => typeof r === "string" && Boolean(r.trim())) : ["AI 生成"],
+      auditSnapshot: {
+        sourceText: context.sourceTextPreview?.slice(0, 500) || undefined,
+        model: "ai_generated",
+        promptVersion: "interview_import_v1",
+        capturedAt: context.capturedAt,
+      },
+    };
+  } catch (error) {
+    logWarn("interview_import.ai_draft.parse_failed", {
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function normalizeAIDraft(
+  payload: InterviewImportPayload,
+  rawInput: InterviewImportRawInput,
+  systemContext: InterviewImportSystemContext,
+  capturedAt: number,
+): Promise<InterviewImportAIDraft> {
+  if (payload.aiDraft) {
+    return payload.aiDraft;
+  }
+
+  const aiDraft = await generateInterviewImportAIDraft(rawInput, systemContext, capturedAt);
+  if (aiDraft) {
+    return aiDraft;
+  }
+
+  return buildCompatibilityAIDraft(payload, rawInput, systemContext, capturedAt);
 }
 
 function deriveDecisionState(
@@ -247,6 +884,16 @@ function deriveDecisionState(
   const providedDecision = payload.confirmation?.decisionState;
   if (providedDecision) {
     return providedDecision;
+  }
+
+  const rawInput = extractRawInput(payload);
+  const hasMeetingNotes = Boolean(rawInput.meetingNotesText?.trim());
+  const hasResumeText = Boolean(rawInput.resume?.extractedText?.trim() || rawInput.resume?.pdfPath?.trim());
+  const topCandidateConfidence = aiDraft.candidateOptions[0]?.confidence ?? 0;
+  const hasStructuredRound = aiDraft.rounds.some((round) => Boolean(round.evaluationText?.trim()));
+
+  if (!hasMeetingNotes && hasResumeText && hasStructuredRound && topCandidateConfidence >= 0.9) {
+    return "auto_commit";
   }
 
   const minConfidence = 0.7;
@@ -556,7 +1203,31 @@ export async function processInterviewImportTask(
 
     const rawInput = extractRawInput(payload);
     const systemContext = extractSystemContext(payload);
-    const aiDraft = normalizeAIDraft(payload, rawInput, systemContext, startedAt);
+
+    if (options.resumePdf && !rawInput.resume?.extractedText) {
+      try {
+        await updateTask(taskId, {
+          status: "extracting_resume",
+          stage: "extracting_resume",
+          updatedAt: Date.now(),
+        });
+        const uploadedPath = await saveInterviewImportUploadToLocal(
+          task.batchId,
+          options.resumePdf,
+        );
+        const extraction = await extractPdfTextFromFile(uploadedPath);
+        if (extraction.sufficientText) {
+          rawInput.resume = rawInput.resume ?? { pdfPath: uploadedPath };
+          rawInput.resume.extractedText = extraction.text;
+        }
+      } catch (pdfError) {
+        logWarn("interview_import.pipeline.pdf_extraction_failed_for_ai", {
+          errorMessage: pdfError instanceof Error ? pdfError.message : String(pdfError),
+        });
+      }
+    }
+
+    const aiDraft = await normalizeAIDraft(payload, rawInput, systemContext, startedAt);
     const normalizedPayload = {
       ...payload,
     candidateId: normalizeOptionalText(getLegacyCandidateId(payload) ?? systemContext.candidateId),

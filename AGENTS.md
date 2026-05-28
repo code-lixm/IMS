@@ -1,152 +1,187 @@
-# PROJECT KNOWLEDGE BASE
+# IMS Agent 工作说明
 
-**Generated:** 2026-04-25
-**Commit:** 8df4ec7
-**Branch:** master
+本文件是 IMS 仓库的协作入口。执行任务前先理解本文，再按具体包目录下的 `AGENTS.md` 补充规则执行。
 
-## OVERVIEW
+---
 
-Interview Manager (IMS) — 候选人管理系统。Tauri v2 桌面壳 + Vue 3 前端 + Bun.serve 本地服务 + SQLite/Drizzle ORM。
+## 1. 项目概览
 
-## STRUCTURE
+Interview Manager（IMS）是候选人管理系统：Tauri v2 桌面壳 + Vue 3 前端 + Bun 本地 API 服务 + SQLite/Drizzle ORM。
 
-```
+```text
 ims/
 ├── apps/
-│   ├── web/           # Vue 3 + Vite SPA (@ims/web)
-│   └── desktop/       # Tauri v2 桌面壳 (@ims/desktop)
+│   ├── web/           Vue 3 + Vite SPA
+│   └── desktop/       Tauri v2 桌面壳
 ├── packages/
-│   ├── server/        # Bun HTTP API 服务 (@ims/server)
-│   └── shared/       # 共享类型和常量 (@ims/shared)
-├── .spec-workflow/    # Spec 驱动开发工作流
-├── archive/           # 历史文档归档
-└── runtime/          # 本地运行时数据（SQLite、日志等）
+│   ├── server/        Bun HTTP API 服务
+│   └── shared/        共享类型、常量、DB 类型
+├── runtime/           本地运行时数据
+├── guideline.md       IMS 设计语言与组件规范
+└── .spec-workflow/    Spec 驱动开发工作流
 ```
 
-## WHERE TO LOOK
+---
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Web 开发 | `apps/web/src/` | Vue SPA，路由在 `router/index.ts` |
-| UI 组件 | `apps/web/src/components/ui/` | shadcn-vue 风格的组件库 |
-| LUI 组件 | `apps/web/src/components/lui/` | AI 对话界面组件 |
-| API 开发 | `packages/server/src/` | Bun.serve，路由在 `routes.ts` |
-| 服务层 | `packages/server/src/services/` | 业务逻辑：导入、IMR、同步等 |
-| 共享类型 | `packages/shared/src/` | DB Schema、API 类型、常量 |
+## 2. 常用入口
+
+| 任务 | 位置 | 备注 |
+|---|---|---|
+| Web 页面 | `apps/web/src/views/` | 候选人、导入、设置、LUI 等页面 |
+| Web 组件 | `apps/web/src/components/` | UI、LUI、业务组件 |
+| UI 基础组件 | `apps/web/src/components/ui/` | shadcn-vue 风格组件库 |
+| 状态管理 | `apps/web/src/stores/` | Pinia stores |
+| API 客户端 | `apps/web/src/api/` | 前端请求封装 |
+| Server 路由 | `packages/server/src/routes.ts` | Bun API 路由入口 |
+| Server 服务 | `packages/server/src/services/` | 导入、同步、IMR、AI 等业务逻辑 |
+| 共享类型 | `packages/shared/src/` | 跨包类型和常量 |
 | 桌面入口 | `apps/desktop/src/lib.rs` | Tauri 主逻辑 |
-| 构建配置 | `apps/desktop/tauri.conf.json` | 窗口、bundle、权限、deep-link |
+| 设计规范 | `guideline.md` | UI 改动前必须阅读 |
 
-## CONVENTIONS (THIS PROJECT)
+设计相关任务新增硬规则：
 
-- **pnpm workspaces** + Turbo orchestrator
-- **TypeScript strict mode** — 所有包均启用 `strict: true`
-- **路径别名** — `@/*` → `./src/*` (web)
-- **无 ESLint/Prettier** — 依赖 TS strict 保证质量（刻意选择）
-- **双锁文件** — pnpm-lock.yaml + bun.lock（pnpm管理workspace + Bun运行时）
+- 只要任务涉及 UI、视觉、布局、交互、文案呈现、信息层级、弹窗、表单、页面结构，开始前必须先读取 `guideline.md`，不能凭感觉直接改。
 
-## ANTI-PATTERNS (THIS PROJECT)
+---
 
-- **13+ 空 catch 块** — `services/` 多处 silent failure (`.catch(() => {})`)
-- **`as any` 类型断言** — `routes.ts` 3 处 bypass 类型安全
-- **57+ console.* 调用** — server 代码使用 console 而非结构化日志
-- **禁用 linter** — `extractor.ts` 使用 `eslint-disable-next-line`
-- **Magic numbers** — 硬编码超时、端口、重试次数、maxTokens (15x 128000)
-- **`@ts-ignore`** — `apps/web/src/auto-imports.d.ts:85`
-- **`@ts-expect-error`** — `apps/web/src/auto-imports.d.ts` 多处
-- **Entry point 业务逻辑泄漏** — `apps/web/src/main.ts` 混杂 E2E 测试重置逻辑
-- **lib.rs 巨型单体** — `apps/desktop/src/lib.rs` 1294 行混合 server 管理、tray、deep-link
-- **hardcoded 平台** — server `bun build --compile --target=bun-darwin-arm64` 只能跑 Apple Silicon
-- **无 CI/CD** — 没有 GitHub Actions/Docker
-- **Turbo 弱用** — root build 用 `&&` 链而非 `turbo run build`
+## 3. 技术约定
 
-## UNIQUE STYLES
+- 包管理：pnpm workspaces + Turbo。
+- 运行时：Server 使用 Bun。
+- 类型：全包 TypeScript strict。
+- Web 路径别名：`@/*` → `apps/web/src/*`。
+- 样式：Tailwind CSS + CSS 变量主题。
+- 前端请求：组件不要直接 `fetch`，统一走 `apps/web/src/api/`。
+- 没有统一 ESLint/Prettier，主要依赖类型检查和现有代码风格。
 
-- **.spec-workflow/** — Spec 驱动开发模板系统
-- **双包管理器** — pnpm workspace + bun.lock (server runtime)
-- **Tauri dev 编排** — `beforeDevCommand` 并行启动 server + web
-- **运行时数据在仓库内** — `runtime/` 目录存放 SQLite 和日志
-- **双 schema 系统** — `server/src/schema.ts` (Drizzle) + `shared/src/db-schema.ts` (TS 类型)
-- **应用启动时自举** — 无独立 migration 目录，`db.ts` 直接执行 `CREATE TABLE IF NOT EXISTS`
+---
 
-## WORK LOG HABIT
+## 4. 设计语言执行规则
 
-- **任务完成后同步记录到思源 Todo** — 每次完成任务后，都要把完成项追加到思源笔记文档 `20260331222315-kmk5hvx`（`IMS Todo List`）中。
-- **按当天日期归档** — 优先写入当天对应的日期小节；若当天小节不存在，则先创建日期标题再追加内容。
-- **避免重复记录** — 插入前先检查当天是否已存在语义重复的完成项；若已有同类记录，不重复追加。
-- **采用 changelog 风格** — 记录格式统一为 `scope：description`，例如：`导出：完成 IMR 全量导入导出与 overwrite 覆盖导入`。
-- **只记录已完成事项** — 仅同步已经完成并验证过的任务，不记录进行中或未验证的事项。
+任何用户可见 UI 改动都要遵守 `guideline.md`。
 
-## DEBUG / VERIFICATION LESSONS
+### 4.1 IMS UI 的方向
 
-- **区分代码修复与数据生效** — 修改导入、初筛、同步等后端流水线时，必须说明该改动只影响“后续重新触发的流程”，不会自动补齐旧数据。若用户在页面上看不到效果，先确认是否需要重新导入、重跑 AI 初筛、重新同步或执行补数据脚本。
-- **后端改动后确认服务真实重载** — `pnpm typecheck` 只能证明代码可编译，不代表运行中的 Bun/Tauri 服务已加载新代码。验证前先确认 server 已重启或 dev watcher 已重新加载，再通过 API/DB 验证实际字段。
-- **验证路径要覆盖最终数据源** — UI 不显示时，不要只看前端页面；按“业务流程触发 → API 响应 → DB 字段 → UI 展示”逐层验证。例如院校信息应检查 `candidates.organizationName` 是否真的写入，而不是只确认 `candidateSchools` 或 `universityVerification` 存在于导入任务 JSON。
-- **优先用日志验证改动是否真的生效** — 遇到“看起来没反应”“点击无效”“页面没更新”这类问题时，优先补最小必要日志确认事件链、状态变化和渲染分支是否真的走到；前端优先用 `cmux` 观察页面日志，若当前环境无法直接看到日志，则让开发者提供对应日志后再判断代码是否生效。
-- **完成说明必须写清生效条件** — 每次修复后固定交代：是否需要重启服务、是否需要重新触发业务流程、是否影响历史数据、用户应如何验证。避免只说“已修复/typecheck 通过”，导致用户刷新旧页面仍看不到变化。
+- IMS 是桌面工作台，不是营销网页。
+- 设计目标是高效、清晰、稳定、有轻微层次感。
+- 页面应保持信息密度，避免大面积 Hero、渐变标题、玻璃拟态和厚重阴影。
+- 默认使用浅蓝灰画布 + 白色模块 + 钴蓝主操作。
 
-## RELEASE / COMMIT LESSONS
+### 4.2 组件设计语言
 
-- **功能提交必须同步维护 CHANGELOG** — 生成 commit 前先判断本次变更是否面向用户可见；若是，必须先更新 `CHANGELOG.md` 的 `[Unreleased]` 或当前版本条目，再生成 `apps/web/src/assets/whats-new.json`（`pnpm changelog:build`）。不要只提交代码而漏掉 changelog，否则 release notes / updater notes / What's New 弹窗会缺内容。
-- **提交前必须完成 changelog 检查** — 任何 commit 前都必须检查本次变更是否需要记录到 `CHANGELOG.md`；用户可见的功能、修复、文案、发布链路、导入/初筛/同步行为变化都必须写入 `[Unreleased]`，并运行 `pnpm changelog:build` 同步 `apps/web/src/assets/whats-new.json`。未完成该检查不得进入 commit 流程。
-- **commit 信息要能反推 changelog 分类** — 提交信息使用清晰 scope + 动词，便于 `git-cliff` 草稿归类；常用映射：`feat`→新增，`fix`→修复，`perf/refactor`→优化，`change`/破坏兼容→变更，`remove`→移除。不要写笼统的 `update stuff`、`misc changes`。
-- **提交前检查 changelog 派生产物** — 与 changelog 相关改动提交前至少执行 `pnpm changelog:build`、`pnpm release:check`、`pnpm typecheck`；涉及 UI 展示时再跑对应 Vitest/E2E。确认 `CHANGELOG.md` 是唯一人工维护源，`whats-new.json`、GitHub Release body、Tauri updater notes 都只从它派生。
-- **发版提交前必须同步所有版本文件** — 不要只改 root `package.json` 和 `apps/desktop/package.json`。发布 tag 前必须确认以下文件版本一致：`package.json`、`apps/web/package.json`、`apps/desktop/package.json`、`packages/server/package.json`、`packages/shared/package.json`、`apps/desktop/Cargo.toml`、`apps/desktop/Cargo.lock`、`apps/desktop/tauri.conf.json`、`apps/desktop/tauri.local.conf.json`。否则 GitHub Actions 虽会被 tag 触发，但构建产物版本可能错误，甚至 release 失败。
-- **发版前先跑检查** — tag/push 前至少执行 `pnpm release:check`、`pnpm typecheck`、`cargo fmt --check && cargo check`、`git diff --check`；涉及 Web 构建时再跑 `pnpm build:web`。`release:check` 的版本一致性必须 PASS。
-- **已推送失败 tag 不要覆盖** — 如果远端 `vX.Y.Z` 已触发失败，优先修复后发新的 patch tag（例如 `v1.0.6`），避免 force 更新已推送 tag。
-- **不要提交本地签名私钥** — `apps/desktop/sparkle_private_key.txt`、Tauri/Sparkle 私钥、`.env`、secret 文件只用于本地或 GitHub Secrets，不能纳入 commit。
+- 主按钮：钴蓝 `#0062FF`，36px 高，6px 圆角，无阴影。
+- 面板：白底、6-8px 圆角、无默认阴影，用父级浅底建立边界。
+- 表单：分组白底模块，输入高度约 34px，说明文字 12px。
+- 列表：行式密集布局优先，避免把每一行做成大营销卡片。
+- 状态：浅底胶囊，颜色必须绑定语义。
+- 筛选模板权重：使用单条三段式拖拽条，2 个控制点切分 100%，不要再使用 3 个独立数字输入框。
 
-## COMMANDS
+### 4.3 UI 改动流程
+
+1. 先读 `guideline.md`。
+2. 找到现有相似页面或组件，延续设计语言。
+3. 做最小必要改动，避免重写无关区域。
+4. 改完至少跑对应包的类型检查。
+5. 如果是视觉问题，优先用页面快照或截图确认结构生效。
+
+---
+
+## 5. 常用命令
 
 ```bash
 # 开发
-pnpm dev:ui           # 仅启动 Web UI (Vite :5173)
-pnpm dev:server       # 仅启动 Bun API server (:9092)
-pnpm dev:web          # 启动完整 Web 链路（server + ui）
-pnpm dev:desktop      # 启动完整 Desktop 链路（web + server + native)
+pnpm dev:ui              # 仅启动 Web UI
+pnpm dev:server          # 仅启动 Bun API server
+pnpm dev:web             # 启动 Web + Server
+pnpm dev:desktop         # 启动桌面链路
 
-# 构建
-pnpm build:ui         # 仅构建 Web UI
-pnpm build:server     # 仅构建本地 API server
-pnpm build:web        # 构建完整 Web 链路（shared → server → ui）
-pnpm build:desktop    # 构建桌面安装包
-pnpm build:desktop:local # 构建本地桌面包（local config / no-sign）
-pnpm typecheck        # 全量类型检查
-pnpm check            # typecheck + build (跳过 desktop)
+# 构建与检查
+pnpm --filter @ims/web typecheck
+pnpm typecheck
+pnpm build:web
+pnpm check
 
-# 清理
-pnpm clean            # Turbo clean + rm node_modules
+# 桌面
+pnpm build:desktop
+pnpm build:desktop:local
 ```
 
-## ENTRY POINTS
+注意：`pnpm typecheck` 只证明代码可编译，不代表运行中的 Bun/Tauri 服务已热重载。
 
-| 应用 | 入口文件 | 说明 |
-|------|----------|------|
-| Web | `apps/web/src/main.ts` | Vue SPA 入口 |
-| Server | `packages/server/src/index.ts` | Bun.serve 启动 |
-| Desktop | `apps/desktop/src/main.rs` → `lib.rs` | Rust 薄入口 → Tauri 应用 |
-| Shared | `packages/shared/src/index.ts` | Barrel 导出 |
+---
 
-## ENTRY POINT NOTES
+## 6. 验证策略
 
-- **Web (`apps/web/src/main.ts`)** — 61 行，混杂 localStorage 重置逻辑和 URL query 处理，应提取到 `composables/use-state-reset.ts`
-- **Server (`packages/server/src/index.ts`)** — 138 行，auth 恢复逻辑和 DB 查询在模块加载时执行，应拆分到 `services/startup.ts`
-- **Desktop (`apps/desktop/src/lib.rs`)** — 1294 行巨型单体，应拆分为 `server.rs`, `logger.rs`, `tray.rs`, `updater.rs`, `deep_link.rs`
-- **Shared (`packages/shared/src/index.ts`)** — 38 行，存在冗余的选择性重导出（`export *` 已覆盖部分仍单独列出）
+按最轻有效方式验证。
 
-## TESTING
+| 改动类型 | 推荐验证 |
+|---|---|
+| Web 类型 / 组件改动 | `pnpm --filter @ims/web typecheck` |
+| 跨包 TS 改动 | `pnpm typecheck` |
+| Server 逻辑 | 对应 API/DB/日志验证，必要时重启服务 |
+| UI 视觉 | Chrome DevTools MCP 页面快照或截图 |
+| 数据流程 | 业务触发 → API 响应 → DB 字段 → UI 展示 |
 
-- **Playwright E2E** — 6 spec files in `e2e/`
-- **Vitest 单元测试** — 24 .test.ts files across web/server/shared packages
-- **Vitest Workspace** — root `vitest.config.ts` 聚合 3 个子项目配置
-- **Remote CDP** — 支持通过 Chrome DevTools Protocol 复用已登录浏览器
-- **环境变量驱动** — Playwright 配置通过 `PLAYWRIGHT_*` 环境变量控制
-- **无 Vitest Vue 组件测试** — Web 包使用 `happy-dom` 而非真实 Vue
-- **无 CI 测试任务** — 测试仅本地运行，CI 不执行测试
+不要主动跑完整测试套件，除非用户明确要求。
 
-## KNOWN ISSUES
+---
 
-- **端口** — Server 监听 `:9092`，Web dev server `:9091`（旧文档可能写 3000/5173，需以配置为准）
-- **测试基础设施** — Playwright E2E 已配置 + Bun test 单元测试，但无 Vitest、无 CI 测试任务
-- **runtime/ 未忽略** — SQLite 和日志在仓库内，应配置 `.gitignore`
-- **packages/runtime 幽灵包** — 目录存在但非 workspace 成员（pnpm-workspace.yaml 未声明）
-- **双 schema 系统** — `server/schema.ts` (Drizzle) + `shared/db-schema.ts` (TS) 需同步维护
+## 7. 调试经验
+
+- 后端导入、初筛、同步类修复通常只影响后续流程，不会自动补齐旧数据。
+- UI 没显示时，不要只看页面。按事件、API、DB、渲染分支逐层确认。
+- 运行中服务可能没加载新代码。验证前确认 dev watcher 或服务是否真实重载。
+- 遇到“点击无效 / 页面没反应”，优先补最小日志确认事件链。
+- 完成说明必须写清：是否需要重启、是否需要重新触发业务流程、是否影响历史数据、用户如何验证。
+
+---
+
+## 8. 已知技术债
+
+- `apps/desktop/src/lib.rs` 仍偏大，混合 server 管理、tray、updater、deep-link。
+- Server 层存在空 `catch`、`console.*`、少量 `as any`。
+- `apps/web/src/main.ts` 包含部分启动/测试重置逻辑，可继续拆分。
+- 双 schema：`packages/server/src/schema.ts` 与 `packages/shared/src/db-schema.ts` 需同步维护。
+- `runtime/` 存放本地 SQLite 和日志，处理提交时要特别注意。
+- 测试基础设施以本地为主，没有完整 CI 测试链路。
+
+---
+
+## 9. 发布与提交约束
+
+- 用户没有明确要求时，不要提交代码。
+- 提交前必须检查是否需要更新 `CHANGELOG.md`。
+- 用户可见功能、修复、文案、导入/初筛/同步行为变化都应写入 `[Unreleased]`。
+- 更新 changelog 后运行 `pnpm changelog:build` 同步 `apps/web/src/assets/whats-new.json`。
+- 发布前必须确认所有版本文件一致：root、web、desktop、server、shared、Cargo、Tauri config。
+- 不要提交私钥、`.env`、Tauri/Sparkle key 或本地 secret。
+- 已推送失败 tag 不要覆盖，优先修复后发新的 patch tag。
+
+---
+
+## 10. 工作记录习惯
+
+任务完成且验证后，同步记录到思源笔记 `IMS Todo List`：
+
+- 文档 ID：`20260331222315-kmk5hvx`
+- 按当天日期小节归档。
+- 避免重复记录语义相同事项。
+- 格式：`scope：description`
+- 只记录已完成、已验证事项。
+
+示例：
+
+```text
+设计：将筛选模板权重编辑改为双控制点三段式拖拽条，并通过 Web typecheck 验证
+```
+
+---
+
+## 11. 快速决策
+
+- 不知道文件在哪：先用 CodeGraph 或文件结构查询。
+- UI 改动：先读 `guideline.md`，再找相似组件。
+- API 行为不确定：看 `packages/server/src/routes.ts` 和对应 service。
+- 数据字段不确定：同时看 server schema 与 shared db-schema。
+- 依赖 API 不确定：查官方文档，不凭记忆猜。
+- 环境不稳定：先报告环境 blocker，不要盲目继续。

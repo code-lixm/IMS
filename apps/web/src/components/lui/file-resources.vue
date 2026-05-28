@@ -98,36 +98,40 @@
 
     <Dialog
       :open="previewOpen"
-      content-class="max-w-5xl p-5"
+      content-class="max-w-5xl max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
       @update:open="onPreviewOpenChange"
     >
       <template #content>
-        <DialogHeader v-if="previewFile">
-          <DialogTitle class="truncate pr-8 text-sm font-semibold">
-            {{ displayFileName(previewFile.name) }}
-          </DialogTitle>
-          <DialogDescription class="flex items-center gap-2 pt-1">
-            <Badge variant="outline">{{ typeLabel(previewFile.type) }}</Badge>
-            <Badge v-if="previewFile.language" variant="secondary">{{ previewFile.language }}</Badge>
-          </DialogDescription>
-        </DialogHeader>
+        <AppDialogLayout body-class="overflow-hidden py-0">
+          <template #header>
+            <DialogHeader v-if="previewFile">
+              <DialogTitle class="truncate pr-8 text-sm font-semibold">
+                {{ displayFileName(previewFile.name) }}
+              </DialogTitle>
+              <DialogDescription class="flex items-center gap-2 pt-1">
+                <Badge variant="outline">{{ typeLabel(previewFile.type) }}</Badge>
+                <Badge v-if="previewFile.language" variant="secondary">{{ previewFile.language }}</Badge>
+              </DialogDescription>
+            </DialogHeader>
+          </template>
 
-        <ScrollArea v-if="previewFile" class="h-[60vh] rounded-md border bg-muted/30">
-          <Markdown
-            v-if="isMarkdownFile(previewFile)"
-            :content="previewContent(previewFile)"
-            mode="static"
-            class="size-full p-4 [&>*:first-child]:mt-0! [&>*:last-child]:mb-0!"
-          />
-          <pre v-else class="whitespace-pre-wrap break-all p-4 text-xs leading-5"><code>{{ previewFile.content }}</code></pre>
-        </ScrollArea>
+          <ScrollArea v-if="previewFile" class="h-[60vh] rounded-md border-0 bg-white">
+            <Markdown
+              v-if="isMarkdownFile(previewFile)"
+              :content="previewContent(previewFile)"
+              mode="static"
+              class="size-full p-4 [&>*:first-child]:mt-0! [&>*:last-child]:mb-0!"
+            />
+            <pre v-else class="whitespace-pre-wrap break-all p-4 text-xs leading-5"><code>{{ previewFile.content }}</code></pre>
+          </ScrollArea>
 
-        <DialogFooter v-if="previewFile">
-          <Button type="button" variant="outline" @click="downloadFile(previewFile)">
-            <Download class="h-4 w-4" />
-            下载文件
-          </Button>
-        </DialogFooter>
+          <template #footer>
+            <Button v-if="previewFile" type="button" variant="outline" @click="downloadFile(previewFile)">
+              <Download class="h-4 w-4" />
+              下载文件
+            </Button>
+          </template>
+        </AppDialogLayout>
       </template>
     </Dialog>
   </section>
@@ -149,8 +153,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
+import { AppDialogLayout } from "@/components/ui/dialog"
 import { DialogDescription } from "@/components/ui/dialog"
-import { DialogFooter } from "@/components/ui/dialog"
 import { DialogHeader } from "@/components/ui/dialog"
 import { DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu } from "@/components/ui/dropdown-menu"

@@ -1,12 +1,18 @@
 <template>
-  <Dialog :open="open" @update:open="emit('update:open', $event)">
+  <Dialog
+    :open="open"
+    content-class="sm:max-w-lg max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
+    @update:open="emit('update:open', $event)"
+  >
     <template #content>
-      <DialogHeader>
-        <DialogTitle>新建候选人</DialogTitle>
-        <DialogDescription>填写基础信息后将自动创建候选人。</DialogDescription>
-      </DialogHeader>
-      <Separator class="my-4" />
-      <div class="space-y-3">
+      <AppDialogLayout body-class="space-y-3">
+        <template #header>
+          <DialogHeader>
+            <DialogTitle>新建候选人</DialogTitle>
+            <DialogDescription>填写基础信息后将自动创建候选人。</DialogDescription>
+          </DialogHeader>
+        </template>
+
         <div class="space-y-1.5">
           <label class="text-xs text-muted-foreground">姓名</label>
           <Input :model-value="modelValue.name" placeholder="候选人姓名" @update:model-value="updateField('name', $event)" />
@@ -36,25 +42,25 @@
             />
           </div>
         </div>
-      </div>
-      <DialogFooter class="mt-6">
-        <Button variant="secondary" @click="emit('update:open', false)">取消</Button>
-        <Button :disabled="isSubmitting" @click="emit('submit')">
-          {{ isSubmitting ? '创建中...' : '创建' }}
-        </Button>
-      </DialogFooter>
+
+        <template #footer>
+          <Button variant="secondary" @click="emit('update:open', false)">取消</Button>
+          <Button :disabled="isSubmitting" @click="emit('submit')">
+            {{ isSubmitting ? '创建中...' : '创建' }}
+          </Button>
+        </template>
+      </AppDialogLayout>
     </template>
   </Dialog>
 </template>
 
 <script setup lang="ts">
 import { Dialog } from "@/components/ui/dialog";
+import { AppDialogLayout } from "@/components/ui/dialog";
 import { DialogDescription } from "@/components/ui/dialog";
-import { DialogFooter } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import type { CandidateCreateFormValue } from "@/composables/candidates/types";
 

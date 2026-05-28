@@ -1,20 +1,22 @@
 <template>
   <Dialog
     :open="open"
-    content-class="max-w-md"
+    content-class="max-w-md max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
     content-aria-label="登录抱抱后继续"
     @update:open="handleOpenChange"
   >
     <template #content>
-      <DialogHeader>
-        <DialogTitle>登录抱抱后继续</DialogTitle>
-        <DialogDescription>
-          当前操作需要访问抱抱远端数据。请扫码登录，登录成功后会自动继续刚才的操作。
-        </DialogDescription>
-      </DialogHeader>
+      <AppDialogLayout body-class="space-y-4">
+        <template #header>
+          <DialogHeader>
+            <DialogTitle>登录抱抱后继续</DialogTitle>
+            <DialogDescription>
+              当前操作需要访问抱抱远端数据。请扫码登录，登录成功后会自动继续刚才的操作。
+            </DialogDescription>
+          </DialogHeader>
+        </template>
 
-      <div class="space-y-4 py-2">
-        <div class="flex min-h-[280px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 p-4">
+        <div class="flex min-h-[280px] items-center justify-center rounded-[6px] border-0 bg-white p-4">
           <div v-if="state.loading" class="flex flex-col items-center gap-4 text-center">
             <Skeleton class="h-56 w-56 rounded-2xl" />
             <p class="text-sm text-muted-foreground">正在拉取最新二维码…</p>
@@ -31,7 +33,7 @@
           </div>
 
           <div v-else class="flex flex-col items-center gap-4">
-            <div class="overflow-hidden rounded-3xl border border-border bg-white p-3 shadow-sm">
+            <div class="overflow-hidden rounded-[12px] border-0 bg-[#F8FAFD] p-3 shadow-none">
               <div
                 v-if="state.qrSvgMarkup"
                 role="img"
@@ -53,7 +55,7 @@
         <p v-if="state.statusText" class="text-sm text-muted-foreground">
           {{ state.statusText }}
         </p>
-      </div>
+      </AppDialogLayout>
 
     </template>
   </Dialog>
@@ -66,6 +68,7 @@ import { CircleAlert, RefreshCw } from "lucide-vue-next";
 import { ApiError } from "@/api/client";
 import { authApi } from "@/api/auth";
 import { Button } from "@/components/ui/button";
+import { AppDialogLayout } from "@/components/ui/dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { DialogDescription } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";

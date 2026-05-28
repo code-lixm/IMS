@@ -1,20 +1,37 @@
 <template>
-  <Dialog :open="open" @update:open="handleOpenChange">
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{{ title }}</DialogTitle>
-        <DialogDescription>
-          {{ description }}
-        </DialogDescription>
-      </DialogHeader>
+  <Dialog
+    :open="open"
+    content-class="sm:max-w-[720px] max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)] dark:border-white/10 dark:bg-[#132237] dark:shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
+    @update:open="handleOpenChange"
+  >
+    <template #content>
+      <AppDialogLayout body-class="space-y-4">
+        <template #header>
+          <DialogHeader>
+            <DialogTitle>{{ title }}</DialogTitle>
+            <DialogDescription>
+              {{ description }}
+            </DialogDescription>
+          </DialogHeader>
+        </template>
 
-      <div class="space-y-4 py-4">
+        <div class="rounded-[6px] border-0 bg-white p-3 dark:bg-white/7">
+          <p class="text-[12px] font-semibold text-[#0062FF]">Endpoint Name</p>
+          <p class="mt-1 text-[14px] font-semibold text-[#1A1A1A] dark:text-slate-100">
+            {{ endpointName }}
+          </p>
+          <p class="mt-1 break-all text-[12px] leading-5 text-[#4B5563] dark:text-slate-300">
+            {{ selectedPresetProvider?.baseURL || "选择 Provider 后自动填充 Base URL" }}
+          </p>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
         <div class="space-y-2">
-          <Label for="gateway-endpoint-provider">模型厂商</Label>
+          <Label for="gateway-endpoint-provider">Provider</Label>
           <select
             id="gateway-endpoint-provider"
             v-model="providerId"
-            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            class="h-[34px] w-full rounded-[6px] border-0 bg-[#FFFFFF] px-3 text-sm outline-none focus:ring-2 focus:ring-ring dark:bg-white/8 dark:text-slate-100"
             :disabled="saving || disableProviderSelection"
           >
             <option value="" disabled>请选择模型厂商</option>
@@ -32,6 +49,18 @@
         </div>
 
         <div class="space-y-2">
+          <Label for="gateway-endpoint-base-url">Base URL</Label>
+          <Input
+            id="gateway-endpoint-base-url"
+            :model-value="selectedPresetProvider?.baseURL ?? ''"
+            class="h-[34px] rounded-[6px] border-0 bg-[#F1F5FB] shadow-none dark:bg-white/6"
+            disabled
+            placeholder="自动匹配 Provider Base URL"
+          />
+        </div>
+        </div>
+
+        <div class="space-y-2">
           <Label for="gateway-endpoint-apikey">API Key</Label>
           <div class="flex gap-2">
             <Input
@@ -40,7 +69,7 @@
               :type="showApiKey ? 'text' : 'password'"
               placeholder="请输入 API Key"
               :disabled="saving"
-              class="flex-1"
+              class="h-[34px] flex-1 rounded-[6px] border-0 bg-[#FFFFFF] shadow-none dark:bg-white/8"
             />
             <Button
               type="button"
@@ -60,11 +89,11 @@
         </div>
 
         <div class="space-y-2" v-if="availableModelOptions.length > 0">
-          <Label for="gateway-endpoint-model">默认模型（可选）</Label>
+          <Label for="gateway-endpoint-model">Default Model</Label>
           <select
             id="gateway-endpoint-model"
             v-model="selectedModelKey"
-            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            class="h-[34px] w-full rounded-[6px] border-0 bg-[#FFFFFF] px-3 text-sm outline-none focus:ring-2 focus:ring-ring dark:bg-white/8 dark:text-slate-100"
             :disabled="saving"
           >
             <option value="">不指定（按全局默认）</option>
@@ -86,37 +115,55 @@
             正在拉取该厂商可用模型...
           </p>
         </div>
-      </div>
 
-      <DialogFooter class="gap-2">
-        <Button
-          v-if="showTestButton"
-          type="button"
-          variant="outline"
-          :disabled="saving || testing"
-          @click="emitTest"
+        <label class="flex items-center justify-between gap-3 rounded-[6px] border-0 bg-[#FFFFFF] p-3 text-sm dark:bg-white/7">
+          <span>
+            <span class="block font-medium text-[#1A1A1A] dark:text-slate-100">设为默认端点</span>
+            <span class="block text-[12px] text-[#4B5563] dark:text-slate-300">保存后 LUI 默认优先使用此端点。</span>
+          </span>
+          <input v-model="isDefault" type="checkbox" class="rounded border-border" :disabled="saving" />
+        </label>
+
+        <div
+          class="rounded-[6px] border-0 px-3 py-2 text-[12px] font-semibold"
+          :class="testStatusClass"
         >
-          <Loader2 v-if="testing" class="mr-1.5 h-4 w-4 animate-spin" />
-          测试连接
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          :disabled="saving || testing"
-          @click="emit('update:open', false)"
-        >
-          取消
-        </Button>
-        <Button
-          type="button"
-          :disabled="saveButtonDisabled"
-          @click="emitSave"
-        >
-          <Loader2 v-if="saving" class="mr-1.5 h-4 w-4 animate-spin" />
-          {{ saveButtonText }}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
+          <div class="flex items-center gap-2">
+            <Loader2 v-if="testing" class="h-3.5 w-3.5 animate-spin" />
+            <span>{{ testStatusLabel }}</span>
+          </div>
+          <p class="mt-1 font-normal leading-5">{{ testMessage }}</p>
+        </div>
+        <template #footer>
+          <Button
+            v-if="showTestButton"
+            type="button"
+            variant="outline"
+            :disabled="saving || testing"
+            @click="emitTest"
+          >
+            <Loader2 v-if="testing" class="mr-1.5 h-4 w-4 animate-spin" />
+            测试连接
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="saving || testing"
+            @click="emit('update:open', false)"
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            :disabled="saveButtonDisabled"
+            @click="emitSave"
+          >
+            <Loader2 v-if="saving" class="mr-1.5 h-4 w-4 animate-spin" />
+            {{ saveButtonText }}
+          </Button>
+        </template>
+      </AppDialogLayout>
+    </template>
   </Dialog>
 </template>
 
@@ -125,10 +172,9 @@ import { computed, ref, watch } from "vue";
 import { Eye, EyeOff, Loader2 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import {
+  AppDialogLayout,
   Dialog,
-  DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -158,8 +204,11 @@ const props = withDefaults(defineProps<{
   initialProviderId?: string;
   initialApiKey?: string;
   initialModelId?: string;
+  initialIsDefault?: boolean;
   saving?: boolean;
   testing?: boolean;
+  testStatus?: "idle" | "testing" | "success" | "failure";
+  testMessage?: string;
   disableProviderSelection?: boolean;
   showTestButton?: boolean;
   saveButtonText?: string;
@@ -167,9 +216,12 @@ const props = withDefaults(defineProps<{
   initialProviderId: "",
   initialApiKey: "",
   initialModelId: "",
+  initialIsDefault: false,
   modelOptions: () => [],
   saving: false,
   testing: false,
+  testStatus: "idle",
+  testMessage: "尚未测试当前端点",
   disableProviderSelection: false,
   showTestButton: true,
   saveButtonText: "保存",
@@ -177,13 +229,14 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: "update:open", value: boolean): void;
-  (e: "save", payload: { providerId: string; apiKey: string; modelId: string }): void;
-  (e: "test", payload: { providerId: string; apiKey: string; modelId: string }): void;
+  (e: "save", payload: { providerId: string; apiKey: string; modelId: string; isDefault: boolean }): void;
+  (e: "test", payload: { providerId: string; apiKey: string; modelId: string; isDefault: boolean }): void;
 }>();
 
 const providerId = ref("");
 const apiKey = ref("");
 const selectedModelKey = ref("");
+const isDefault = ref(false);
 const showApiKey = ref(false);
 const loadingProviderModels = ref(false);
 const providerModelOptionsMap = ref<Record<string, ModelOption[]>>({});
@@ -225,6 +278,7 @@ function syncFromProps() {
   providerId.value = props.initialProviderId;
   apiKey.value = props.initialApiKey;
   selectedModelKey.value = resolveInitialModelKey(props.initialProviderId, props.initialModelId);
+  isDefault.value = props.initialIsDefault;
   showApiKey.value = false;
 }
 
@@ -326,6 +380,36 @@ const selectedPresetProvider = computed(() => {
   return props.presetProviders.find((provider) => provider.id === providerId.value) ?? null;
 });
 
+const endpointName = computed(() => {
+  return selectedPresetProvider.value?.name || "未选择 Provider";
+});
+
+const testStatusLabel = computed(() => {
+  if (props.testing || props.testStatus === "testing") {
+    return "Testing";
+  }
+  if (props.testStatus === "success") {
+    return "Success";
+  }
+  if (props.testStatus === "failure") {
+    return "Failure";
+  }
+  return "Ready";
+});
+
+const testStatusClass = computed(() => {
+  if (props.testing || props.testStatus === "testing") {
+    return "border-[#0062FF]/20 bg-[#EEF4FF] text-[#0062FF]";
+  }
+  if (props.testStatus === "success") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (props.testStatus === "failure") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  return "border-[#E5E7EB] bg-[#F9FAFB] text-[#4B5563]";
+});
+
 const availableModelOptions = computed(() => {
   if (props.modelOptions.length === 0 && Object.keys(providerModelOptionsMap.value).length === 0) {
     return [] as ModelOption[];
@@ -415,6 +499,7 @@ function emitSave() {
     providerId: providerId.value.trim(),
     apiKey: apiKey.value.trim(),
     modelId: selectedModelId.value.trim(),
+    isDefault: isDefault.value,
   });
 }
 
@@ -423,6 +508,7 @@ function emitTest() {
     providerId: providerId.value.trim(),
     apiKey: apiKey.value.trim(),
     modelId: selectedModelId.value.trim(),
+    isDefault: isDefault.value,
   });
 }
 </script>

@@ -2,7 +2,7 @@
   <div class="relative">
     <DropdownMenu v-model:open="open">
       <DropdownMenuTrigger as-child>
-        <Button variant="ghost" size="sm" class="h-8 gap-1.5 text-xs">
+        <Button variant="ghost" size="sm" class="h-8 gap-1.5 text-xs dark:text-slate-200 dark:hover:bg-white/8 dark:hover:text-slate-100">
           <Cpu class="h-3.5 w-3.5" />
           <span class="max-w-24 truncate">{{ selectedModel?.displayName ?? "选择模型" }}</span>
           <ChevronDown class="h-3 w-3 opacity-50" />

@@ -2,10 +2,9 @@
 import { computed } from "vue";
 import { ExternalLink } from "lucide-vue-next";
 import {
+  AppDialogLayout,
   Dialog,
-  DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -64,30 +63,33 @@ function renderMarkdown(text: string): string {
 </script>
 
 <template>
-  <Dialog :open="props.open" @update:open="handleUpdateOpen">
+  <Dialog
+    :open="props.open"
+    content-class="w-[760px] max-w-[92vw] max-h-[76vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
+    @update:open="handleUpdateOpen"
+  >
     <template #content>
-      <DialogContent
-        class="w-[760px] max-w-[92vw] max-h-[76vh] flex flex-col"
-      >
-        <DialogHeader class="shrink-0 border-b pb-5">
-          <DialogTitle class="text-2xl font-semibold tracking-tight">
-            更新日志
-          </DialogTitle>
-          <DialogDescription>
-            <span class="inline-flex flex-wrap items-center gap-2 text-sm">
-              <span>最新版本</span>
-              <span class="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
-                v{{ latestEntry.version }}
+      <AppDialogLayout body-class="pt-0">
+        <template #header>
+          <DialogHeader>
+            <DialogTitle class="text-2xl font-semibold tracking-tight">
+              更新日志
+            </DialogTitle>
+            <DialogDescription>
+              <span class="inline-flex flex-wrap items-center gap-2 text-sm">
+                <span>最新版本</span>
+                <span class="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                  v{{ latestEntry.version }}
+                </span>
+                <span class="text-muted-foreground">{{ latestEntry.date }}</span>
+                <span class="text-muted-foreground">·</span>
+                <span class="text-muted-foreground">共 {{ versions.length }} 个版本</span>
               </span>
-              <span class="text-muted-foreground">{{ latestEntry.date }}</span>
-              <span class="text-muted-foreground">·</span>
-              <span class="text-muted-foreground">共 {{ versions.length }} 个版本</span>
-            </span>
-          </DialogDescription>
-        </DialogHeader>
+            </DialogDescription>
+          </DialogHeader>
+        </template>
 
-        <div class="min-h-0 flex-1 overflow-y-auto pr-3 pt-5">
-          <div class="relative space-y-8 pl-7 before:absolute before:left-[7px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-border/70">
+          <div class="relative space-y-8 rounded-[6px] bg-white p-4 pl-10 before:absolute before:left-[23px] before:top-6 before:h-[calc(100%-3rem)] before:w-px before:bg-[#E6EEF8]">
             <article
               v-for="(versionEntry, versionIndex) in versions"
               :key="versionEntry.version"
@@ -133,26 +135,22 @@ function renderMarkdown(text: string): string {
               </div>
             </article>
           </div>
-        </div>
 
-        <DialogFooter class="shrink-0 gap-2 mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            class="gap-1.5"
-            as="a"
+        <template #footer>
+          <a
             href="https://github.com/code-lixm/IMS/releases"
             target="_blank"
             rel="noopener noreferrer"
+            class="inline-flex h-8 items-center justify-center gap-1.5 rounded-[6px] border border-input bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <ExternalLink class="h-3.5 w-3.5" />
             查看完整更新日志
-          </Button>
+          </a>
           <Button size="sm" @click="handleClose">
             知道了
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </template>
+      </AppDialogLayout>
     </template>
   </Dialog>
 </template>

@@ -26,13 +26,13 @@ const delegatedProps = reactiveOmit(props, "class", "indicatorClass", "value");
     v-bind="delegatedProps"
     :class="
       cn(
-        'relative h-2 w-full overflow-hidden rounded-full bg-primary/20',
+        'relative h-2 w-full overflow-hidden rounded-full bg-[#0062FF]/10',
         props.class,
       )
     "
   >
     <ProgressIndicator
-      :class="cn('h-full w-full flex-1 bg-primary transition-all', indicatorClass)"
+      :class="cn('h-full w-full flex-1 bg-[#0062FF] transition-all', indicatorClass)"
       :style="`transform: translateX(-${100 - Math.min(100, Math.max(0, ((props.modelValue ?? props.value ?? 0) / props.max) * 100))}%);`"
     />
   </ProgressRoot>

@@ -5,7 +5,9 @@ import {
   formatInterviewRoundLabel,
   INTERVIEW_TYPE_LABELS,
   lookupLabelOrDefault,
+  PRESET_PROVIDER_BASE_URLS,
   resolveApplicationStatusCode,
+  resolvePresetProviderBaseUrl,
   type ImportTaskResultData,
   type ImportScreeningExportRequest,
   type ImportTaskScreeningScoreData,
@@ -70,6 +72,7 @@ import { interviewAssessmentRoute } from "./routes/interview-assessment";
 import { interviewImportRoute } from "./routes/interview-import";
 import { screeningTemplatesRoute } from "./routes/screening-templates";
 import { recorderRoute } from "./routes/recorder";
+import { screeningTemplatesService } from "./services/screening-templates";
 
 const DEBUG_BAOBAO = process.env.IMS_DEBUG_BAOBAO === "1";
 let databaseShutdownScheduled = false;
@@ -472,6 +475,8 @@ type LuiSettings = {
   defaultEndpointId: string | null;
 };
 
+const MINIMAX_BASE_URL = resolvePresetProviderBaseUrl("minimax", process.env.MINIMAX_API_HOST) || "https://api.minimaxi.com/v1";
+
 const PRESET_PROVIDERS: Record<string, {
   id: string;
   name: string;
@@ -484,7 +489,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "openai",
     name: "OpenAI",
     icon: "OpenAI",
-    baseURL: "https://api.openai.com/v1",
+    baseURL: PRESET_PROVIDER_BASE_URLS.openai,
     supportsModelsEndpoint: true,
     models: [
       {
@@ -526,7 +531,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "anthropic",
     name: "Anthropic",
     icon: "Anthropic",
-    baseURL: "https://api.anthropic.com/v1",
+    baseURL: PRESET_PROVIDER_BASE_URLS.anthropic,
     supportsModelsEndpoint: false,
     models: [
       {
@@ -557,7 +562,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "minimax",
     name: "MiniMax",
     icon: "MiniMax",
-    baseURL: "https://api.minimax.chat/v1",
+    baseURL: MINIMAX_BASE_URL,
     supportsModelsEndpoint: false,
     models: [
       {
@@ -588,7 +593,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "moonshot",
     name: "Moonshot",
     icon: "Moonshot",
-    baseURL: "https://api.moonshot.cn/v1",
+    baseURL: PRESET_PROVIDER_BASE_URLS.moonshot,
     supportsModelsEndpoint: true,
     models: [], // Will be fetched from API
   },
@@ -596,7 +601,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "deepseek",
     name: "DeepSeek",
     icon: "DeepSeek",
-    baseURL: "https://api.deepseek.com/v1",
+    baseURL: PRESET_PROVIDER_BASE_URLS.deepseek,
     supportsModelsEndpoint: true,
     models: [], // Will be fetched from API
   },
@@ -604,7 +609,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "gemini",
     name: "Google Gemini",
     icon: "Gemini",
-    baseURL: "https://generativelanguage.googleapis.com/v1beta",
+    baseURL: PRESET_PROVIDER_BASE_URLS.gemini,
     supportsModelsEndpoint: false,
     models: [
       {
@@ -635,7 +640,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "siliconflow",
     name: "SiliconFlow",
     icon: "SiliconFlow",
-    baseURL: "https://api.siliconflow.cn/v1",
+    baseURL: PRESET_PROVIDER_BASE_URLS.siliconflow,
     supportsModelsEndpoint: true,
     models: [], // Will be fetched from API
   },
@@ -643,7 +648,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "openrouter",
     name: "OpenRouter",
     icon: "OpenRouter",
-    baseURL: "https://openrouter.ai/api/v1",
+    baseURL: PRESET_PROVIDER_BASE_URLS.openrouter,
     supportsModelsEndpoint: true,
     models: [], // Will be fetched from API
   },
@@ -651,7 +656,7 @@ const PRESET_PROVIDERS: Record<string, {
     id: "grok",
     name: "Grok",
     icon: "Grok",
-    baseURL: "https://api.x.ai/v1",
+    baseURL: PRESET_PROVIDER_BASE_URLS.grok,
     supportsModelsEndpoint: true,
     models: [], // Will be fetched from API
   },
@@ -747,6 +752,7 @@ const LUI_MODEL_PROVIDERS_RESPONSE = LUI_MODEL_PROVIDERS.map((provider) => ({
 
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = process.env.CUSTOM_BASE_URL || "https://ai-gateway.vercel.com/v1";
 const DEFAULT_OPENAI_COMPATIBLE_API_KEY = process.env.CUSTOM_API_KEY || process.env.VERCEL_AI_GATEWAY_TOKEN || "";
+const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY?.trim() || "";
 
 interface OpenAiCompatibleModel {
   id: string;
@@ -1087,6 +1093,66 @@ async function upsertLocalUser(user: { name: string; email: string | null }) {
 
 function sanitizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+type ImportScreeningSelection = {
+  group: typeof screeningTemplateGroups.$inferSelect;
+  groupId: string;
+  templateId: string | null;
+};
+
+async function resolveImportScreeningSelection(input: {
+  groupId?: string | null;
+  templateId?: string | null;
+  context: string;
+  targetId?: string;
+}): Promise<ImportScreeningSelection> {
+  const requestedGroupId = sanitizeString(input.groupId) || null;
+  let selectedGroup: typeof screeningTemplateGroups.$inferSelect | null = null;
+
+  if (requestedGroupId) {
+    [selectedGroup] = await db.select().from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, requestedGroupId)).limit(1);
+  }
+
+  if (!selectedGroup) {
+    if (requestedGroupId) {
+      logWarn("import.screening_group.missing_fallback", {
+        context: input.context,
+        targetId: input.targetId ?? null,
+        requestedGroupId,
+      });
+    }
+    selectedGroup = (await screeningTemplatesService.ensureUsableGroup()).group;
+  }
+
+  const requestedTemplateId = sanitizeString(input.templateId) || null;
+  let templateId: string | null = null;
+  if (requestedTemplateId) {
+    const [memberRow] = await db.select({ id: screeningTemplateGroupTemplates.id })
+      .from(screeningTemplateGroupTemplates)
+      .where(and(
+        eq(screeningTemplateGroupTemplates.groupId, selectedGroup.id),
+        eq(screeningTemplateGroupTemplates.templateId, requestedTemplateId),
+      ))
+      .limit(1);
+
+    if (memberRow) {
+      templateId = requestedTemplateId;
+    } else {
+      logWarn("import.screening_template.missing_fallback", {
+        context: input.context,
+        targetId: input.targetId ?? null,
+        groupId: selectedGroup.id,
+        requestedTemplateId,
+      });
+    }
+  }
+
+  return {
+    group: selectedGroup,
+    groupId: selectedGroup.id,
+    templateId,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -2493,26 +2559,15 @@ async function routeInternal(request: Request): Promise<Response> {
       sourcePaths = body.paths;
     }
 
-    if (!groupId) {
-      return fail("VALIDATION_ERROR", "groupId is required", 422);
-    }
-
-    const [selectedGroup] = await db.select().from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, groupId)).limit(1);
-    if (!selectedGroup) {
-      return fail("NOT_FOUND", "template group not found", 404);
-    }
-    if (templateId) {
-      const [memberRow] = await db.select({ id: screeningTemplateGroupTemplates.id })
-        .from(screeningTemplateGroupTemplates)
-        .where(and(
-          eq(screeningTemplateGroupTemplates.groupId, groupId),
-          eq(screeningTemplateGroupTemplates.templateId, templateId),
-        ))
-        .limit(1);
-      if (!memberRow) {
-        return fail("VALIDATION_ERROR", "templateId does not belong to the selected group", 422);
-      }
-    }
+    const screeningSelection = await resolveImportScreeningSelection({
+      groupId,
+      templateId,
+      context: "create_batch",
+      targetId: id,
+    });
+    groupId = screeningSelection.groupId;
+    templateId = screeningSelection.templateId;
+    const selectedGroup = screeningSelection.group;
     const batchScreeningConfig = normalizeBatchScreeningConfig({
       groupId,
       passThreshold: selectedGroup.passThreshold,
@@ -2528,7 +2583,7 @@ async function routeInternal(request: Request): Promise<Response> {
       hasTemplate: Boolean(templateId),
     });
 
-    let preparedTasks;
+    let preparedTasks: Awaited<ReturnType<typeof prepareImportTasks>>;
     try {
       preparedTasks = await prepareImportTasks(id, sourcePaths);
     } catch (error) {
@@ -2646,27 +2701,14 @@ async function routeInternal(request: Request): Promise<Response> {
       return null;
     });
     const [batch] = await db.select({ groupId: importBatches.groupId }).from(importBatches).where(eq(importBatches.id, id)).limit(1);
-    const effectiveGroupId = sanitizeString(body?.groupId) || batch?.groupId || null;
-    if (!effectiveGroupId) {
-      return fail("VALIDATION_ERROR", "groupId is required", 422);
-    }
-    const [groupRow] = await db.select({ id: screeningTemplateGroups.id }).from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, effectiveGroupId)).limit(1);
-    if (!groupRow) {
-      return fail("NOT_FOUND", "template group not found", 404);
-    }
-
-    if (body?.templateId) {
-      const [memberRow] = await db.select({ id: screeningTemplateGroupTemplates.id })
-        .from(screeningTemplateGroupTemplates)
-        .where(and(
-          eq(screeningTemplateGroupTemplates.groupId, effectiveGroupId),
-          eq(screeningTemplateGroupTemplates.templateId, body.templateId),
-        ))
-        .limit(1);
-      if (!memberRow) {
-        return fail("VALIDATION_ERROR", "templateId does not belong to the selected group", 422);
-      }
-    }
+    const screeningSelection = await resolveImportScreeningSelection({
+      groupId: sanitizeString(body?.groupId) || batch?.groupId || null,
+      templateId: body?.templateId,
+      context: "rerun_batch",
+      targetId: id,
+    });
+    const effectiveGroupId = screeningSelection.groupId;
+    const effectiveTemplateId = screeningSelection.templateId;
 
     const kickoff = await startRerunImportBatchScreening(id, effectiveGroupId);
     if (kickoff.notFound) return fail("NOT_FOUND", "batch not found", 404);
@@ -2677,7 +2719,7 @@ async function routeInternal(request: Request): Promise<Response> {
       return ok({ id, retriedCount: 0, status: kickoff.status });
     }
 
-    void rerunImportBatchScreening(id, effectiveGroupId, body?.templateId).catch((error) => {
+    void rerunImportBatchScreening(id, effectiveGroupId, effectiveTemplateId).catch((error) => {
       console.error("[import] rerun batch screening failed", {
         batchId: id,
         error: error instanceof Error ? error.message : String(error),
@@ -2685,7 +2727,7 @@ async function routeInternal(request: Request): Promise<Response> {
       logError("import.rerun_batch.failed", error, { batchId: id });
     });
 
-    logInfo("import.rerun_batch.started", { batchId: id, retriedCount: kickoff.retriedCount, hasTemplate: Boolean(body?.templateId), groupId: effectiveGroupId });
+    logInfo("import.rerun_batch.started", { batchId: id, retriedCount: kickoff.retriedCount, hasTemplate: Boolean(effectiveTemplateId), groupId: effectiveGroupId });
 
     return ok({ id, retriedCount: kickoff.retriedCount, status: "processing" });
   }
@@ -2701,29 +2743,16 @@ async function routeInternal(request: Request): Promise<Response> {
     });
 
     const [batch] = await db.select({ groupId: importBatches.groupId }).from(importBatches).where(eq(importBatches.id, task.batchId)).limit(1);
-    const effectiveGroupId = sanitizeString(body?.groupId) || batch?.groupId || null;
-    if (!effectiveGroupId) {
-      return fail("VALIDATION_ERROR", "groupId is required", 422);
-    }
-    const [groupRow] = await db.select({ id: screeningTemplateGroups.id }).from(screeningTemplateGroups).where(eq(screeningTemplateGroups.id, effectiveGroupId)).limit(1);
-    if (!groupRow) {
-      return fail("NOT_FOUND", "template group not found", 404);
-    }
+    const screeningSelection = await resolveImportScreeningSelection({
+      groupId: sanitizeString(body?.groupId) || batch?.groupId || null,
+      templateId: body?.templateId,
+      context: "rerun_file",
+      targetId: taskId,
+    });
+    const effectiveGroupId = screeningSelection.groupId;
+    const effectiveTemplateId = screeningSelection.templateId;
 
-    if (body?.templateId) {
-      const [memberRow] = await db.select({ id: screeningTemplateGroupTemplates.id })
-        .from(screeningTemplateGroupTemplates)
-        .where(and(
-          eq(screeningTemplateGroupTemplates.groupId, effectiveGroupId),
-          eq(screeningTemplateGroupTemplates.templateId, body.templateId),
-        ))
-        .limit(1);
-      if (!memberRow) {
-        return fail("VALIDATION_ERROR", "templateId does not belong to the selected group", 422);
-      }
-    }
-
-    void rerunFileScreening(taskId, effectiveGroupId, body?.templateId).catch((error) => {
+    void rerunFileScreening(taskId, effectiveGroupId, effectiveTemplateId).catch((error) => {
       console.error("[import] rerun file screening failed", {
         taskId,
         error: error instanceof Error ? error.message : String(error),
@@ -2731,7 +2760,7 @@ async function routeInternal(request: Request): Promise<Response> {
       logError("import.rerun_file.failed", error, { taskId });
     });
 
-    logInfo("import.rerun_file.started", { taskId, hasTemplate: Boolean(body?.templateId), groupId: effectiveGroupId });
+    logInfo("import.rerun_file.started", { taskId, hasTemplate: Boolean(effectiveTemplateId), groupId: effectiveGroupId });
 
     return ok({ taskId, retried: true, screeningStatus: "running" });
   }
@@ -3348,13 +3377,25 @@ Always be concise and helpful in your responses.`;
     const settings = user ? parseUserSettings(user.settingsJson) : {};
     const luiSettings = extractLuiSettings(settings);
 
-    // Find matching custom endpoint by providerId or gateway id
-    const matchingEndpoint = modelProvider
-      ? luiSettings.customEndpoints.find((ep) =>
-          ep.providerId === modelProvider ||
-          (modelProvider.startsWith("gateway:") && ep.id === modelProvider.slice("gateway:".length))
-        )
+    // Find matching custom endpoint by providerId, gateway id, model id, or the configured default endpoint.
+    // Prefer endpoints that actually carry an API key so workflow calls don't silently fall back to empty env config.
+    const defaultEndpoint = luiSettings.defaultEndpointId
+      ? luiSettings.customEndpoints.find((ep) => ep.id === luiSettings.defaultEndpointId) ?? null
       : null;
+    const endpointMatchesModel = (ep: (typeof luiSettings.customEndpoints)[number]) => {
+      if (!modelProvider) {
+        return ep.id === defaultEndpoint?.id || ep.modelId === modelId;
+      }
+
+      return ep.providerId === modelProvider ||
+        ep.modelId === modelId ||
+        modelId.startsWith(`${ep.providerId ?? ""}::`) ||
+        (modelProvider.startsWith("gateway:") && ep.id === modelProvider.slice("gateway:".length));
+    };
+    const matchingEndpoint = luiSettings.customEndpoints.find((ep) => ep.apiKey?.trim() && endpointMatchesModel(ep))
+      ?? (defaultEndpoint && endpointMatchesModel(defaultEndpoint) ? defaultEndpoint : null)
+      ?? luiSettings.customEndpoints.find(endpointMatchesModel)
+      ?? null;
 
     let resolvedBaseURL: string;
     let resolvedApiKey: string;
@@ -3368,7 +3409,12 @@ Always be concise and helpful in your responses.`;
     } else if (matchingEndpoint?.providerId) {
       const presetProvider = getPresetProvider(matchingEndpoint.providerId);
       resolvedBaseURL = presetProvider?.baseURL || DEFAULT_OPENAI_COMPATIBLE_BASE_URL;
-      resolvedApiKey = matchingEndpoint.apiKey || "";
+      resolvedApiKey = matchingEndpoint.providerId === "minimax"
+        ? (MINIMAX_API_KEY || matchingEndpoint.apiKey || "")
+        : (matchingEndpoint.apiKey || "");
+    } else if (modelProvider === "minimax" && MINIMAX_API_KEY) {
+      resolvedBaseURL = MINIMAX_BASE_URL;
+      resolvedApiKey = MINIMAX_API_KEY;
     } else {
       resolvedBaseURL = DEFAULT_OPENAI_COMPATIBLE_BASE_URL;
       resolvedApiKey = DEFAULT_OPENAI_COMPATIBLE_API_KEY;

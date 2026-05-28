@@ -20,11 +20,15 @@ export function buildScreeningCandidateOverview(
 
   const name = firstText(conclusion?.candidateName, parsedResume?.name) ?? "未识别";
   const position = firstText(conclusion?.candidatePosition, parsedResume?.position) ?? "未填写";
-  const education = firstText(
+  const education = firstEducationText(
     conclusion?.candidateEducation,
     parsedResume?.education,
   );
-  const school = firstText(conclusion?.candidateSchools);
+  const school = firstSchoolText(
+    conclusion?.candidateSchools,
+    conclusion?.candidateEducation,
+    parsedResume?.education,
+  );
 
   return {
     name,
@@ -69,9 +73,57 @@ function firstText(...groups: Array<Array<string | null | undefined> | string | 
 }
 
 function combineEducationAndSchool(education: string | null, school: string | null) {
-  if (education && school) {
-    return `${education} · ${school}`;
+  const normalizedEducation = normalizeEducationDisplay(education);
+  const normalizedSchool = school?.trim() ?? null;
+
+  if (normalizedEducation && normalizedSchool && !normalizedEducation.includes(normalizedSchool)) {
+    return `${normalizedEducation} · ${normalizedSchool}`;
   }
 
-  return education ?? school ?? "未填写";
+  if (normalizedEducation && normalizedSchool) {
+    return normalizedEducation;
+  }
+
+  return normalizedEducation ?? normalizedSchool ?? "未填写";
+}
+
+function firstEducationText(...groups: Array<Array<string | null | undefined> | string | null | undefined>) {
+  const text = firstText(...groups);
+  return normalizeEducationDisplay(text);
+}
+
+function firstSchoolText(...groups: Array<Array<string | null | undefined> | string | null | undefined>) {
+  for (const group of groups) {
+    const values = typeof group === "string" ? [group] : group ?? [];
+    for (const value of values) {
+      if (typeof value !== "string") continue;
+      const school = extractSchoolNameFromEducation(value);
+      if (school) return school;
+    }
+  }
+
+  return null;
+}
+
+function normalizeEducationDisplay(text: string | null) {
+  if (!text) return null;
+
+  const normalized = text
+    .replace(/\s+/g, " ")
+    .replace(/[,，;；|｜]+/g, " · ")
+    .replace(/\s*[·•]\s*/g, " · ")
+    .trim();
+
+  return normalized || null;
+}
+
+function extractSchoolNameFromEducation(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const parenthesizedSchool = normalized.match(/([\u4e00-\u9fa5]{2,30}(?:大学|学院|学校)[（(][^）)]+[）)])/);
+  if (parenthesizedSchool?.[1]) {
+    return parenthesizedSchool[1].trim();
+  }
+
+  const school = normalized.match(/([\u4e00-\u9fa5A-Za-z·.&\- ]{2,50}(?:大学|学院|学校|University|College|Institute))/i);
+  return school?.[1]?.trim() ?? null;
 }

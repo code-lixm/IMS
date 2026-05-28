@@ -5,7 +5,7 @@ import { recorderApi } from "@/api/recorder";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
 import { createRecorderAdapter } from "@/lib/recorder";
-import type { IRecorderAdapter } from "@/lib/recorder";
+import type { IRecorderAdapter, RecorderDiagnosticsData } from "@/lib/recorder";
 import type {
   RecorderDetailData,
   RecorderLevelUpdateEventPayload,
@@ -82,8 +82,12 @@ export const useRecorderStore = defineStore("recorder", () => {
   const detailLoading = ref(false);
   const savingOrganised = ref(false);
   const deletingRecordingId = ref<string | null>(null);
+  const pendingRecordingId = ref<string | null>(null);
+  const diagnostics = ref<RecorderDiagnosticsData | null>(null);
+  const diagnosticsLoading = ref(false);
   let historyRequestId = 0;
   let detailRequestId = 0;
+  let completionRefreshPromise: Promise<void> | null = null;
 
   const hasActiveRecording = computed(() => Boolean(activeRecordingId.value));
 
@@ -115,6 +119,10 @@ export const useRecorderStore = defineStore("recorder", () => {
     errorCode.value = snapshot.errorCode;
     errorMessage.value = snapshot.errorMessage;
     updatedAt.value = snapshot.updatedAt;
+
+    if ((snapshot.status === "completed" || snapshot.status === "error") && pendingRecordingId.value) {
+      void refreshCompletedRecording(pendingRecordingId.value, snapshot.status === "completed");
+    }
   }
 
   function setSupported(nextSupported: boolean) {
@@ -163,6 +171,8 @@ export const useRecorderStore = defineStore("recorder", () => {
 
   function resetSession() {
     clearSubscriptions();
+    pendingRecordingId.value = null;
+    completionRefreshPromise = null;
     applyStateSnapshot({
       status: "idle",
       activeRecordingId: null,
@@ -183,6 +193,7 @@ export const useRecorderStore = defineStore("recorder", () => {
   async function startRecording() {
     const adapter = getAdapter();
     const { recordingId } = await adapter.startRecording();
+    pendingRecordingId.value = recordingId;
 
     // Subscribe to real-time events from the adapter
     unsubscribeLevel.value = adapter.subscribeLevel(applyLevelUpdate);
@@ -206,9 +217,71 @@ export const useRecorderStore = defineStore("recorder", () => {
 
   async function stopRecording() {
     const adapter = getAdapter();
+    if (status.value === "recording") {
+      status.value = "stopping";
+      updatedAt.value = Date.now();
+    }
     await adapter.stopRecording();
     // Listeners stay alive here — the backend may push a final segment /
     // level snapshot before the "completed" state transition.
+  }
+
+  async function refreshCompletedRecording(recordingId: string, shouldLoadDetail: boolean) {
+    if (completionRefreshPromise) {
+      return completionRefreshPromise;
+    }
+
+    completionRefreshPromise = (async () => {
+      try {
+        await loadRecordings();
+        if (shouldLoadDetail) {
+          await loadRecordingDetail(recordingId);
+        }
+      } catch {
+        // keep the terminal recorder state; the API error toast is emitted by loaders
+      } finally {
+        if (pendingRecordingId.value === recordingId) {
+          pendingRecordingId.value = null;
+        }
+        completionRefreshPromise = null;
+      }
+    })();
+
+    return completionRefreshPromise;
+  }
+
+  async function runDiagnostics() {
+    diagnosticsLoading.value = true;
+    try {
+      const result = await getAdapter().runDiagnostics();
+      diagnostics.value = result;
+      return result;
+    } catch (error) {
+      diagnostics.value = {
+        checkedAt: Date.now(),
+        desktopRuntime: isSupported.value,
+        activeRecording: false,
+        deviceAvailable: false,
+        deviceName: null,
+        configAvailable: false,
+        sampleRate: null,
+        channels: null,
+        permissionGranted: null,
+        inputSignalDetected: null,
+        peakLevel: null,
+        muted: null,
+        errorCode: "DIAGNOSTICS_FAILED",
+        errorMessage: error instanceof Error ? error.message : "诊断执行失败",
+        notes: ["无法完成录音自检，请检查桌面运行时和本地设备状态。"],
+      };
+      notifyError(reportAppError("recorder-store/run-diagnostics", error, {
+        title: "录音自检失败",
+        fallbackMessage: "暂时无法完成录音设备检测",
+      }));
+      throw error;
+    } finally {
+      diagnosticsLoading.value = false;
+    }
   }
 
   async function loadRecordings(options?: { signal?: AbortSignal }) {
@@ -369,6 +442,8 @@ export const useRecorderStore = defineStore("recorder", () => {
     detailLoading,
     savingOrganised,
     deletingRecordingId,
+    diagnostics,
+    diagnosticsLoading,
     hasActiveRecording,
     setSupported,
     setPanelOpen,
@@ -382,6 +457,7 @@ export const useRecorderStore = defineStore("recorder", () => {
     resetSession,
     startRecording,
     stopRecording,
+    runDiagnostics,
     loadRecordings,
     loadRecordingDetail,
     saveOrganisedText,

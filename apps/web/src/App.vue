@@ -1,8 +1,8 @@
 <template>
   <div class="min-h-screen bg-background">
     <router-view />
-    <RecorderHost />
     <OnboardingTourHost />
+    <RecorderGlobalHost />
     <AppNotificationCenter />
     <WhatsNewDialog :open="whatsNewDialogVisible" @close="dismissWhatsNew" />
 
@@ -19,9 +19,9 @@
             <div class="relative flex flex-col items-center gap-5 text-center">
               <div class="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/70 bg-background/90 shadow-sm">
                 <div class="loading-brand-ring absolute inset-0 rounded-2xl border border-foreground/8" />
-                <div class="loading-brand-core flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                  <Briefcase class="h-5 w-5" />
-                </div>
+                <AppBrandIcon
+                  container-class="loading-brand-core h-11 w-11 rounded-xl bg-primary p-1.5 shadow-sm"
+                />
               </div>
 
               <div class="space-y-1">
@@ -43,10 +43,10 @@
 </template>
 
 <script setup lang="ts">
-import { Briefcase } from "lucide-vue-next";
 import AppNotificationCenter from "@/components/app-notification-center.vue";
-import RecorderHost from "@/components/recorder/recorder-host.vue";
 import OnboardingTourHost from "@/components/onboarding-tour-host.vue";
+import RecorderGlobalHost from "@/components/recorder/recorder-global-host.vue";
+import AppBrandIcon from "@/components/layout/app-brand-icon.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useTheme } from "@/composables/use-theme";
 import WhatsNewDialog from "@/components/changelog/WhatsNewDialog.vue";

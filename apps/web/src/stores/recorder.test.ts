@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import type { RecorderDetailData, RecorderListItem, RecorderTranscriptSegment } from "@ims/shared";
 import { recorderApi } from "@/api/recorder";
-import { useRecorderStore } from "./recorder";
+import { FakeRecorderAdapter } from "@/lib/recorder";
+import { injectRecorderAdapter, useRecorderStore } from "./recorder";
 
 vi.mock("@/composables/use-app-notifications", () => ({
   useAppNotifications: () => ({
@@ -53,6 +54,7 @@ function makeRecorderDetailData(id: string, overrides: Partial<RecorderDetailDat
 describe("useRecorderStore", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    injectRecorderAdapter(new FakeRecorderAdapter());
   });
 
   afterEach(() => {
@@ -110,5 +112,29 @@ describe("useRecorderStore", () => {
     expect(store.history).toHaveLength(1);
     expect(store.history[0]?.id).toBe("rec-2");
     expect(store.total).toBe(1);
+  });
+
+  test("completed state refreshes history and loads the finished recording detail", async () => {
+    const adapter = new FakeRecorderAdapter();
+    injectRecorderAdapter(adapter);
+
+    recorderApi.list = async () => ({
+      items: [makeRecorderListItem("rec-1")],
+      total: 1,
+    });
+    recorderApi.get = async () => makeRecorderDetailData("rec-1", {
+      finalTranscriptText: "停止后生成的最终文本",
+    });
+
+    const store = useRecorderStore();
+    await store.startRecording();
+    await store.stopRecording();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.history[0]?.id).toBe("rec-1");
+    expect(store.current?.recording.id).toBe("rec-1");
+    expect(store.current?.recording.finalTranscriptText).toBe("停止后生成的最终文本");
   });
 });

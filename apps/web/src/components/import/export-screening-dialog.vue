@@ -1,102 +1,87 @@
 <template>
   <Dialog
     :open="open"
-    content-class="top-[5vh] max-w-5xl max-h-[90vh] -translate-y-0 overflow-hidden"
+    content-class="top-[5vh] max-w-[1160px] max-h-[90vh] -translate-y-0 overflow-hidden rounded-[18px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
     @update:open="handleDialogOpenChange"
   >
     <template #content>
-      <div class="flex max-h-[calc(90vh-2rem)] flex-col overflow-hidden p-1">
-        <DialogHeader>
-          <DialogTitle>自定义导出</DialogTitle>
-          <DialogDescription>
-            支持按分数范围、指定 PDF 文件导出。ZIP
-            命名统一为“简历/初筛报告-FE|BE-姓名-工作年限-手机号或邮箱”。
-          </DialogDescription>
-        </DialogHeader>
+      <AppDialogLayout class="max-h-[calc(90vh-2rem)]" body-class="pr-7 sm:pr-9">
+        <template #header>
+          <DialogHeader class="space-y-3">
+            <DialogTitle class="text-[22px] font-semibold tracking-[-0.02em] text-[#1A1A1A]">
+              导出报告
+            </DialogTitle>
+            <DialogDescription class="max-w-[720px] text-[13px] leading-6 text-[#6B7280]">
+              已完成初筛的结果会按统一命名导出。
+            </DialogDescription>
+          </DialogHeader>
+        </template>
 
-        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div class="space-y-5 pb-6">
-            <div class="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
-              <section
-                class="space-y-4 rounded-xl border border-border/60 bg-card p-4 shadow-sm"
+        <div class="space-y-6">
+          <section class="space-y-3 border-t border-[#E5E7EB] pt-5">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-[13px] font-semibold text-[#1A1A1A]">导出方式</p>
+              <p class="text-[12px] text-[#6B7280]">
+                {{ selectedMode === "wechat_text" ? "适合直接发送" : selectedMode === "zip_bundle" ? "适合常规打包" : "适合精确指定文件" }}
+              </p>
+            </div>
+            <div class="grid gap-2 rounded-[12px] bg-white/70 p-1 md:grid-cols-3">
+              <button
+                type="button"
+                class="rounded-[10px] px-3 py-3 text-left transition-colors"
+                :class="selectedMode === 'wechat_text' ? 'bg-[#EEF4FF] text-[#1A1A1A]' : 'text-[#6B7280] hover:bg-[#F3F6FA] hover:text-[#1A1A1A]'"
+                @click="selectedMode = 'wechat_text'"
               >
-                <div class="space-y-2">
-                  <div
-                    class="flex items-center gap-2 text-sm font-medium text-foreground"
-                  >
-                    <SlidersHorizontal class="h-4 w-4" />
-                    导出方式
-                  </div>
-                  <div class="grid gap-3 md:grid-cols-3">
-                    <button
-                      type="button"
-                      class="rounded-xl border p-4 text-left transition"
-                      :class="
-                        selectedMode === 'wechat_text'
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-border/60 hover:border-border hover:bg-muted/30'
-                      "
-                      @click="selectedMode = 'wechat_text'"
-                    >
-                      <div class="flex items-center gap-2 text-sm font-medium">
-                        <MessageSquareText class="h-4 w-4" />
-                        微信文案
-                      </div>
-                      <p class="mt-2 text-xs leading-5 text-muted-foreground">
-                        导出当前筛选结果对应的结构化微信文案，适合直接复制发送。
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      class="rounded-xl border p-4 text-left transition"
-                      :class="
-                        selectedMode === 'zip_bundle'
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-border/60 hover:border-border hover:bg-muted/30'
-                      "
-                      @click="selectedMode = 'zip_bundle'"
-                    >
-                      <div class="flex items-center gap-2 text-sm font-medium">
-                        <PackageOpen class="h-4 w-4" />
-                        ZIP 导出
-                      </div>
-                      <p class="mt-2 text-xs leading-5 text-muted-foreground">
-                        快速导出筛选结果，默认按候选人文件夹打包 PDF +
-                        初筛报告。
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      class="rounded-xl border p-4 text-left transition"
-                      :class="
-                        selectedMode === 'custom_bundle'
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-border/60 hover:border-border hover:bg-muted/30'
-                      "
-                      @click="selectedMode = 'custom_bundle'"
-                    >
-                      <div class="flex items-center gap-2 text-sm font-medium">
-                        <PackageOpen class="h-4 w-4" />
-                        自定义 ZIP 包
-                      </div>
-                      <p class="mt-2 text-xs leading-5 text-muted-foreground">
-                        支持勾选指定 PDF、按需决定是否携带每个人的初筛报告
-                        Markdown。
-                      </p>
-                    </button>
-                  </div>
-                </div>
+                <div class="text-sm font-semibold">微信文案</div>
+                <p class="mt-1 text-xs leading-5">复制即发</p>
+              </button>
+              <button
+                type="button"
+                class="rounded-[10px] px-3 py-3 text-left transition-colors"
+                :class="selectedMode === 'zip_bundle' ? 'bg-[#EEF4FF] text-[#1A1A1A]' : 'text-[#6B7280] hover:bg-[#F3F6FA] hover:text-[#1A1A1A]'"
+                @click="selectedMode = 'zip_bundle'"
+              >
+                <div class="text-sm font-semibold">ZIP 导出</div>
+                <p class="mt-1 text-xs leading-5">一键打包</p>
+              </button>
+              <button
+                type="button"
+                class="rounded-[10px] px-3 py-3 text-left transition-colors"
+                :class="selectedMode === 'custom_bundle' ? 'bg-[#EEF4FF] text-[#1A1A1A]' : 'text-[#6B7280] hover:bg-[#F3F6FA] hover:text-[#1A1A1A]'"
+                @click="selectedMode = 'custom_bundle'"
+              >
+                <div class="text-sm font-semibold">自定义 ZIP</div>
+                <p class="mt-1 text-xs leading-5">手动挑选</p>
+              </button>
+            </div>
+          </section>
 
-                <div
-                  class="grid gap-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:grid-cols-2"
-                >
+          <section class="space-y-3 border-t border-[#E5E7EB] pt-5">
+            <Collapsible v-slot="{ open: advancedOpen }" :default-open="false" class="space-y-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-[#1A1A1A]">高级选项</p>
+                  <p class="mt-1 text-xs leading-5 text-[#6B7280]">
+                    {{ advancedSummary }}
+                  </p>
+                </div>
+                <CollapsibleTrigger as-child>
+                  <Button variant="ghost" size="sm" class="h-8 px-2 text-xs">
+                    {{ advancedOpen ? "收起" : "调整" }}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+
+              <CollapsibleContent class="space-y-4">
+                <div class="grid gap-3 sm:grid-cols-2 lg:max-w-[420px]">
                   <div class="space-y-2">
                     <Label for="score-min">最低分</Label>
                     <Input
                       id="score-min"
                       v-model="scoreMinInput"
+                      class="h-[34px] rounded-[6px] border border-[#E5E7EB] bg-white shadow-none"
                       inputmode="numeric"
-                      placeholder="例如 70"
+                      placeholder="不限"
                     />
                   </div>
                   <div class="space-y-2">
@@ -104,233 +89,195 @@
                     <Input
                       id="score-max"
                       v-model="scoreMaxInput"
+                      class="h-[34px] rounded-[6px] border border-[#E5E7EB] bg-white shadow-none"
                       inputmode="numeric"
-                      placeholder="例如 100"
+                      placeholder="不限"
                     />
                   </div>
                 </div>
 
                 <div
                   v-if="selectedMode !== 'wechat_text'"
-                  class="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4"
+                  class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div class="space-y-1">
-                    <p class="text-sm font-medium">携带每个人的初筛报告</p>
-                    <p class="text-xs leading-5 text-muted-foreground">
-                      {{
-                        selectedMode === "zip_bundle"
-                          ? "ZIP 导出默认按候选人目录打包；关闭后会退化为仅导出扁平 PDF 文件。"
-                          : "开启后，每位候选人会单独占一个文件夹，包含重命名后的 PDF 和对应 Markdown 报告；关闭后 ZIP 内只保留扁平的 PDF 单文件。"
-                      }}
-                    </p>
+                  <div class="text-[13px] text-[#4B5563]">
+                    附带初筛报告
+                    <span class="ml-1 text-[#9CA3AF]">
+                      {{ includeReports ? "包含 Markdown" : "仅保留 PDF" }}
+                    </span>
                   </div>
                   <Switch
                     :model-value="includeReports"
                     @update:model-value="includeReports = Boolean($event)"
                   />
                 </div>
+              </CollapsibleContent>
+            </Collapsible>
 
-                <div
-                  class="rounded-xl border border-dashed border-border/60 bg-muted/10 p-4 text-xs leading-5 text-muted-foreground"
-                >
-                  当前导出规则：仅导出已完成初筛且原件为 PDF
-                  的任务；文件名统一为
-                  <span class="font-medium text-foreground"
-                    >base-name-年限-职位-联系方式（手机号）</span
-                  >。
-                </div>
-              </section>
+            <p class="text-xs leading-5 text-[#6B7280]">
+              仅导出已完成初筛且原件为 PDF 的任务。
+            </p>
+          </section>
 
-              <section
-                class="space-y-3 rounded-xl border border-border/60 bg-card p-4 shadow-sm"
+          <section class="space-y-3 border-t border-[#E5E7EB] pt-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-[#1A1A1A]">导出批次</p>
+                <p class="mt-1 text-xs leading-5 text-[#6B7280]">
+                  {{ selectedBatchIds.length }}/{{ completedBatches.length }} 个批次 · {{ filteredTasks.length }} 个文件
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-8 px-2 text-xs"
+                :disabled="completedBatches.length === 0"
+                @click="toggleAllBatches"
               >
-                <div class="flex items-center justify-between gap-3">
-                  <div>
-                    <p class="text-sm font-medium">选择批次</p>
-                    <p class="text-xs text-muted-foreground">
-                      仅展示可导出批次，切换后会自动刷新对应 PDF 列表。
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="h-8 px-2 text-xs"
-                    :disabled="completedBatches.length === 0"
-                    @click="toggleAllBatches"
-                  >
-                    {{ allSelected ? "取消全选" : "全选" }}
-                  </Button>
-                </div>
-
-                <div
-                  v-if="completedBatches.length === 0"
-                  class="rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-8 text-sm text-muted-foreground"
-                >
-                  暂无可导出的批次。
-                </div>
-
-                <ScrollArea
-                  v-else
-                  class="h-72 rounded-xl border border-border/50 bg-muted/10"
-                  viewport-class="p-3"
-                >
-                  <div class="space-y-2">
-                    <label
-                      v-for="batch in completedBatches"
-                      :key="batch.id"
-                      class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition"
-                      :class="
-                        selectedBatchIds.includes(batch.id)
-                          ? 'border-primary/60 bg-primary/5'
-                          : 'border-border/60 hover:border-border hover:bg-muted/30'
-                      "
-                    >
-                      <Checkbox
-                        :checked="selectedBatchIds.includes(batch.id)"
-                        class="mt-0.5"
-                        @update:checked="toggleBatch(batch.id, $event)"
-                      />
-                      <div class="min-w-0 flex-1 space-y-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                          <span class="text-sm font-medium text-foreground">{{
-                            formatImportBatchDisplayName(batch)
-                          }}</span>
-                          <Badge variant="outline" class="text-[11px]"
-                            >可导出</Badge
-                          >
-                        </div>
-                        <p class="text-xs text-muted-foreground">
-                          {{ formatImportTimestamp(batch.createdAt) }} · 文件
-                          {{ batch.totalFiles }} · 成功
-                          {{ batch.successFiles }} · 失败
-                          {{ batch.failedFiles }}
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-                </ScrollArea>
-              </section>
+                {{ allSelected ? "取消全选" : "全选" }}
+              </Button>
             </div>
 
-            <section
-              v-if="selectedMode === 'custom_bundle'"
-              class="space-y-3 rounded-xl border border-border/60 bg-card p-4 shadow-sm"
+            <div
+              v-if="completedBatches.length === 0"
+              class="py-6 text-sm text-[#4B5563]"
             >
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-medium">选择 PDF 文件</p>
-                  <p class="text-xs text-muted-foreground">
-                    共 {{ filteredTasks.length }} 个符合条件的 PDF
-                    文件，当前已勾选 {{ selectedTaskIds.length }} 个。
-                  </p>
-                </div>
-                <div class="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="h-8 px-2 text-xs"
-                    :disabled="filteredTasks.length === 0"
-                    @click="selectAllTasks"
-                  >
-                    全选当前结果
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="h-8 px-2 text-xs"
-                    :disabled="selectedTaskIds.length === 0"
-                    @click="clearTaskSelection"
-                  >
-                    清空勾选
-                  </Button>
-                </div>
-              </div>
+              暂无可导出的批次。
+            </div>
 
-              <div
-                v-if="loadingTasks"
-                class="rounded-xl border border-border/60 bg-muted/20 px-4 py-8 text-sm text-muted-foreground"
-              >
-                正在加载可导出的 PDF 列表...
-              </div>
-
-              <div
-                v-else-if="filteredTasks.length === 0"
-                class="rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-8 text-sm text-muted-foreground"
-              >
-                当前筛选条件下没有可导出的 PDF
-                文件。你可以调整分数范围，或切换导出批次。
-              </div>
-
-              <ScrollArea
-                v-else
-                class="h-[320px] rounded-xl border border-border/50 bg-muted/10"
-                viewport-class="p-3"
-              >
-                <div class="space-y-2">
-                  <label
-                    v-for="task in filteredTasks"
-                    :key="task.id"
-                    class="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition"
-                    :class="
-                      selectedTaskIds.includes(task.id)
-                        ? 'border-primary/60 bg-primary/5'
-                        : 'border-border/60 hover:border-border hover:bg-muted/30'
-                    "
-                  >
-                    <Checkbox
-                      :checked="selectedTaskIds.includes(task.id)"
-                      class="mt-1"
-                      @update:checked="toggleTask(task.id, $event)"
-                    />
-                    <div class="min-w-0 flex-1 space-y-2">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <span
-                          class="truncate text-sm font-medium text-foreground"
-                          >{{ task.displayName }}</span
-                        >
-                        <Badge variant="outline" class="text-[11px]"
-                          >{{ task.score }} 分</Badge
-                        >
-                        <Badge
-                          v-if="task.recommendationLabel"
-                          :class="task.recommendationClass"
-                          variant="outline"
-                          class="text-[11px]"
-                        >
-                          {{ task.recommendationLabel }}
-                        </Badge>
-                        <Badge variant="secondary" class="text-[11px]">{{
-                          task.batchLabel
-                        }}</Badge>
-                      </div>
-                      <div
-                        class="grid gap-1 text-xs text-muted-foreground md:grid-cols-2"
-                      >
-                        <p>岗位：{{ task.position }}</p>
-                        <p>年限：{{ task.yearsLabel }}</p>
-                        <p>手机：{{ task.phoneLabel }}</p>
-                        <p class="truncate">文件：{{ task.fileName }}</p>
-                      </div>
+            <ScrollArea
+              v-else
+              class="h-[260px]"
+              viewport-class="pr-2"
+            >
+              <div class="divide-y divide-[#E5E7EB]">
+                <label
+                  v-for="batch in completedBatches"
+                  :key="batch.id"
+                  class="flex cursor-pointer items-start gap-3 py-3"
+                >
+                  <Checkbox
+                    :checked="selectedBatchIds.includes(batch.id)"
+                    class="mt-0.5"
+                    @update:checked="toggleBatch(batch.id, $event)"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-sm font-medium text-[#1A1A1A]">{{
+                        formatImportBatchDisplayName(batch)
+                      }}</span>
                     </div>
-                  </label>
-                </div>
-              </ScrollArea>
-            </section>
-          </div>
+                    <p class="mt-1 text-xs leading-5 text-[#6B7280]">
+                      {{ formatImportTimestamp(batch.createdAt) }} · {{ batch.successFiles }}/{{ batch.totalFiles }}
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </ScrollArea>
+          </section>
+
+          <section
+            v-if="selectedMode === 'custom_bundle'"
+            class="space-y-3 border-t border-[#E5E7EB] pt-5"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-[#1A1A1A]">指定文件</p>
+                <p class="mt-1 text-xs leading-5 text-[#6B7280]">
+                  {{ selectedTaskIds.length }}/{{ filteredTasks.length }} 已勾选
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 px-2 text-xs"
+                  :disabled="filteredTasks.length === 0"
+                  @click="selectAllTasks"
+                >
+                  全选当前结果
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 px-2 text-xs"
+                  :disabled="selectedTaskIds.length === 0"
+                  @click="clearTaskSelection"
+                >
+                  清空勾选
+                </Button>
+              </div>
+            </div>
+
+            <div
+              v-if="loadingTasks"
+              class="py-6 text-sm text-[#4B5563]"
+            >
+              正在加载可导出的 PDF 列表...
+            </div>
+
+            <div
+              v-else-if="filteredTasks.length === 0"
+              class="py-6 text-sm text-[#4B5563]"
+            >
+              当前筛选条件下没有可导出的 PDF 文件。你可以调整分数范围，或切换导出批次。
+            </div>
+
+            <ScrollArea
+              v-else
+              class="h-[300px]"
+              viewport-class="pr-2"
+            >
+              <div class="divide-y divide-[#E5E7EB]">
+                <label
+                  v-for="task in filteredTasks"
+                  :key="task.id"
+                  class="flex cursor-pointer items-start gap-3 py-3"
+                >
+                  <Checkbox
+                    :checked="selectedTaskIds.includes(task.id)"
+                    class="mt-1"
+                    @update:checked="toggleTask(task.id, $event)"
+                  />
+                  <div class="min-w-0 flex-1 space-y-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="truncate text-sm font-medium text-[#1A1A1A]">{{ task.displayName }}</span>
+                      <Badge variant="outline" class="text-[11px]">
+                        {{ task.score }} 分
+                      </Badge>
+                      <Badge
+                        v-if="task.recommendationLabel"
+                        :class="task.recommendationClass"
+                        variant="outline"
+                        class="text-[11px]"
+                      >
+                        {{ task.recommendationLabel }}
+                      </Badge>
+                      <Badge variant="secondary" class="text-[11px]">{{ task.batchLabel }}</Badge>
+                    </div>
+                    <p class="text-xs leading-5 text-[#6B7280]">
+                      {{ task.position }} · {{ task.yearsLabel }} · {{ task.phoneLabel }}
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </ScrollArea>
+          </section>
         </div>
 
         <div
           v-if="exportError"
-          class="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          class="rounded-[6px] bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {{ exportError }}
         </div>
 
-        <DialogFooter class="mt-4 border-t border-border/60 bg-background pt-4">
-          <Button variant="outline" @click="emit('update:open', false)"
+        <template #footer>
+          <Button class="h-9 rounded-[6px] text-[13px] font-semibold" variant="outline" @click="emit('update:open', false)"
             >取消</Button
           >
           <Button
+            class="h-9 rounded-[6px] bg-[#0062FF] px-4 text-[13px] font-semibold text-white shadow-none hover:bg-[#0057E5]"
             :disabled="
               exporting ||
               selectedBatchIds.length === 0 ||
@@ -342,8 +289,8 @@
             <Loader2 v-else class="mr-2 h-4 w-4 animate-spin" />
             {{ exporting ? "导出中..." : exportButtonText }}
           </Button>
-        </DialogFooter>
-      </div>
+        </template>
+      </AppDialogLayout>
     </template>
   </Dialog>
 </template>
@@ -361,9 +308,6 @@ import type {
 import { deriveScreeningRecommendation, getEffectiveScreeningScore, normalizeBatchScreeningConfig } from "@ims/shared";
 import {
   Loader2,
-  MessageSquareText,
-  PackageOpen,
-  SlidersHorizontal,
   Upload,
 } from "lucide-vue-next";
 import { importApi } from "@/api/import";
@@ -372,9 +316,10 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { AppDialogLayout } from "@/components/ui/dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { DialogDescription } from "@/components/ui/dialog";
-import { DialogFooter } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -445,6 +390,22 @@ const allSelected = computed(
 
 const scoreMin = computed(() => parseScoreValue(scoreMinInput.value));
 const scoreMax = computed(() => parseScoreValue(scoreMaxInput.value));
+const advancedSummary = computed(() => {
+  const parts: string[] = [];
+  if (scoreMin.value === null && scoreMax.value === null) {
+    parts.push("默认分数范围");
+  } else {
+    const minLabel = scoreMin.value === null ? "不限" : String(scoreMin.value);
+    const maxLabel = scoreMax.value === null ? "不限" : String(scoreMax.value);
+    parts.push(`分数 ${minLabel}-${maxLabel}`);
+  }
+
+  if (selectedMode.value !== "wechat_text") {
+    parts.push(includeReports.value ? "附带报告" : "仅 PDF");
+  }
+
+  return parts.join(" · ");
+});
 
 const availableTasks = computed<ExportTaskOption[]>(() => {
   return selectedBatchIds.value

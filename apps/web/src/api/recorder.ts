@@ -3,7 +3,7 @@ import type {
   RecorderListData,
   UpdateRecorderOrganisedTextInput,
 } from "@ims/shared";
-import { api } from "./client";
+import { api, resolveApiUrl } from "./client";
 
 interface RecorderListOptions {
   limit?: number;
@@ -30,6 +30,9 @@ function buildListPath(options?: RecorderListOptions) {
 }
 
 export const recorderApi = {
+  playbackUrl(recordingId: string) {
+    return resolveApiUrl(`/api/recordings/${recordingId}/file`);
+  },
   list(options?: RecorderListOptions, requestOptions?: RequestOptions) {
     return api<RecorderListData>(buildListPath(options), {
       signal: requestOptions?.signal,

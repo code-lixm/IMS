@@ -1,10 +1,10 @@
 <template>
-  <div v-if="workflow && shouldRender" class="w-full max-w-none rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4 shadow-sm">
-    <div class="space-y-3">
+  <div v-if="workflow && shouldRender" class="w-full max-w-none rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-3 shadow-none dark:border-white/10 dark:bg-white/7">
+    <div class="space-y-2.5">
       <div v-if="needsAssessmentNotes" class="space-y-2">
         <div class="flex flex-wrap items-center gap-2">
-          <p class="text-sm font-semibold text-foreground">请先提供面试纪要</p>
-          <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-primary shadow-sm">
+          <p class="text-[13px] font-semibold text-foreground">请先提供面试纪要</p>
+          <span class="inline-flex h-6 items-center rounded-[6px] border border-[#CFE0FF] bg-[#EEF4FF] px-2 text-[11px] font-semibold text-[#0062FF] shadow-none dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
             {{ stageLabel(workflow.currentStage) }}
           </span>
         </div>
@@ -15,8 +15,8 @@
 
       <div v-if="workflow.requiresRoundConfirmation" class="space-y-2">
         <div class="flex flex-wrap items-center gap-2">
-          <p class="text-sm font-semibold text-foreground">选择角色轮次，直接出题</p>
-          <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-primary shadow-sm">
+          <p class="text-[13px] font-semibold text-foreground">选择角色轮次，直接出题</p>
+          <span class="inline-flex h-6 items-center rounded-[6px] border border-[#CFE0FF] bg-[#EEF4FF] px-2 text-[11px] font-semibold text-[#0062FF] shadow-none dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
             {{ stageLabel(workflow.currentStage) }}
           </span>
         </div>
@@ -38,7 +38,7 @@
           type="button"
           :variant="round === 1 ? 'default' : 'outline'"
           :disabled="isSubmitting || !canGenerateRoundDirectly"
-          class="h-auto min-h-14 flex-col items-start justify-center gap-0.5 rounded-xl px-3 py-3 text-left shadow-sm"
+          class="h-auto min-h-11 flex-col items-start justify-center gap-0.5 rounded-[6px] px-3 py-2 text-left shadow-none"
           @click="generateRound(round)"
         >
           <span class="text-sm font-semibold">{{ getInterviewRoundRoleLabel(round) ?? `第${round}轮` }}</span>
@@ -48,13 +48,13 @@
 
       <div v-if="showAssessmentActionPanel" class="space-y-2">
         <div class="flex flex-wrap items-center gap-2">
-          <p class="text-sm font-semibold text-foreground">{{ assessmentActionTitle }}</p>
-          <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-primary shadow-sm">
+          <p class="text-[13px] font-semibold text-foreground">{{ assessmentActionTitle }}</p>
+          <span class="inline-flex h-6 items-center rounded-[6px] border border-[#CFE0FF] bg-[#EEF4FF] px-2 text-[11px] font-semibold text-[#0062FF] shadow-none dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
             {{ stageLabel("S2") }}
           </span>
           <span
             v-if="assessmentRound"
-            class="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground shadow-sm"
+            class="inline-flex h-6 items-center rounded-[6px] border border-[#E5E7EB] bg-[#F8FAFD] px-2 text-[11px] font-semibold text-[#4B5563] shadow-none dark:border-white/10 dark:bg-white/8 dark:text-slate-300"
           >
             {{ formatInterviewRoundLabel(assessmentRound) }}
           </span>
@@ -67,7 +67,7 @@
             v-if="canLoopToNextRound"
             type="button"
             :disabled="isSubmitting"
-            class="h-auto min-h-18 flex-col items-start justify-center gap-1 rounded-2xl px-4 py-3 text-left shadow-sm whitespace-normal"
+            class="h-auto min-h-12 flex-col items-start justify-center gap-0.5 rounded-[6px] px-3 py-2 text-left shadow-none whitespace-normal"
             @click="advanceToStage('S1')"
           >
             <span class="text-sm font-semibold">
@@ -79,7 +79,7 @@
             type="button"
             variant="outline"
             :disabled="isSubmitting"
-            class="h-auto min-h-18 flex-col items-start justify-center gap-1 rounded-2xl px-4 py-3 text-left shadow-sm whitespace-normal"
+            class="h-auto min-h-12 flex-col items-start justify-center gap-0.5 rounded-[6px] px-3 py-2 text-left shadow-none whitespace-normal"
             @click="scoreDialogOpen = true"
           >
             <span class="text-sm font-semibold">上传面试成绩</span>
@@ -89,7 +89,7 @@
             type="button"
             variant="outline"
             :disabled="isSubmitting"
-            class="h-auto min-h-18 flex-col items-start justify-center gap-1 rounded-2xl px-4 py-3 text-left shadow-sm whitespace-normal"
+            class="h-auto min-h-12 flex-col items-start justify-center gap-0.5 rounded-[6px] px-3 py-2 text-left shadow-none whitespace-normal"
             @click="copyWechatSummary"
           >
             <span class="text-sm font-semibold">复制评价同步到微信</span>
@@ -100,8 +100,8 @@
 
       <div v-if="isCompletedWorkflow" class="space-y-2">
         <div class="flex flex-wrap items-center gap-2">
-          <p class="text-sm font-semibold text-foreground">流程已完成</p>
-          <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-primary shadow-sm">
+          <p class="text-[13px] font-semibold text-foreground">流程已完成</p>
+          <span class="inline-flex h-6 items-center rounded-[6px] border border-[#CFE0FF] bg-[#EEF4FF] px-2 text-[11px] font-semibold text-[#0062FF] shadow-none dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
             {{ stageLabel(workflow.currentStage) }}
           </span>
         </div>
@@ -112,7 +112,7 @@
           <Button
             type="button"
             :disabled="isSubmitting"
-            class="h-auto min-h-18 flex-col items-start justify-center gap-1 rounded-2xl px-4 py-3 text-left shadow-sm whitespace-normal"
+            class="h-auto min-h-12 flex-col items-start justify-center gap-0.5 rounded-[6px] px-3 py-2 text-left shadow-none whitespace-normal"
             @click="restoreWorkflow()"
           >
             <span class="text-sm font-semibold">恢复到{{ compactStageLabel(restoreTargetStage) }}</span>
@@ -122,7 +122,7 @@
             type="button"
             variant="outline"
             :disabled="isSubmitting"
-            class="h-auto min-h-18 flex-col items-start justify-center gap-1 rounded-2xl px-4 py-3 text-left shadow-sm whitespace-normal"
+            class="h-auto min-h-12 flex-col items-start justify-center gap-0.5 rounded-[6px] px-3 py-2 text-left shadow-none whitespace-normal"
             @click="restartWorkflowFromS0()"
           >
             <span class="text-sm font-semibold">从初筛重新开始</span>
@@ -131,38 +131,37 @@
         </div>
       </div>
 
-      <div v-if="canAdvanceStage" class="space-y-2">
-        <div class="flex flex-wrap items-center gap-2">
-          <p class="text-sm font-semibold text-foreground">{{ isCompletionConfirmation ? "确认完成流程" : "进入下一阶段" }}</p>
-          <span class="inline-flex items-center rounded-full border border-primary/20 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-primary shadow-sm">
-            {{ stageLabel(workflow.currentStage) }}
-          </span>
-          <span
-            v-if="!isCompletionConfirmation"
-            class="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground shadow-sm"
-          >
-            下一步 · {{ compactStageLabel(workflow.recommendedNextStage!) }}
-          </span>
+      <div v-if="canAdvanceStage" class="flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0 flex-1 space-y-1.5">
+          <div class="flex flex-wrap items-center gap-2">
+            <p class="text-[13px] font-semibold text-foreground">{{ isCompletionConfirmation ? "确认完成流程" : "进入下一阶段" }}</p>
+            <span class="inline-flex h-6 items-center rounded-[6px] border border-[#CFE0FF] bg-[#EEF4FF] px-2 text-[11px] font-semibold text-[#0062FF] shadow-none dark:border-primary/25 dark:bg-primary/10 dark:text-primary">
+              {{ stageLabel(workflow.currentStage) }}
+            </span>
+            <span
+              v-if="!isCompletionConfirmation"
+              class="inline-flex h-6 items-center rounded-[6px] border border-[#E5E7EB] bg-[#F8FAFD] px-2 text-[11px] font-semibold text-[#4B5563] shadow-none dark:border-white/10 dark:bg-white/8 dark:text-slate-300"
+            >
+              下一步 · {{ compactStageLabel(workflow.recommendedNextStage!) }}
+            </span>
+          </div>
+          <p class="text-xs leading-5 text-muted-foreground">
+            <template v-if="isCompletionConfirmation">
+              当前流程已经可以收尾，点击后会直接标记为完成。
+            </template>
+            <template v-else>
+              点击后会立即推进到 {{ compactStageLabel(workflow.recommendedNextStage!) }}。
+            </template>
+          </p>
         </div>
-        <p class="text-xs leading-5 text-muted-foreground">
-          <template v-if="isCompletionConfirmation">
-            当前流程已经可以收尾，点击后会直接标记为完成。
-          </template>
-          <template v-else>
-            点击后会立即推进到 {{ compactStageLabel(workflow.recommendedNextStage!) }}。
-          </template>
-        </p>
         <Button
           type="button"
           :disabled="isSubmitting"
-          class="h-auto min-h-18 flex-col items-start justify-center gap-1 rounded-2xl px-4 py-3 text-left shadow-sm whitespace-normal"
+          class="h-8 shrink-0 rounded-[6px] bg-[#0062FF] px-3 text-xs font-semibold text-white shadow-none hover:bg-[#0057E6]"
           @click="advanceStage"
         >
-          <span class="text-sm font-semibold">
+          <span>
             {{ isCompletionConfirmation ? "确认完成当前流程" : `进入${compactStageLabel(workflow.recommendedNextStage!)}` }}
-          </span>
-          <span class="text-xs opacity-80">
-            {{ isCompletionConfirmation ? "结束流程" : "立即推进" }}
           </span>
         </Button>
       </div>

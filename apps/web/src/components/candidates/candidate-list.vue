@@ -3,15 +3,16 @@
     <!-- 批量操作工具栏 -->
     <div
       v-if="hasSelection"
-      class="mb-3 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2"
+      class="mb-3 flex h-[52px] items-center justify-between rounded-md bg-[#F8FAFD] px-3 py-2 dark:bg-white/5"
     >
       <div class="flex items-center gap-2 text-sm">
         <Checkbox :checked="isAllSelectedOnPage" @update:checked="toggleAllOnPage" />
-        <span class="font-medium">已选择 {{ selectedCount }} 位候选人</span>
+        <span class="font-semibold text-[#1A1A1A] dark:text-slate-100">已选择 {{ selectedCount }} 位候选人</span>
+        <span class="text-[13px] text-[#4B5563] dark:text-slate-300">可批量分享、导出或删除候选人。</span>
       </div>
       <div class="flex items-center gap-2">
-        <Button size="sm" variant="ghost" @click="clearSelection">取消选择</Button>
-        <Button size="sm" :disabled="shareLoading" @click="emit('batch-share')">
+        <Button size="sm" variant="outline" class="h-8 rounded-md bg-white px-3 text-[12px] font-semibold text-[#1A1A1A] dark:bg-white/8 dark:text-slate-100" @click="clearSelection">取消选择</Button>
+        <Button size="sm" class="h-8 rounded-md px-3 text-[12px] font-semibold" :disabled="shareLoading" @click="emit('batch-share')">
           <Share2 v-if="!shareLoading" class="mr-1.5 h-3.5 w-3.5" />
           {{ shareLoading ? '分享中...' : '分享' }}
         </Button>
@@ -25,9 +26,9 @@
             <div
               v-for="i in 8"
               :key="i"
-              class="grid grid-cols-[1fr_1.3fr_1.2fr_1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_0.8fr_0.9fr] gap-3"
+              class="grid grid-cols-[48px_1.8fr_1.7fr_1.9fr_220px] gap-3"
             >
-              <Skeleton v-for="j in 10" :key="j" class="h-4 w-full" />
+              <Skeleton v-for="j in 6" :key="j" class="h-4 w-full" />
             </div>
           </div>
         </div>
@@ -46,279 +47,124 @@
 
       <Card
         v-else
-        class="flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl border-border/70"
+        class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border-[#DCE6F2] bg-[#F7FAFC] p-0 dark:border-white/10 dark:bg-[#0F1A28]"
       >
-        <!-- 表头：随表体水平滚动而滚动 -->
-        <div ref="headerRef" class="shrink-0 overflow-x-auto">
-          <Table class="min-w-[1380px] table-fixed text-[13px]">
-            <colgroup>
-              <col class="w-[48px] min-w-[48px]" />
-              <col class="w-[10%] min-w-[140px]" />
-              <col class="w-[20%] min-w-[260px]" />
-              <col class="w-[13%] min-w-[180px]" />
-              <col class="w-[19%] min-w-[250px]" />
-              <col class="w-[7%] min-w-[96px]" />
-              <col class="w-[7%] min-w-[88px]" />
-              <col class="w-[8%] min-w-[104px]" />
-              <col class="w-[8%] min-w-[112px]" />
-              <col class="w-[8%] min-w-[108px]" />
-              <col class="w-[9%] min-w-[118px]" />
-            </colgroup>
-            <TableHeader>
-              <TableRow class="border-b border-border/70 [&>*]:whitespace-nowrap">
-                <TableHead class="w-[48px] px-2 text-center">
-                  <Checkbox
-                    :checked="isAllSelectedOnPage"
-                    :indeterminate="isIndeterminateOnPage"
-                    @update:checked="toggleAllOnPage"
-                  />
-                </TableHead>
-                <TableHead
-                  class="px-4 text-[12px] font-semibold tracking-[0.01em]"
-                  >姓名</TableHead
+        <div class="grid h-11 shrink-0 grid-cols-[32px_minmax(220px,1.45fr)_minmax(180px,1fr)_minmax(128px,.75fr)_220px] items-center gap-3 border-b border-[#E6EDF5] bg-transparent px-4 text-[12px] font-semibold text-[#526071] dark:border-white/8 dark:text-slate-300">
+          <div class="flex justify-center" @click.stop>
+            <Checkbox
+              :checked="isAllSelectedOnPage"
+              :indeterminate="isIndeterminateOnPage"
+              @update:checked="toggleAllOnPage"
+            />
+          </div>
+          <span>候选人</span>
+          <span>应聘 / 面试</span>
+          <span>进展</span>
+          <span class="text-center">操作</span>
+        </div>
+
+        <div ref="bodyRef" class="min-h-0 flex-1 space-y-2 overflow-y-auto bg-transparent px-3 pb-3 pt-2">
+          <div
+            v-for="candidate in items"
+            :key="candidate.id"
+            :class="[
+              'group grid min-h-[68px] cursor-pointer grid-cols-[32px_minmax(220px,1.45fr)_minmax(180px,1fr)_minmax(128px,.75fr)_220px] items-center gap-3 rounded-md px-0 text-[13px] transition-colors',
+              checkIsSelected(candidate.id)
+                ? 'bg-white ring-1 ring-[#BFD5FF] dark:bg-primary/18 dark:ring-primary/20'
+                : 'border border-transparent bg-white/88 hover:border-[#E6EDF5] hover:bg-white dark:bg-white/4 dark:hover:bg-white/6',
+            ]"
+            @click="openInLui(candidate)"
+          >
+            <div class="flex justify-center px-2" @click.stop>
+              <Checkbox
+                :checked="checkIsSelected(candidate.id)"
+                @update:checked="toggleCandidateSelection(candidate.id)"
+              />
+            </div>
+
+            <div class="min-w-0 space-y-1 py-3">
+              <button
+                class="block max-w-full truncate text-left text-[14px] font-semibold leading-5 text-[#1A1A1A] hover:text-[#0062FF] dark:text-slate-100 dark:hover:text-primary"
+                @click.stop="openInLui(candidate)"
+              >
+                {{ candidate.name }} · {{ candidate.phone || candidate.email || "暂无联系方式" }}
+              </button>
+              <p class="truncate text-[12px] leading-4 text-[#4B5563] dark:text-slate-300">
+                {{ secondaryApplicationText(candidate) || "候选人信息待补充" }}
+              </p>
+            </div>
+
+            <div class="min-w-0 space-y-1 py-3">
+              <p class="truncate text-[13px] font-semibold leading-5 text-[#1A1A1A] dark:text-slate-100">
+                {{ primaryApplicationText(candidate) }}
+              </p>
+              <div class="flex min-w-0 items-center gap-2 text-[12px] leading-4 text-[#4B5563] dark:text-slate-300">
+                <span class="truncate">{{ formatInterviewTime(candidate.interviewTime) }}</span>
+                <a
+                  v-if="meetingJoinHref(candidate)"
+                  :href="meetingJoinHref(candidate) ?? undefined"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex shrink-0 items-center gap-1 font-semibold text-[#0062FF] hover:underline"
+                  :title="meetingLinkTitle(candidate)"
+                  @click.stop
                 >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >应聘部门</TableHead
-              >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >应聘岗位</TableHead
-              >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >面试信息</TableHead
-              >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >形式</TableHead
-              >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >结果</TableHead
-              >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >来源</TableHead
-              >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >负责人</TableHead
-              >
-              <TableHead class="text-[12px] font-semibold tracking-[0.01em]"
-                >状态</TableHead
-              >
-              <TableHead
-                class="sticky right-0 border-l border-border/60 bg-background/95 px-4 text-center text-[12px] font-semibold tracking-[0.01em] backdrop-blur"
-                >操作</TableHead
-              >
-            </TableRow>
-          </TableHeader>
-        </Table>
-      </div>
+                  <ExternalLink class="h-3 w-3" />
+                  会议
+                </a>
+              </div>
+            </div>
 
-      <!-- 表体：flex-1 填满剩余空间，内部滚动 -->
-      <div
-        ref="bodyRef"
-        class="flex-1 min-h-0 overflow-auto"
-        @scroll="syncHeaderScroll"
-      >
-        <Table class="min-w-[1380px] table-fixed text-[13px]">
-          <colgroup>
-            <col class="w-[48px] min-w-[48px]" />
-            <col class="w-[10%] min-w-[140px]" />
-            <col class="w-[20%] min-w-[260px]" />
-            <col class="w-[13%] min-w-[180px]" />
-            <col class="w-[19%] min-w-[250px]" />
-            <col class="w-[7%] min-w-[96px]" />
-            <col class="w-[7%] min-w-[88px]" />
-            <col class="w-[8%] min-w-[104px]" />
-            <col class="w-[8%] min-w-[112px]" />
-            <col class="w-[8%] min-w-[108px]" />
-            <col class="w-[9%] min-w-[118px]" />
-          </colgroup>
-          <TableBody>
-            <TableRow
-              v-for="candidate in items"
-              :key="candidate.id"
-              class="group cursor-pointer border-b border-border/60 transition-colors odd:bg-muted/30 hover:bg-accent/55"
-              @click="openInLui(candidate)"
-            >
-              <TableCell class="w-[48px] px-2 py-2.5 text-center align-middle" @click.stop>
-                <Checkbox
-                  :checked="checkIsSelected(candidate.id)"
-                  @update:checked="toggleCandidateSelection(candidate.id)"
-                />
-              </TableCell>
-              <TableCell class="px-4 py-2.5 align-middle">
-                <div class="min-w-0 space-y-1">
-                  <button
-                    class="block truncate text-left text-[14px] font-semibold leading-5 text-foreground hover:text-primary"
-                    @click.stop="openInLui(candidate)"
-                  >
-                    {{ candidate.name }}
-                  </button>
-                  <p
-                    class="truncate text-[12px] leading-4 text-muted-foreground/90 dark:text-neutral-500"
-                  >
-                    {{ candidate.phone || candidate.email || "暂无联系方式" }}
-                  </p>
-                </div>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <div class="min-w-0 space-y-1">
-                  <p
-                    class="truncate text-[13px] font-medium leading-5 text-foreground dark:text-neutral-200"
-                  >
-                    {{ candidate.organizationName || "未同步部门" }}
-                  </p>
-                  <p
-                    v-if="candidate.orgAllParentName"
-                    class="truncate text-[11px] leading-4 text-muted-foreground/75 dark:text-neutral-500"
-                  >
-                    {{
-                      compactDepartmentPath(
-                        candidate.orgAllParentName,
-                        candidate.organizationName,
-                      )
-                    }}
-                  </p>
-                </div>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <div class="min-w-0 space-y-1">
-                  <p
-                    class="truncate text-[13px] font-medium leading-5 text-foreground dark:text-neutral-200"
-                  >
-                    {{
-                      candidate.applyPositionName ||
-                      candidate.position ||
-                      "岗位待补充"
-                    }}
-                  </p>
-                  <p
-                    class="text-[11px] leading-4 text-muted-foreground/75 dark:text-neutral-500"
-                  >
-                    {{ yearsOfExperienceLabel(candidate.yearsOfExperience) }}
-                  </p>
-                </div>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <div class="min-w-0 space-y-1">
-                  <p
-                    class="truncate text-[13px] font-medium leading-5 text-foreground dark:text-neutral-200"
-                  >
-                    {{ formatInterviewTime(candidate.interviewTime) }}
-                  </p>
-                  <p
-                    class="truncate text-[11px] leading-4 text-muted-foreground dark:text-neutral-400"
-                  >
-                    {{ compactInterviewLocationText(candidate) }}
-                  </p>
-                  <a
-                    v-if="meetingJoinHref(candidate)"
-                    :href="meetingJoinHref(candidate) ?? undefined"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex w-fit items-center gap-1 text-[10px] font-medium text-sky-600 underline-offset-2 transition-colors hover:text-sky-500 hover:underline dark:text-sky-400 dark:hover:text-sky-300"
-                    :title="meetingLinkTitle(candidate)"
-                    @click.stop
-                  >
-                    <ExternalLink class="h-3 w-3" />
-                    打开会议
-                  </a>
-                </div>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <span
-                  class="inline-flex truncate text-[13px] leading-5 text-foreground/90 dark:text-neutral-300"
-                >
-                  {{ candidate.interviewTypeLabel || "未标记" }}
-                </span>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <span
-                  class="inline-flex truncate text-[13px] font-medium leading-5 text-foreground/90 dark:text-neutral-300"
-                >
-                  {{ candidate.interviewResultString || "待反馈" }}
-                </span>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <span
-                  class="inline-flex truncate text-[13px] leading-5 text-foreground/85 dark:text-neutral-400"
-                >
-                  {{
-                    candidate.recruitmentSourceName ||
-                    sourceLabel(candidate.source)
-                  }}
-                </span>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <div class="min-w-0 space-y-1">
-                  <p
-                    class="truncate text-[13px] font-medium leading-5 text-foreground dark:text-neutral-200"
-                  >
-                    {{ candidate.interviewOwnerName || "待分配" }}
-                  </p>
-                  <p
-                    v-if="
-                      candidate.dockingHrbpName &&
-                      candidate.dockingHrbpName !== candidate.interviewOwnerName
-                    "
-                    class="truncate text-[11px] leading-4 text-muted-foreground/75 dark:text-neutral-500"
-                  >
-                    HRBP：{{ candidate.dockingHrbpName }}
-                  </p>
-                </div>
-              </TableCell>
-
-              <TableCell class="py-2.5 align-middle">
-                <Badge
-                  :class="
-                    applicationStatusClasses(candidate.applicationStatus ?? 0)
-                  "
-                  variant="outline"
-                  class="max-w-full whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-medium"
-                >
-                  {{ candidate.applicationStatusText || "未同步" }}
-                </Badge>
-              </TableCell>
-
-              <TableCell
-                class="sticky right-0 border-l border-border/60 bg-background/95 px-4 py-2.5 align-middle backdrop-blur group-hover:bg-accent/55"
+            <div class="flex min-w-0 flex-col items-start gap-1 py-3">
+              <Badge
+                :class="applicationStatusClasses(candidate.applicationStatus ?? 0)"
+                variant="outline"
+                class="max-w-full rounded-md px-2.5 py-0.5 text-[12px] font-semibold"
               >
-                <div
-                  class="flex min-h-[32px] items-center justify-center gap-3 text-[12px] leading-5"
-                >
-                  <button
-                    class="whitespace-nowrap text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline"
-                    @click.stop="emit('open-workspace', candidate.id)"
-                  >
-                    详情
-                  </button>
-                  <button
-                    class="whitespace-nowrap text-blue-600 hover:underline disabled:opacity-50 disabled:no-underline"
-                    :disabled="exportLoadingId === candidate.id"
-                    @click.stop="emit('export', candidate.id)"
-                  >
-                    {{ exportLoadingId === candidate.id ? "导出中…" : "导出" }}
-                  </button>
-                  <button
-                    class="whitespace-nowrap text-red-600 hover:underline disabled:opacity-50 disabled:no-underline"
-                    :disabled="deleteLoadingId === candidate.id"
-                    @click.stop="emit('delete', candidate.id)"
-                  >
-                    {{ deleteLoadingId === candidate.id ? "删除中…" : "删除" }}
-                  </button>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
+                {{ candidate.applicationStatusText || "未同步" }}
+              </Badge>
+              <span
+                :class="interviewResultClasses(candidate.interviewResultString)"
+                class="inline-flex max-w-full items-center rounded-md px-2 py-0.5 text-[12px] font-medium leading-4"
+                :title="candidate.interviewResultString || '待反馈'"
+              >
+                {{ interviewResultText(candidate.interviewResultString) }}
+              </span>
+            </div>
+
+            <div class="flex min-w-0 items-center justify-end gap-2 px-3 py-3" @click.stop>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 min-w-[52px] rounded-md border-0 bg-transparent px-3 text-[12px] font-semibold text-[#0062FF] hover:bg-[#EEF4FF] hover:text-[#0053D6] dark:bg-transparent dark:text-primary dark:hover:bg-primary/12"
+                @click="emit('open-workspace', candidate.id)"
+              >
+                详情
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 min-w-[64px] rounded-md border-0 bg-transparent px-3 text-[12px] font-semibold text-[#526071] hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:bg-transparent dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-primary"
+                :disabled="exportLoadingId === candidate.id"
+                @click="emit('export', candidate.id)"
+              >
+                {{ exportLoadingId === candidate.id ? "导出中…" : "导出" }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 min-w-[64px] rounded-md border-0 bg-transparent px-3 text-[12px] font-semibold text-[#DC2626] hover:bg-[#FEF2F2] hover:text-[#B91C1C] dark:bg-transparent dark:text-red-300 dark:hover:bg-red-500/16 dark:hover:text-red-200"
+                :disabled="deleteLoadingId === candidate.id"
+                @click="emit('delete', candidate.id)"
+              >
+                {{ deleteLoadingId === candidate.id ? "删除中…" : "删除" }}
+              </Button>
+            </div>
+          </div>
+        </div>
 
       <!-- 分页器：固定在底部 -->
-      <div class="shrink-0 border-t bg-background px-4 py-3">
+      <div class="shrink-0 border-t border-[#E6EDF5] bg-transparent px-4 py-3 dark:border-white/8 dark:bg-transparent">
         <div
           class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2"
         >
@@ -329,12 +175,10 @@
           <div
             class="flex flex-col gap-3 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end sm:gap-2"
           >
-            <label
-              class="flex items-center gap-2 text-sm text-muted-foreground"
-            >
+            <label class="flex items-center gap-2 text-sm text-muted-foreground">
               每页
               <select
-                class="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+                class="h-8 rounded-md border border-[#E5E7EB] bg-white px-2 text-foreground shadow-sm dark:border-white/10 dark:bg-white/8 dark:text-slate-100"
                 :value="String(pageSize)"
                 @change="emitPageSizeChange"
               >
@@ -406,12 +250,6 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table } from "@/components/ui/table";
-import { TableBody } from "@/components/ui/table";
-import { TableCell } from "@/components/ui/table";
-import { TableHead } from "@/components/ui/table";
-import { TableHeader } from "@/components/ui/table";
-import { TableRow } from "@/components/ui/table";
 
 interface CandidateListProps {
   items: CandidateListData["items"];
@@ -440,14 +278,7 @@ const props = withDefaults(defineProps<CandidateListProps>(), {
 });
 
 const router = useRouter();
-const headerRef = ref<HTMLDivElement | null>(null);
 const bodyRef = ref<HTMLDivElement | null>(null);
-
-function syncHeaderScroll() {
-  if (headerRef.value && bodyRef.value) {
-    headerRef.value.scrollLeft = bodyRef.value.scrollLeft;
-  }
-}
 
 function openInLui(candidate: CandidateListData["items"][number]) {
   const phone = candidate.phone;
@@ -514,6 +345,37 @@ function yearsOfExperienceLabel(years: number | null) {
   return `${years} 年经验`;
 }
 
+function primaryApplicationText(candidate: CandidateListData["items"][number]) {
+  const position = candidate.applyPositionName || candidate.position || "岗位待补充";
+  const department = candidate.organizationName || "未同步部门";
+  return `${position} · ${department}`;
+}
+
+function secondaryApplicationText(candidate: CandidateListData["items"][number]) {
+  const departmentPath = candidate.orgAllParentName
+    ? compactDepartmentPath(candidate.orgAllParentName, candidate.organizationName)
+    : null;
+  const source = candidate.recruitmentSourceName || sourceLabel(candidate.source);
+  return [departmentPath, yearsOfExperienceLabel(candidate.yearsOfExperience), source]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function interviewResultText(value?: string | null) {
+  const result = value?.trim();
+  if (!result) return "待反馈";
+  return result.length === 1 ? `评价 ${result}` : result;
+}
+
+function interviewResultClasses(value?: string | null) {
+  const result = value?.trim();
+  if (!result) return "bg-[#F3F4F6] text-[#6B7280] dark:bg-white/8 dark:text-slate-300";
+  if (/通过|录用|pass|hire/i.test(result)) return "bg-[#ECFDF5] text-[#047857] dark:bg-emerald-500/12 dark:text-emerald-200";
+  if (/淘汰|不通过|拒绝|reject|fail/i.test(result)) return "bg-[#FEF2F2] text-[#DC2626] dark:bg-red-500/12 dark:text-red-200";
+  if (/待定|候补|hold|pending/i.test(result)) return "bg-[#FFFBEB] text-[#B45309] dark:bg-amber-500/12 dark:text-amber-200";
+  return "bg-[#F3F6FA] text-[#4B5563] dark:bg-white/8 dark:text-slate-300";
+}
+
 function formatInterviewTime(timestamp?: number | null) {
   if (!timestamp) return "未安排";
 
@@ -538,26 +400,6 @@ function compactDepartmentPath(
     tail.pop();
   }
   return tail.join(" / ") || path;
-}
-
-function compactInterviewLocationText(
-  candidate: CandidateListData["items"][number],
-) {
-  if (candidate.interviewPlace) return candidate.interviewPlace;
-
-  if (candidate.interviewUrl) {
-    return candidate.interviewUrl
-      .replaceAll('"', "")
-      .replace("#腾讯会议：", "腾讯会议 · ")
-      .replace("腾讯会议：", "腾讯会议 · ")
-      .replace(/会议密码[:：]\s*[^\s]+/g, "")
-      .replace(/\s{2,}/g, " ")
-      .trim();
-  }
-
-  return candidate.checkInTime
-    ? `签到：${formatInterviewTime(candidate.checkInTime)}`
-    : "暂无面试地点信息";
 }
 
 function normalizeMeetingSource(value?: string | null) {

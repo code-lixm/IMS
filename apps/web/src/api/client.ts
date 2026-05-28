@@ -57,6 +57,10 @@ function resolveUrl(path: string): string {
   return path.startsWith("http") ? path : `${baseUrl}${path}`;
 }
 
+export function resolveApiUrl(path: string): string {
+  return resolveUrl(path);
+}
+
 function resolveProductionBaseUrl(): string {
   if (typeof window === "undefined") {
     return SERVER_BASE_URL;

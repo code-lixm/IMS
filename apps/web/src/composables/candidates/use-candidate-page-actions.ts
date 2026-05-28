@@ -5,6 +5,7 @@ import { importApi } from "@/api/import";
 import { shareApi } from "@/api/share";
 import { useImportPreferences } from "@/composables/import/use-import-preferences";
 import { pickFiles } from "@/composables/use-file-picker";
+import { useAppNotifications } from "@/composables/use-app-notifications";
 import type { CandidateActionFeedback } from "./types";
 
 const IMPORT_ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.zip";
@@ -16,6 +17,7 @@ function getErrorMessage(error: unknown) {
 export function useCandidatePageActions() {
   const router = useRouter();
   const { autoScreen } = useImportPreferences();
+  const { notifySuccess } = useAppNotifications();
   const feedback = ref<CandidateActionFeedback | null>(null);
   const isImporting = ref(false);
   const exportLoadingId = ref<string | null>(null);
@@ -94,10 +96,8 @@ export function useCandidatePageActions() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      setFeedback({
-        tone: "success",
-        message: `导出成功：${filename}`,
-      });
+      clearFeedback();
+      notifySuccess(`导出成功：${filename}`);
     } catch (error: unknown) {
       setFeedback({
         tone: "error",

@@ -4,6 +4,7 @@ import { pinia } from "@/stores";
 import { hasSkippedBaobaoLogin } from "@/lib/baobao-login-skip";
 import CandidatesView from "@/views/CandidatesView.vue";
 import CandidateDetailView from "@/views/CandidateDetailView.vue";
+import InterviewsView from "@/views/InterviewsView.vue";
 import ImportView from "@/views/ImportView.vue";
 import LoginView from "@/views/LoginView.vue";
 import SettingsView from "@/views/SettingsView.vue";
@@ -20,6 +21,7 @@ const router = createRouter({
     { path: "/login", component: LoginView, meta: { guestOnly: true } },
     { path: "/candidates", component: CandidatesView, meta: { requiresAuth: true } },
     { path: "/candidates/:id", component: CandidateDetailView, meta: { requiresAuth: true } },
+    { path: "/interviews", component: InterviewsView, meta: { requiresAuth: true } },
     { path: "/import", component: ImportView, meta: { requiresAuth: true } },
     { path: "/settings", component: SettingsView, meta: { requiresAuth: true } },
     { path: "/lui", component: LUIView, meta: { requiresAuth: true } },

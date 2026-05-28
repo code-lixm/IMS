@@ -73,6 +73,10 @@ export async function recorderRoute(request: Request): Promise<Response | null> 
   if (recordingMatch) {
     const recordingId = recordingMatch[1];
 
+    if (request.method === "GET" && path.endsWith("/file")) {
+      return null;
+    }
+
     if (request.method === "GET") {
       try {
         const recording = await recorderService.getRecordingById(recordingId);
@@ -99,6 +103,35 @@ export async function recorderRoute(request: Request): Promise<Response | null> 
         console.error("[recorder] failed to delete recording", error);
         return fail("INTERNAL_ERROR", "Failed to delete recording", 500);
       }
+    }
+  }
+
+  const recordingFileMatch = path.match(/^\/api\/recordings\/([^/]+)\/file$/);
+  if (recordingFileMatch && request.method === "GET") {
+    const recordingId = recordingFileMatch[1];
+
+    try {
+      const recording = await recorderService.getRecordingById(recordingId);
+      if (!recording?.filePath) {
+        return fail("RECORDING_NOT_FOUND", "Recording file not found", 404);
+      }
+
+      const file = Bun.file(recording.filePath);
+      if (!(await file.exists())) {
+        return fail("RECORDING_FILE_MISSING", "Recording file is missing", 404);
+      }
+
+      return new Response(file, {
+        status: 200,
+        headers: corsHeaders({
+          "Content-Type": file.type || "audio/wav",
+          "Content-Disposition": `inline; filename="${recordingId}.wav"`,
+          "Cache-Control": "no-store",
+        }),
+      });
+    } catch (error) {
+      console.error("[recorder] failed to stream recording file", error);
+      return fail("INTERNAL_ERROR", "Failed to stream recording file", 500);
     }
   }
 

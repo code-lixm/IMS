@@ -34,13 +34,13 @@ const offset = computed(() => circumference.value * (1 - percent.value / 100))
 const progressColor = computed(() => {
   switch (props.status) {
     case "processing":
-      return "text-primary"
+      return "text-[#0062FF]"
     case "done":
       return "text-green-600"
     case "error":
       return "text-destructive"
     default:
-      return "text-primary"
+      return "text-[#0062FF]"
   }
 })
 </script>

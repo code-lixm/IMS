@@ -1,16 +1,22 @@
 <template>
-  <Dialog :open="open" @update:open="emit('update:open', $event)">
+  <Dialog
+    :open="open"
+    content-class="sm:max-w-lg max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)]"
+    @update:open="emit('update:open', $event)"
+  >
     <template #content>
-      <DialogHeader>
-        <DialogTitle>选择分享设备</DialogTitle>
-        <DialogDescription>
-          已选择 {{ selectedCount }} 位候选人，请选择目标设备进行分享
-        </DialogDescription>
-      </DialogHeader>
+      <AppDialogLayout body-class="space-y-4">
+        <template #header>
+          <DialogHeader>
+            <DialogTitle>选择分享设备</DialogTitle>
+            <DialogDescription>
+              已选择 {{ selectedCount }} 位候选人，请选择目标设备进行分享
+            </DialogDescription>
+          </DialogHeader>
+        </template>
 
-      <div class="mt-4 space-y-4">
         <!-- 设备发现控制 -->
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between rounded-[6px] bg-white px-4 py-3">
           <div class="text-sm text-muted-foreground">
             <template v-if="discovering">
               <span class="inline-flex items-center gap-2"
@@ -36,89 +42,114 @@
 
         <!-- 在线设备列表 -->
         <div class="space-y-2">
-          <label class="text-sm font-medium">在线设备</label>
+          <label class="text-sm font-medium text-[#1A1A1A]">在线设备</label>
           <div
             v-if="onlineDevices.length === 0"
-            class="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground"
+            class="rounded-[6px] border-0 bg-[#F1F5FB] p-6 text-center text-sm text-[#4B5563]"
           >
             未发现在线设备
           </div>
-          <div v-else class="grid gap-2">
-            <button
+          <div v-else class="grid gap-2.5">
+            <Card
               v-for="device in onlineDevices"
               :key="device.deviceId || `${device.ip}:${device.apiPort}`"
+              as="button"
               type="button"
-              class="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:bg-accent"
-              :class="{
-                'border-primary bg-primary/5': selectedDevice?.deviceId === device.deviceId,
-              }"
+              :class="[
+                'flex w-full items-center gap-3 rounded-[6px] border-0 px-3 py-3 text-left shadow-none transition-colors',
+                isOnlineDeviceSelected(device)
+                  ? 'bg-[#EEF4FF] hover:bg-[#EEF4FF]'
+                  : 'bg-[#FFFFFF] hover:bg-[#F9FAFB]',
+              ]"
               @click="selectDevice(device)"
             >
               <div
-                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10"
+                :class="[
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] transition-colors',
+                  isOnlineDeviceSelected(device) ? 'bg-[#0062FF]' : 'bg-[#F3F4F6]',
+                ]"
               >
-                <Monitor class="h-4 w-4 text-primary" />
+                <Monitor
+                  :class="[
+                    'h-4 w-4 transition-colors',
+                    isOnlineDeviceSelected(device) ? 'text-white' : 'text-[#4B5563]',
+                  ]"
+                />
               </div>
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium">{{ device.deviceName }}</p>
-                <p class="truncate text-xs text-muted-foreground">
+                <p class="truncate text-sm font-semibold text-[#1A1A1A]">{{ device.deviceName }}</p>
+                <p class="truncate text-xs text-[#4B5563]">
                   {{ device.ip }}:{{ device.apiPort }}
                 </p>
               </div>
-              <Check
-                v-if="selectedDevice?.deviceId === device.deviceId"
-                class="h-4 w-4 shrink-0 text-primary"
-              />
-            </button>
+              <Badge
+                :variant="isOnlineDeviceSelected(device) ? 'default' : 'outline'"
+                class="shrink-0 rounded-[6px] px-2 py-0.5 text-[11px]"
+              >
+                <Check v-if="isOnlineDeviceSelected(device)" class="h-3 w-3" />
+                {{ isOnlineDeviceSelected(device) ? '已选' : '在线' }}
+              </Badge>
+            </Card>
           </div>
         </div>
 
         <!-- 最近联系设备 -->
         <div v-if="recentDevices.length > 0" class="space-y-2">
-          <label class="text-sm font-medium">最近联系</label>
-          <div class="grid gap-2">
-            <button
+          <label class="text-sm font-medium text-[#1A1A1A]">最近联系</label>
+          <div class="grid gap-2.5">
+            <Card
               v-for="device in recentDevices"
               :key="device.deviceId"
+              as="button"
               type="button"
-              class="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:bg-accent"
-              :class="{
-                'border-primary bg-primary/5': selectedDevice?.deviceId === device.deviceId,
-              }"
+              :class="[
+                'flex w-full items-center gap-3 rounded-[6px] border-0 px-3 py-3 text-left shadow-none transition-colors',
+                isRecentDeviceSelected(device)
+                  ? 'bg-[#EEF4FF] hover:bg-[#EEF4FF]'
+                  : 'bg-[#FFFFFF] hover:bg-[#F9FAFB]',
+              ]"
               @click="selectRecentDevice(device)"
             >
               <div
-                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted"
+                :class="[
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] transition-colors',
+                  isRecentDeviceSelected(device) ? 'bg-[#0062FF]' : 'bg-[#F3F4F6]',
+                ]"
               >
-                <History class="h-4 w-4 text-muted-foreground" />
+                <History
+                  :class="[
+                    'h-4 w-4 transition-colors',
+                    isRecentDeviceSelected(device) ? 'text-white' : 'text-[#4B5563]',
+                  ]"
+                />
               </div>
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium">{{ device.deviceName }}</p>
-                <p class="truncate text-xs text-muted-foreground">
+                <p class="truncate text-sm font-semibold text-[#1A1A1A]">{{ device.deviceName }}</p>
+                <p class="truncate text-xs text-[#4B5563]">
                   上次联系：{{ formatLastSeen(device.lastSeen) }}
                 </p>
               </div>
-              <Check
-                v-if="selectedDevice?.deviceId === device.deviceId"
-                class="h-4 w-4 shrink-0 text-primary"
-              />
-            </button>
+              <Badge
+                :variant="isRecentDeviceSelected(device) ? 'default' : 'outline'"
+                class="shrink-0 rounded-[6px] px-2 py-0.5 text-[11px]"
+              >
+                <Check v-if="isRecentDeviceSelected(device)" class="h-3 w-3" />
+                {{ isRecentDeviceSelected(device) ? '已选' : '最近' }}
+              </Badge>
+            </Card>
           </div>
         </div>
-      </div>
-
-      <DialogFooter class="mt-6">
-        <Button variant="secondary" @click="emit('update:open', false)"
-          >取消</Button
-        >
-        <Button
-          :disabled="!selectedDevice || isSending"
-          :loading="isSending"
-          @click="handleSend"
-        >
-          {{ isSending ? '发送中...' : `发送给 ${selectedDevice?.name || '设备'}` }}
-        </Button>
-      </DialogFooter>
+        <template #footer>
+          <Button variant="secondary" @click="emit('update:open', false)">取消</Button>
+          <Button
+            :disabled="!selectedDevice || isSending"
+            :loading="isSending"
+            @click="handleSend"
+          >
+            {{ isSending ? '发送中...' : `发送给 ${selectedDevice?.name || '设备'}` }}
+          </Button>
+        </template>
+      </AppDialogLayout>
     </template>
   </Dialog>
 </template>
@@ -127,11 +158,13 @@
 import { ref, watch } from "vue";
 import { Monitor, History, RefreshCw, Check } from "lucide-vue-next";
 import { Dialog } from "@/components/ui/dialog";
+import { AppDialogLayout } from "@/components/ui/dialog";
 import { DialogDescription } from "@/components/ui/dialog";
-import { DialogFooter } from "@/components/ui/dialog";
 import { DialogHeader } from "@/components/ui/dialog";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { shareApi } from "@/api/share";
 import type { ShareDevicesData } from "@ims/shared";
 
@@ -216,6 +249,18 @@ function selectRecentDevice(device: ShareDevicesData["recentContacts"][number]) 
     deviceId: device.deviceId,
     name: device.deviceName,
   };
+}
+
+function isOnlineDeviceSelected(device: ShareDevicesData["onlineDevices"][number]) {
+  if (!selectedDevice.value) return false;
+  if (device.deviceId && selectedDevice.value.deviceId) {
+    return selectedDevice.value.deviceId === device.deviceId;
+  }
+  return selectedDevice.value.ip === device.ip && selectedDevice.value.port === device.apiPort;
+}
+
+function isRecentDeviceSelected(device: ShareDevicesData["recentContacts"][number]) {
+  return Boolean(selectedDevice.value?.deviceId && selectedDevice.value.deviceId === device.deviceId);
 }
 
 function formatLastSeen(timestamp: number): string {

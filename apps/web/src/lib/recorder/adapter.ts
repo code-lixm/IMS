@@ -3,7 +3,7 @@ import type {
   RecorderLiveTranscriptSegmentUpdateEventPayload,
   RecorderStateSnapshot,
 } from "@ims/shared";
-import type { IRecorderAdapter } from "./types";
+import type { IRecorderAdapter, RecorderDiagnosticsData } from "./types";
 
 /**
  * TauriRecorderAdapter — bridges recorder operations to the native Rust side
@@ -33,6 +33,11 @@ export class TauriRecorderAdapter implements IRecorderAdapter {
   async getStatus(): Promise<RecorderStateSnapshot> {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<RecorderStateSnapshot>("get_recorder_status");
+  }
+
+  async runDiagnostics(): Promise<RecorderDiagnosticsData> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<RecorderDiagnosticsData>("run_recorder_diagnostics");
   }
 
   subscribeLevel(
