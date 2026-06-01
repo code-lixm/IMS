@@ -4,9 +4,9 @@
       <Button
         variant="ghost"
         size="sm"
-        class="h-8 max-w-[13rem] gap-1.5 rounded-md px-2.5 text-xs font-medium shadow-none dark:text-slate-200 dark:hover:bg-white/8 dark:hover:text-slate-100"
+        class="h-8 max-w-[13rem] gap-1.5 rounded-[6px] bg-[#F8FAFD] px-2.5 text-xs font-semibold text-[#4B5563] shadow-none hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/14 dark:hover:text-white"
       >
-        <Bot class="h-3.5 w-3.5 shrink-0" />
+        <Bot class="h-4 w-4 shrink-0" />
         <span class="hidden truncate sm:inline">{{ selectedAgentTitle }}</span>
         <ChevronsUpDown class="h-3.5 w-3.5 shrink-0 opacity-60" />
       </Button>

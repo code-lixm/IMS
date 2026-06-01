@@ -1,8 +1,5 @@
 <template>
-  <div
-    :class="imsDesign.luiShell"
-    :data-user-phone="userPhone ?? undefined"
-  >
+  <div :class="imsDesign.luiShell" :data-user-phone="userPhone ?? undefined">
     <ResizablePanelGroup
       id="lui-main-split"
       direction="horizontal"
@@ -20,34 +17,36 @@
         :class="`border-r ${imsDesign.luiPanel}`"
       >
         <div class="flex h-full min-h-0 flex-col">
-          <div :class="`flex h-12 items-center justify-between border-b px-3 ${imsDesign.luiToolbar}`">
+          <div
+            :class="`flex h-12 items-center justify-between border-b px-3 ${imsDesign.luiToolbar}`"
+          >
             <AppBrandLink to="/candidates" />
-            <div class="flex items-center gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                class="h-8 shrink-0 rounded-[6px] bg-[#0062FF] px-3 text-xs font-semibold text-[#FFFFFF] shadow-[0_8px_18px_-12px_#0B6BFF66] hover:bg-[#0057E6]"
-                title="新建会话"
-                @click="onConversationCreate"
-              >
-                <Plus class="h-4 w-4" />
-                <span class="hidden xl:inline">新建</span>
-              </Button>
-              <AppUserActions />
-            </div>
           </div>
 
           <div :class="`border-b px-3 py-2 ${imsDesign.luiSubPanel}`">
             <div class="flex items-center justify-between gap-2">
               <div class="min-w-0">
-                <p class="text-xs font-semibold text-[#1A1A1A] dark:text-slate-100">会话历史</p>
-                <p class="truncate text-[11px] leading-4 text-[#4B5563] dark:text-slate-300">
+                <p
+                  class="text-xs font-semibold text-[#1A1A1A] dark:text-slate-100"
+                >
+                  会话历史
+                </p>
+                <p
+                  class="truncate text-[11px] leading-4 text-[#4B5563] dark:text-slate-300"
+                >
                   {{ visibleConversations.length }} 个工作台记录
                 </p>
               </div>
-              <Badge variant="outline" class="h-6 rounded-[6px] bg-[#F8FAFD] px-2 text-[11px] text-[#4B5563] dark:bg-white/8 dark:text-slate-200">
-                LUI
-              </Badge>
+              <Button
+                variant="default"
+                size="sm"
+                class="h-8 shrink-0 rounded-[6px] bg-[#0062FF] px-3 text-xs font-semibold text-[#FFFFFF] shadow-none hover:bg-[#0057E6]"
+                title="新建会话"
+                @click="onConversationCreate"
+              >
+                <Plus class="h-4 w-4" />
+                <span>新建</span>
+              </Button>
             </div>
           </div>
 
@@ -101,7 +100,9 @@
                   variant="outline"
                   class="h-6 max-w-full rounded-[6px] border-transparent bg-[#F8FAFD] px-2 text-[11px] font-semibold text-[#4B5563] shadow-[0_2px_6px_#00000008] dark:bg-white/8 dark:text-slate-200"
                 >
-                  <span class="shrink-0 text-[#0062FF]">{{ artifact.stage }}</span>
+                  <span class="shrink-0 text-[#0062FF]">{{
+                    artifact.stage
+                  }}</span>
                   <span class="truncate">{{ artifact.title }}</span>
                 </Badge>
               </div>
@@ -131,8 +132,12 @@
         :min-size="58"
         class="min-h-0"
       >
-        <main class="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white dark:bg-background">
-          <div :class="`lui-toolbar flex h-12 items-center gap-2 border-b px-3 ${imsDesign.luiToolbar}`">
+        <main
+          class="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white dark:bg-background"
+        >
+          <div
+            :class="`lui-toolbar flex h-12 items-center gap-2 border-b px-3 ${imsDesign.luiToolbar}`"
+          >
             <div class="flex shrink-0 items-center gap-1.5">
               <Button
                 variant="ghost"
@@ -164,7 +169,9 @@
 
             <div class="min-w-0 flex-1 px-1">
               <div v-if="store.selectedConversation" class="min-w-0">
-                <p class="truncate text-sm font-semibold leading-6 text-[#1A1A1A] dark:text-slate-100">
+                <p
+                  class="truncate text-sm font-semibold leading-6 text-[#1A1A1A] dark:text-slate-100"
+                >
                   {{ formatToolbarTitle(store.selectedConversation.title) }}
                 </p>
               </div>
@@ -180,10 +187,10 @@
               </span>
             </div>
 
-            <div class="flex shrink-0 items-center gap-1.5">
+            <div class="flex shrink-0 items-center gap-1">
               <Badge
                 variant="outline"
-                class="hidden h-8 rounded-[6px] border-transparent bg-[#F8FAFD] px-2.5 text-[11px] font-semibold text-[#4B5563] lg:inline-flex dark:bg-white/8 dark:text-slate-200"
+                class="hidden h-8 rounded-[6px] border-transparent bg-transparent px-2 text-xs font-semibold text-[#4B5563] lg:inline-flex dark:text-slate-300"
               >
                 队列 {{ store.tasks.length }}
               </Badge>
@@ -197,7 +204,7 @@
                 type="button"
                 variant="outline"
                 size="sm"
-                class="h-8 gap-1.5 rounded-[6px] border-transparent bg-[#F8FAFD] px-2.5 text-xs font-semibold text-[#4B5563] shadow-none hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/14 dark:hover:text-white"
+                class="h-8 gap-1.5 rounded-[6px] border-transparent bg-[#F8FAFD] px-2.5 text-xs font-semibold text-[#4B5563] shadow-none hover:bg-[#EEF4FF] hover:text-[#0062FF] disabled:bg-[#F8FAFD] disabled:text-[#9CA3AF] dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/14 dark:hover:text-white dark:disabled:bg-white/6 dark:disabled:text-slate-500"
                 :disabled="!currentSourceResume"
                 @click="openSourceDocumentPreview"
               >
@@ -211,12 +218,11 @@
                   @select="onAgentSelect"
                 />
               </div>
+              <AppUserActions />
             </div>
           </div>
 
-          <Conversation
-            class="flex min-h-0 flex-1 flex-col overflow-hidden"
-          >
+          <Conversation class="flex min-h-0 flex-1 flex-col overflow-hidden">
             <ConversationContent
               class="mx-auto min-h-0 w-full max-w-4xl flex-1 px-4 py-5 sm:px-6"
             >
@@ -316,8 +322,12 @@
                         :key="`${message.key}-tool-${index}`"
                         class="rounded-[6px] border border-[#E5E7EB] bg-[#F8FAFD] px-3 py-2 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7"
                       >
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                          <p class="text-xs font-semibold text-[#1A1A1A] dark:text-slate-100">
+                        <div
+                          class="flex flex-wrap items-center justify-between gap-2"
+                        >
+                          <p
+                            class="text-xs font-semibold text-[#1A1A1A] dark:text-slate-100"
+                          >
                             工具调用 {{ index + 1 }}
                           </p>
                           <Badge
@@ -354,13 +364,14 @@
                 </div>
               </Message>
 
-              <Message
-                v-if="showAssessmentReminder"
-                from="assistant"
-              >
+              <Message v-if="showAssessmentReminder" from="assistant">
                 <div class="min-w-0 flex-1">
-                  <div class="rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div
+                    class="rounded-[6px] border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 shadow-[0_2px_6px_#00000008] dark:border-white/10 dark:bg-white/7"
+                  >
+                    <div
+                      class="flex flex-wrap items-start justify-between gap-3"
+                    >
                       <div class="space-y-1">
                         <p class="text-sm font-semibold text-foreground">
                           把本轮面试纪要丢到输入框
@@ -402,7 +413,9 @@
             <template #after>
               <TaskQueueIndicator :tasks="store.tasks" />
 
-              <div :class="`shrink-0 border-t px-4 pb-2 pt-2 ${imsDesign.luiToolbar}`">
+              <div
+                :class="`shrink-0 border-t px-4 pb-2 pt-2 ${imsDesign.luiToolbar}`"
+              >
                 <div class="mx-auto w-full">
                   <div data-onboarding="prompt-input">
                     <PromptInput
@@ -416,7 +429,10 @@
                         v-if="pickedFiles.length"
                         class="mb-2 flex flex-wrap gap-2 px-1 pt-1"
                       >
-                        <Attachments class="flex flex-wrap gap-2" variant="inline">
+                        <Attachments
+                          class="flex flex-wrap gap-2"
+                          variant="inline"
+                        >
                           <Attachment
                             v-for="file in pickedFiles"
                             :key="file.id"
@@ -434,14 +450,15 @@
                       </PromptInputHeader>
 
                       <PromptInputBody>
-                      <PromptInputTextarea
-                        :disabled="
-                          chatStatus === 'submitted' || chatStatus === 'streaming'
-                        "
-                        placeholder="输入消息，输入 / 使用命令"
-                        class="min-h-[52px] border-0 bg-transparent px-3 py-2 text-sm caret-[#1A1A1A] shadow-none focus-visible:ring-0 dark:text-slate-100 dark:caret-slate-100 dark:placeholder:text-slate-400"
-                        data-lui-prompt-input
-                      />
+                        <PromptInputTextarea
+                          :disabled="
+                            chatStatus === 'submitted' ||
+                            chatStatus === 'streaming'
+                          "
+                          placeholder="输入消息，输入 / 使用命令"
+                          class="min-h-[52px] border-0 bg-transparent px-3 py-2 text-sm caret-[#1A1A1A] shadow-none focus-visible:ring-0 dark:text-slate-100 dark:caret-slate-100 dark:placeholder:text-slate-400"
+                          data-lui-prompt-input
+                        />
                       </PromptInputBody>
 
                       <PromptInputFooter
@@ -462,7 +479,9 @@
                           <div data-onboarding="model-selector">
                             <ModelSelector v-model:open="modelSelectorOpen">
                               <ModelSelectorTrigger as-child>
-                                <PromptInputButton :disabled="store.isLoadingMessages">
+                                <PromptInputButton
+                                  :disabled="store.isLoadingMessages"
+                                >
                                   <ModelSelectorLogo
                                     v-if="selectedModelLogo"
                                     :provider="selectedModelLogo"
@@ -474,9 +493,13 @@
                               </ModelSelectorTrigger>
 
                               <ModelSelectorContent class="sm:max-w-md">
-                                <ModelSelectorInput placeholder="搜索模型或 Provider" />
+                                <ModelSelectorInput
+                                  placeholder="搜索模型或 Provider"
+                                />
                                 <ModelSelectorList>
-                                  <ModelSelectorEmpty>暂无可用模型</ModelSelectorEmpty>
+                                  <ModelSelectorEmpty
+                                    >暂无可用模型</ModelSelectorEmpty
+                                  >
                                   <ModelSelectorGroup
                                     v-for="provider in store.providers"
                                     :key="provider.id"
@@ -488,16 +511,22 @@
                                       :value="`${provider.name} ${model.displayName}`"
                                       :class="[
                                         'lui-model-selector-item min-h-9 rounded-[6px]',
-                                        store.selectedModelId === model.id && store.selectedModelProvider === provider.id
+                                        store.selectedModelId === model.id &&
+                                        store.selectedModelProvider ===
+                                          provider.id
                                           ? 'bg-[#EEF4FF] text-[#1A1A1A]'
                                           : 'text-[#4B5563] hover:bg-[#F9FAFB]',
                                       ]"
                                       @select="selectModel(model.id)"
                                     >
-                                      <div class="flex min-w-0 items-center gap-2">
+                                      <div
+                                        class="flex min-w-0 items-center gap-2"
+                                      >
                                         <ModelSelectorLogo
                                           v-if="getProviderLogo(provider.id)"
-                                          :provider="getProviderLogo(provider.id)!"
+                                          :provider="
+                                            getProviderLogo(provider.id)!
+                                          "
                                         />
                                         <div class="min-w-0 flex-1">
                                           <ModelSelectorName>
@@ -509,8 +538,10 @@
                                         </div>
                                         <Check
                                           v-if="
-                                            store.selectedModelId === model.id &&
-                                            store.selectedModelProvider === provider.id
+                                            store.selectedModelId ===
+                                              model.id &&
+                                            store.selectedModelProvider ===
+                                              provider.id
                                           "
                                           class="ml-auto h-4 w-4 text-primary"
                                         />
@@ -530,7 +561,8 @@
                             placeholder="输入模型名称（如 MiniMax-M2.7）"
                             class="h-8 max-w-[240px] rounded-[6px] border-[#E5E7EB] bg-white text-xs"
                             :disabled="
-                              chatStatus === 'submitted' || chatStatus === 'streaming'
+                              chatStatus === 'submitted' ||
+                              chatStatus === 'streaming'
                             "
                           />
                         </PromptInputTools>
@@ -572,7 +604,11 @@
       @update:open="handleSourceDocumentPreviewOpenChange"
     >
       <template #content>
-        <AppDialogLayout v-if="currentSourceResume" class="min-h-0 flex-1" body-class="overflow-hidden py-0">
+        <AppDialogLayout
+          v-if="currentSourceResume"
+          class="min-h-0 flex-1"
+          body-class="overflow-hidden py-0"
+        >
           <template #header>
             <DialogHeader>
               <div class="flex items-start justify-between gap-3 pr-8">
@@ -584,7 +620,13 @@
                     {{ formatResumeSize(currentSourceResume.fileSize) }}
                   </DialogDescription>
                 </div>
-                <Button type="button" variant="outline" size="sm" class="gap-1.5" @click="downloadSourceDocument">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="gap-1.5"
+                  @click="downloadSourceDocument"
+                >
                   <Download class="h-4 w-4" />
                   <span class="hidden sm:inline">下载</span>
                 </Button>
@@ -655,7 +697,12 @@
 import type { ChatStatus } from "ai";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from "vue-router";
+import {
+  onBeforeRouteLeave,
+  RouterLink,
+  useRoute,
+  useRouter,
+} from "vue-router";
 import {
   ArrowLeft,
   Bot,
@@ -753,7 +800,10 @@ import { ApiError } from "@/api/client";
 import { luiApi } from "@/api/lui";
 import { useAppNotifications } from "@/composables/use-app-notifications";
 import { reportAppError } from "@/lib/errors/normalize";
-import { PRESET_PROVIDER_BASE_URLS, type GatewayEndpoint } from "@/lib/ai-gateway-config";
+import {
+  PRESET_PROVIDER_BASE_URLS,
+  type GatewayEndpoint,
+} from "@/lib/ai-gateway-config";
 import { useAuthStore } from "@/stores/auth";
 import { useCandidatesStore } from "@/stores/candidates";
 import type { Agent, Message as LuiStoreMessage } from "@/stores/lui/types";
@@ -786,14 +836,19 @@ interface UiMessageItem {
   status: "streaming" | "error" | "complete";
   createdAt: number;
   primaryContent: string;
-  workflowAction: "confirm-round" | "advance-stage" | "complete-workflow" | null;
+  workflowAction:
+    | "confirm-round"
+    | "advance-stage"
+    | "complete-workflow"
+    | null;
   reasoning?: string | null;
   tools?: unknown[] | null;
   sources: SourceItem[];
 }
 
 const STALE_STREAMING_MESSAGE_MS = 2 * 60 * 1000;
-const STREAMING_LEAVE_WARNING = "AI 正在回复中，离开当前页面可能会让你看不到完整的流式输出。确定要离开吗？";
+const STREAMING_LEAVE_WARNING =
+  "AI 正在回复中，离开当前页面可能会让你看不到完整的流式输出。确定要离开吗？";
 
 const acceptedFileTypes = ".png,.jpg,.jpeg,.webp,.imr";
 const interviewConversationPolicy = createInterviewConversationPolicy();
@@ -826,24 +881,26 @@ const inputText = ref("");
 const leftPanelRef = ref<InstanceType<typeof ResizablePanel> | null>(null);
 const modelSelectorOpen = ref(false);
 const isSubmittingPrompt = ref(false);
-const lastSubmittedPrompt = ref<{ text: string; files: File[]; conversationId: string } | null>(null);
-const lastFailedPrompt = ref<{ text: string; files: File[]; conversationId: string } | null>(null);
+const lastSubmittedPrompt = ref<{
+  text: string;
+  files: File[];
+  conversationId: string;
+} | null>(null);
+const lastFailedPrompt = ref<{
+  text: string;
+  files: File[];
+  conversationId: string;
+} | null>(null);
 const gatewaySetupDialogOpen = ref(false);
 const isSavingGatewaySetup = ref(false);
 const isTestingGatewaySetup = ref(false);
 const presetProviders = ref<PresetProvider[]>([]);
-const leftPanelWidth = ref(readStoredPanelSize(
-  LUI_LEFT_PANEL_WIDTH_STORAGE_KEY,
-  31,
-  22,
-  42,
-));
-const leftTopPaneSize = ref(readStoredPanelSize(
-  LUI_LEFT_TOP_PANE_SIZE_STORAGE_KEY,
-  50,
-  30,
-  75,
-));
+const leftPanelWidth = ref(
+  readStoredPanelSize(LUI_LEFT_PANEL_WIDTH_STORAGE_KEY, 31, 22, 42),
+);
+const leftTopPaneSize = ref(
+  readStoredPanelSize(LUI_LEFT_TOP_PANE_SIZE_STORAGE_KEY, 50, 30, 75),
+);
 const isWorkspaceReady = ref(false);
 const sourceDocumentPreviewOpen = ref(false);
 const sourcePreviewObjectUrl = ref<string | null>(null);
@@ -871,7 +928,9 @@ function openInterviewNotesUpload() {
 
 function focusPromptInput() {
   requestAnimationFrame(() => {
-    const input = document.querySelector<HTMLTextAreaElement>("[data-lui-prompt-input]");
+    const input = document.querySelector<HTMLTextAreaElement>(
+      "[data-lui-prompt-input]",
+    );
     if (!input) return;
     input.focus();
     input.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -966,9 +1025,10 @@ const agentSelectorProfile = computed(() =>
     ? INTERVIEW_AGENT_SELECTOR_PROFILE
     : GENERIC_AGENT_SELECTOR_PROFILE,
 );
-const isInterviewSuggestionContext = computed(() =>
-  routeScene.value === "interview" ||
-  isInterviewAgent(activeSuggestionAgent.value),
+const isInterviewSuggestionContext = computed(
+  () =>
+    routeScene.value === "interview" ||
+    isInterviewAgent(activeSuggestionAgent.value),
 );
 
 const chatStatus = computed<ChatStatus>(() => {
@@ -979,8 +1039,8 @@ const chatStatus = computed<ChatStatus>(() => {
   return "ready";
 });
 
-const isStreamingResponseActive = computed(() =>
-  chatStatus.value === "submitted" || chatStatus.value === "streaming",
+const isStreamingResponseActive = computed(
+  () => chatStatus.value === "submitted" || chatStatus.value === "streaming",
 );
 
 onBeforeRouteLeave(() => {
@@ -1002,9 +1062,9 @@ function handleStreamingBeforeUnload(event: BeforeUnloadEvent) {
 
 const canRetryLastPrompt = computed(() => {
   return Boolean(
-    lastFailedPrompt.value
-    && store.selectedId
-    && lastFailedPrompt.value.conversationId === store.selectedId,
+    lastFailedPrompt.value &&
+    store.selectedId &&
+    lastFailedPrompt.value.conversationId === store.selectedId,
   );
 });
 
@@ -1177,7 +1237,8 @@ watch(
 );
 
 watch(
-  () => [sourceDocumentPreviewOpen.value, currentSourceResume.value?.id] as const,
+  () =>
+    [sourceDocumentPreviewOpen.value, currentSourceResume.value?.id] as const,
   ([open, resumeId], [, previousResumeId]) => {
     if (!open) {
       return;
@@ -1218,9 +1279,9 @@ watch(
   () => chatStatus.value,
   (status) => {
     if (
-      status === "error"
-      && lastSubmittedPrompt.value
-      && store.selectedId === lastSubmittedPrompt.value.conversationId
+      status === "error" &&
+      lastSubmittedPrompt.value &&
+      store.selectedId === lastSubmittedPrompt.value.conversationId
     ) {
       lastFailedPrompt.value = lastSubmittedPrompt.value;
       return;
@@ -1232,7 +1293,8 @@ watch(
 );
 
 async function onConversationSelect(id: string) {
-  const conversation = store.conversations.find((item) => item.id === id) ?? null;
+  const conversation =
+    store.conversations.find((item) => item.id === id) ?? null;
   await store.selectConversation(id);
   await replaceConversationRoute(conversation);
 }
@@ -1308,7 +1370,11 @@ async function loadSourceDocumentPreview(resume: CandidateResume) {
 
   try {
     const preview = await candidatesApi.loadResumePreviewSource(resume.id);
-    if (!sourceDocumentPreviewOpen.value || currentSourceResume.value?.id !== resume.id || requestToken !== sourcePreviewRequestToken.value) {
+    if (
+      !sourceDocumentPreviewOpen.value ||
+      currentSourceResume.value?.id !== resume.id ||
+      requestToken !== sourcePreviewRequestToken.value
+    ) {
       URL.revokeObjectURL(preview.objectUrl);
       return;
     }
@@ -1319,7 +1385,8 @@ async function loadSourceDocumentPreview(resume: CandidateResume) {
       return;
     }
 
-    sourcePreviewError.value = error instanceof Error ? error.message : "原件预览加载失败";
+    sourcePreviewError.value =
+      error instanceof Error ? error.message : "原件预览加载失败";
   } finally {
     if (requestToken === sourcePreviewRequestToken.value) {
       sourcePreviewLoading.value = false;
@@ -1456,15 +1523,15 @@ async function submitPrompt(input: { text: string; files: File[] }) {
 
 async function refreshSelectedConversationWorkflow() {
   if (!store.selectedId) {
-    return
+    return;
   }
 
-  await store.loadConversation(store.selectedId)
+  await store.loadConversation(store.selectedId);
 
   if (workspaceCandidateId.value) {
     await candidatesStore.fetchOne(workspaceCandidateId.value).catch(() => {
-      return undefined
-    })
+      return undefined;
+    });
   }
 }
 
@@ -1536,15 +1603,60 @@ function onPromptError(payload: { code: string; message: string }) {
 
 function buildFallbackPresetProviders(): PresetProvider[] {
   return [
-    { id: "openai", name: "OpenAI", icon: "OpenAI", baseURL: PRESET_PROVIDER_BASE_URLS.openai ?? "" },
-    { id: "anthropic", name: "Anthropic", icon: "Anthropic", baseURL: PRESET_PROVIDER_BASE_URLS.anthropic ?? "" },
-    { id: "minimax", name: "MiniMax", icon: "MiniMax", baseURL: PRESET_PROVIDER_BASE_URLS.minimax ?? "" },
-    { id: "moonshot", name: "Moonshot", icon: "Moonshot", baseURL: PRESET_PROVIDER_BASE_URLS.moonshot ?? "" },
-    { id: "deepseek", name: "DeepSeek", icon: "DeepSeek", baseURL: PRESET_PROVIDER_BASE_URLS.deepseek ?? "" },
-    { id: "gemini", name: "Google Gemini", icon: "Gemini", baseURL: PRESET_PROVIDER_BASE_URLS.gemini ?? "" },
-    { id: "siliconflow", name: "SiliconFlow", icon: "SiliconFlow", baseURL: PRESET_PROVIDER_BASE_URLS.siliconflow ?? "" },
-    { id: "openrouter", name: "OpenRouter", icon: "OpenRouter", baseURL: PRESET_PROVIDER_BASE_URLS.openrouter ?? "" },
-    { id: "grok", name: "Grok", icon: "Grok", baseURL: PRESET_PROVIDER_BASE_URLS.grok ?? "" },
+    {
+      id: "openai",
+      name: "OpenAI",
+      icon: "OpenAI",
+      baseURL: PRESET_PROVIDER_BASE_URLS.openai ?? "",
+    },
+    {
+      id: "anthropic",
+      name: "Anthropic",
+      icon: "Anthropic",
+      baseURL: PRESET_PROVIDER_BASE_URLS.anthropic ?? "",
+    },
+    {
+      id: "minimax",
+      name: "MiniMax",
+      icon: "MiniMax",
+      baseURL: PRESET_PROVIDER_BASE_URLS.minimax ?? "",
+    },
+    {
+      id: "moonshot",
+      name: "Moonshot",
+      icon: "Moonshot",
+      baseURL: PRESET_PROVIDER_BASE_URLS.moonshot ?? "",
+    },
+    {
+      id: "deepseek",
+      name: "DeepSeek",
+      icon: "DeepSeek",
+      baseURL: PRESET_PROVIDER_BASE_URLS.deepseek ?? "",
+    },
+    {
+      id: "gemini",
+      name: "Google Gemini",
+      icon: "Gemini",
+      baseURL: PRESET_PROVIDER_BASE_URLS.gemini ?? "",
+    },
+    {
+      id: "siliconflow",
+      name: "SiliconFlow",
+      icon: "SiliconFlow",
+      baseURL: PRESET_PROVIDER_BASE_URLS.siliconflow ?? "",
+    },
+    {
+      id: "openrouter",
+      name: "OpenRouter",
+      icon: "OpenRouter",
+      baseURL: PRESET_PROVIDER_BASE_URLS.openrouter ?? "",
+    },
+    {
+      id: "grok",
+      name: "Grok",
+      icon: "Grok",
+      baseURL: PRESET_PROVIDER_BASE_URLS.grok ?? "",
+    },
   ];
 }
 
@@ -1578,7 +1690,11 @@ function handleGatewaySetupDialogOpenChange(open: boolean) {
   gatewaySetupDialogOpen.value = open;
 }
 
-async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
+async function saveGatewaySetupFromDialog(payload: {
+  providerId: string;
+  apiKey: string;
+  modelId: string;
+}) {
   const endpoint = buildGatewayEndpointFromDialogPayload(payload);
   if (!endpoint) {
     return;
@@ -1609,8 +1725,14 @@ async function saveGatewaySetupFromDialog(payload: { providerId: string; apiKey:
   }
 }
 
-function buildGatewayEndpointFromDialogPayload(payload: { providerId: string; apiKey: string; modelId: string }): GatewayEndpoint | null {
-  const provider = presetProviders.value.find((item) => item.id === payload.providerId);
+function buildGatewayEndpointFromDialogPayload(payload: {
+  providerId: string;
+  apiKey: string;
+  modelId: string;
+}): GatewayEndpoint | null {
+  const provider = presetProviders.value.find(
+    (item) => item.id === payload.providerId,
+  );
   if (!provider) {
     notifyError("请选择模型厂商");
     return null;
@@ -1624,7 +1746,9 @@ function buildGatewayEndpointFromDialogPayload(payload: { providerId: string; ap
   }
 
   const selectedModelOption = modelId
-    ? gatewayModelOptions.value.find((item) => item.id === modelId && item.providerId === payload.providerId)
+    ? gatewayModelOptions.value.find(
+        (item) => item.id === modelId && item.providerId === payload.providerId,
+      )
     : null;
 
   return {
@@ -1635,11 +1759,17 @@ function buildGatewayEndpointFromDialogPayload(payload: { providerId: string; ap
     providerId: provider.id,
     apiKey,
     ...(modelId ? { modelId } : {}),
-    ...(selectedModelOption?.label ? { modelDisplayName: selectedModelOption.label } : {}),
+    ...(selectedModelOption?.label
+      ? { modelDisplayName: selectedModelOption.label }
+      : {}),
   };
 }
 
-async function testGatewaySetupFromDialog(payload: { providerId: string; apiKey: string; modelId: string }) {
+async function testGatewaySetupFromDialog(payload: {
+  providerId: string;
+  apiKey: string;
+  modelId: string;
+}) {
   const endpoint = buildGatewayEndpointFromDialogPayload(payload);
   if (!endpoint) {
     return;
@@ -1649,7 +1779,9 @@ async function testGatewaySetupFromDialog(payload: { providerId: string; apiKey:
   try {
     const result = await store.testCustomEndpoint(endpoint);
     if (result.modelCount > 0) {
-      notifySuccess(`连接成功，发现 ${result.providerCount} 个 Provider、${result.modelCount} 个模型`);
+      notifySuccess(
+        `连接成功，发现 ${result.providerCount} 个 Provider、${result.modelCount} 个模型`,
+      );
     } else {
       notifyWarning("连接成功，但当前端点未返回任何模型");
     }
@@ -1778,7 +1910,9 @@ async function replaceCandidateRoute(candidateId: string | null) {
   await router.replace({ path: "/lui", query: nextQuery });
 }
 
-async function replaceConversationRoute(conversation: { id: string; candidateId: string | null } | null) {
+async function replaceConversationRoute(
+  conversation: { id: string; candidateId: string | null } | null,
+) {
   const nextQuery = { ...route.query };
   if (conversation?.candidateId) {
     nextQuery.candidateId = conversation.candidateId;
@@ -1793,7 +1927,9 @@ async function replaceConversationRoute(conversation: { id: string; candidateId:
   await router.replace({ path: "/lui", query: nextQuery });
 }
 
-async function recoverFromMissingRouteConversation(candidateId: string | undefined) {
+async function recoverFromMissingRouteConversation(
+  candidateId: string | undefined,
+) {
   notifyWarning("指定会话不存在，已为你切换到可用工作区。", {
     title: "会话已失效",
     durationMs: 5000,
@@ -1805,9 +1941,10 @@ async function recoverFromMissingRouteConversation(candidateId: string | undefin
     return;
   }
 
-  const firstGenericConversation = store.conversations.find(
-    (conversation) => conversation.candidateId === null,
-  ) ?? null;
+  const firstGenericConversation =
+    store.conversations.find(
+      (conversation) => conversation.candidateId === null,
+    ) ?? null;
 
   if (firstGenericConversation) {
     await store.selectConversation(firstGenericConversation.id);
@@ -1866,7 +2003,9 @@ function buildGenericSuggestions(
       normalized.includes("interview") ||
       normalized.includes("问题")
     ) {
-      suggestions.push("请结合当前候选人情况，给我这一轮的 6 个面试题，并标注重点考察点与每题建议时长，总时长控制在 45 分钟内。");
+      suggestions.push(
+        "请结合当前候选人情况，给我这一轮的 6 个面试题，并标注重点考察点与每题建议时长，总时长控制在 45 分钟内。",
+      );
     }
 
     if (
@@ -1874,7 +2013,9 @@ function buildGenericSuggestions(
       normalized.includes("评价") ||
       normalized.includes("assessment")
     ) {
-      suggestions.push("我把本轮面试纪要贴给你，请按评估模板直接输出评分报告和微信复制文本。");
+      suggestions.push(
+        "我把本轮面试纪要贴给你，请按评估模板直接输出评分报告和微信复制文本。",
+      );
     }
 
     if (
@@ -1882,7 +2023,9 @@ function buildGenericSuggestions(
       normalized.includes("整理") ||
       normalized.includes("summary")
     ) {
-      suggestions.push("帮我梳理这位候选人的关键信息，整理成亮点、风险和待确认问题三部分。");
+      suggestions.push(
+        "帮我梳理这位候选人的关键信息，整理成亮点、风险和待确认问题三部分。",
+      );
     }
 
     if (
@@ -1890,7 +2033,9 @@ function buildGenericSuggestions(
       normalized.includes("计划") ||
       normalized.includes("outline")
     ) {
-      suggestions.push("请按当前目标帮我拆成三个下一步，并给出每一步的产出物。");
+      suggestions.push(
+        "请按当前目标帮我拆成三个下一步，并给出每一步的产出物。",
+      );
     }
 
     if (
@@ -1898,7 +2043,9 @@ function buildGenericSuggestions(
       normalized.includes("分析") ||
       normalized.includes("general")
     ) {
-      suggestions.push("请先分析我当前要处理的问题，再给我一个最省力的推进方案。");
+      suggestions.push(
+        "请先分析我当前要处理的问题，再给我一个最省力的推进方案。",
+      );
     }
   }
 
@@ -1954,12 +2101,12 @@ function shouldRenderMessageContent(message: UiMessageItem) {
 
 function resolveUiMessageStatus(message: LuiStoreMessage) {
   if (
-    message.role === "assistant"
-    && message.status === "streaming"
-    && message.content.trim().length === 0
-    && (message.reasoning?.trim().length ?? 0) === 0
-    && (message.tools?.length ?? 0) === 0
-    && Date.now() - message.createdAt.getTime() > STALE_STREAMING_MESSAGE_MS
+    message.role === "assistant" &&
+    message.status === "streaming" &&
+    message.content.trim().length === 0 &&
+    (message.reasoning?.trim().length ?? 0) === 0 &&
+    (message.tools?.length ?? 0) === 0 &&
+    Date.now() - message.createdAt.getTime() > STALE_STREAMING_MESSAGE_MS
   ) {
     return "error" as const;
   }
@@ -1992,21 +2139,23 @@ function shouldRenderWorkflowActionCard(message: UiMessageItem) {
     return true;
   }
 
-  const needsAssessmentNotes = workflow.currentStage === "S2" && !hasAssessmentArtifact;
+  const needsAssessmentNotes =
+    workflow.currentStage === "S2" && !hasAssessmentArtifact;
   const canAdvanceByWorkflowState = Boolean(
-    !needsAssessmentNotes
-    && workflow.currentStage !== "completed"
-    && workflow.recommendedNextStage
-    && workflow.recommendedNextStage !== workflow.currentStage,
+    !needsAssessmentNotes &&
+    workflow.currentStage !== "completed" &&
+    workflow.recommendedNextStage &&
+    workflow.recommendedNextStage !== workflow.currentStage,
   );
   if (canAdvanceByWorkflowState) {
     return true;
   }
 
   if (
-    workflow.currentStage === "S2"
-    && workflow.availableNextStages.length > 0
-    && (message.workflowAction === "advance-stage" || message.workflowAction === "complete-workflow")
+    workflow.currentStage === "S2" &&
+    workflow.availableNextStages.length > 0 &&
+    (message.workflowAction === "advance-stage" ||
+      message.workflowAction === "complete-workflow")
   ) {
     return true;
   }
@@ -2017,9 +2166,9 @@ function shouldRenderWorkflowActionCard(message: UiMessageItem) {
 
   if (message.workflowAction === "advance-stage") {
     return Boolean(
-      workflow.recommendedNextStage
-      && workflow.recommendedNextStage !== "completed"
-      && !workflow.requiresRoundConfirmation,
+      workflow.recommendedNextStage &&
+      workflow.recommendedNextStage !== "completed" &&
+      !workflow.requiresRoundConfirmation,
     );
   }
 
@@ -2157,11 +2306,11 @@ function resolveToolStatus(tool: unknown) {
   }
 
   if (
-    rawStatus.includes("output")
-    || rawStatus.includes("result")
-    || rawStatus.includes("complete")
-    || candidate.output
-    || candidate.result
+    rawStatus.includes("output") ||
+    rawStatus.includes("result") ||
+    rawStatus.includes("complete") ||
+    candidate.output ||
+    candidate.result
   ) {
     return "output-available" as const;
   }
@@ -2175,7 +2324,10 @@ function sanitizeMessageContent(content: string | null | undefined): string {
   }
 
   let sanitized = content;
-  sanitized = sanitized.replace(/<function_calls>[\s\S]*?<\/function_calls>/g, "");
+  sanitized = sanitized.replace(
+    /<function_calls>[\s\S]*?<\/function_calls>/g,
+    "",
+  );
   sanitized = sanitized.replace(/<function_calls>[\s\S]*$/g, "");
   sanitized = sanitized.replace(/<\/function_calls>/g, "");
   sanitized = sanitized.replace(/\n{3,}/g, "\n\n");
@@ -2193,7 +2345,10 @@ onMounted(async () => {
     try {
       await store.selectConversation(explicitRouteConversationId.value);
     } catch (error) {
-      if (!(error instanceof ApiError) || (error.status !== 404 && error.code !== "NOT_FOUND")) {
+      if (
+        !(error instanceof ApiError) ||
+        (error.status !== 404 && error.code !== "NOT_FOUND")
+      ) {
         throw error;
       }
     }

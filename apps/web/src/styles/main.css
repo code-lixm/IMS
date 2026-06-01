@@ -84,6 +84,21 @@
     @apply bg-background text-foreground antialiased;
   }
 
+  button:not(:disabled),
+  a[href],
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  [data-radix-collection-item]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: default;
+  }
+
   *::-webkit-scrollbar {
     width: 8px;
     height: 8px;

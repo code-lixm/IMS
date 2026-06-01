@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-center gap-2 rounded-[8px] border border-[#E0E9F3] bg-white px-1 py-1 dark:border-white/10 dark:bg-white/6">
+  <div class="flex items-center gap-1 rounded-[6px] border border-transparent bg-[#F8FAFD] px-1 py-0 dark:bg-white/8">
     <div
       role="button"
       tabindex="0"
@@ -19,7 +19,7 @@
       <DropdownMenuTrigger as-child>
         <button
           type="button"
-          class="relative flex h-8 w-8 items-center justify-center rounded-[6px] border border-transparent bg-transparent text-sm font-semibold text-[#0062FF] transition-colors hover:bg-[#EEF4FF] dark:border-transparent dark:bg-transparent dark:text-primary-foreground dark:hover:bg-primary/30"
+          class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-[6px] border border-transparent bg-transparent text-sm font-semibold text-[#0062FF] transition-colors hover:bg-[#EEF4FF] dark:border-transparent dark:bg-transparent dark:text-primary-foreground dark:hover:bg-primary/30"
         >
           <img
             v-if="userAvatarUrl"

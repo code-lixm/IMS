@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import type { MatchingTemplate, ScreeningTemplateGroupDetailData, ScreeningTemplateGroupListItem } from "@ims/shared";
+import type {
+  MatchingTemplate,
+  ScreeningTemplateGroupDetailData,
+  ScreeningTemplateGroupListItem,
+} from "@ims/shared";
 import { useRoute } from "vue-router";
 import { screeningTemplatesApi } from "@/api/screening-templates";
 import AppPageShell from "@/components/layout/app-page-shell.vue";
@@ -18,8 +22,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import TemplateGroupFormDialog from "@/components/import/template-group-form-dialog.vue";
 import {
   Boxes,
-  Clock3,
-  FileText,
   Pencil,
   Plus,
   SlidersHorizontal,
@@ -31,7 +33,9 @@ const GROUP_CARD_ID_PREFIX = "screening-template-group-card-";
 
 const groups = ref<ScreeningTemplateGroupListItem[]>([]);
 const templates = ref<MatchingTemplate[]>([]);
-const groupDetails = ref<Record<string, ScreeningTemplateGroupDetailData | null>>({});
+const groupDetails = ref<
+  Record<string, ScreeningTemplateGroupDetailData | null>
+>({});
 const loading = ref(false);
 const dialogLoading = ref(false);
 const dialogOpen = ref(false);
@@ -40,10 +44,19 @@ const editingGroup = ref<ScreeningTemplateGroupDetailData | null>(null);
 const route = useRoute();
 
 const hasGroups = computed(() => groups.value.length > 0);
-const templateNameMap = computed(() => new Map(templates.value.map((template) => [template.id, template.name])));
-const focusedTemplateId = computed(() => (typeof route.query.templateId === "string" ? route.query.templateId : null));
-const focusedGroupId = computed(() => (typeof route.query.groupId === "string" ? route.query.groupId : null));
-const hasFocusContext = computed(() => Boolean(focusedTemplateId.value || focusedGroupId.value));
+const templateNameMap = computed(
+  () =>
+    new Map(templates.value.map((template) => [template.id, template.name])),
+);
+const focusedTemplateId = computed(() =>
+  typeof route.query.templateId === "string" ? route.query.templateId : null,
+);
+const focusedGroupId = computed(() =>
+  typeof route.query.groupId === "string" ? route.query.groupId : null,
+);
+const hasFocusContext = computed(() =>
+  Boolean(focusedTemplateId.value || focusedGroupId.value),
+);
 const focusedTemplateName = computed(() => {
   if (!focusedTemplateId.value) {
     return "";
@@ -54,14 +67,22 @@ const focusedTemplateName = computed(() => {
 const groupCards = computed(() => {
   const cards = groups.value.map((group) => {
     const detail = groupDetails.value[group.id] ?? null;
-    const templateNames = detail?.templates.map((template) => template.name) ?? [];
+    const templateNames =
+      detail?.templates.map((template) => template.name) ?? [];
     const visibleTemplateNames = templateNames.slice(0, TEMPLATE_PREVIEW_LIMIT);
     const description = group.description?.trim() ?? "";
-    const matchesTemplateFocus = !focusedTemplateId.value
-      || Boolean(detail?.templates.some((template) => template.id === focusedTemplateId.value))
-      || group.defaultTemplateId === focusedTemplateId.value;
-    const matchesGroupFocus = !focusedGroupId.value || group.id === focusedGroupId.value;
-    const matchesFocusContext = hasFocusContext.value && matchesTemplateFocus && matchesGroupFocus;
+    const matchesTemplateFocus =
+      !focusedTemplateId.value ||
+      Boolean(
+        detail?.templates.some(
+          (template) => template.id === focusedTemplateId.value,
+        ),
+      ) ||
+      group.defaultTemplateId === focusedTemplateId.value;
+    const matchesGroupFocus =
+      !focusedGroupId.value || group.id === focusedGroupId.value;
+    const matchesFocusContext =
+      hasFocusContext.value && matchesTemplateFocus && matchesGroupFocus;
 
     return {
       group,
@@ -70,11 +91,18 @@ const groupCards = computed(() => {
       hasDefaultTemplate: Boolean(group.defaultTemplateId),
       defaultTemplateName: resolveDefaultTemplateName(group, detail),
       visibleTemplateNames,
-      hiddenTemplateCount: Math.max(templateNames.length - visibleTemplateNames.length, 0),
-      reviewRangeLabel: formatReviewRange(group.reviewThreshold, group.passThreshold),
+      hiddenTemplateCount: Math.max(
+        templateNames.length - visibleTemplateNames.length,
+        0,
+      ),
+      reviewRangeLabel: formatReviewRange(
+        group.reviewThreshold,
+        group.passThreshold,
+      ),
       rejectRangeLabel: formatRejectRange(group.reviewThreshold),
       matchesFocusContext,
-      focusBadgeLabel: focusedGroupId.value === group.id ? "当前定位" : "关联分组",
+      focusBadgeLabel:
+        focusedGroupId.value === group.id ? "当前定位" : "关联分组",
     };
   });
 
@@ -82,9 +110,14 @@ const groupCards = computed(() => {
     return cards;
   }
 
-  return [...cards].sort((left, right) => Number(right.matchesFocusContext) - Number(left.matchesFocusContext));
+  return [...cards].sort(
+    (left, right) =>
+      Number(right.matchesFocusContext) - Number(left.matchesFocusContext),
+  );
 });
-const focusedGroupCount = computed(() => groupCards.value.filter((card) => card.matchesFocusContext).length);
+const focusedGroupCount = computed(
+  () => groupCards.value.filter((card) => card.matchesFocusContext).length,
+);
 const focusSummary = computed(() => {
   if (!hasFocusContext.value) {
     return "";
@@ -155,14 +188,21 @@ async function loadData() {
     groups.value = groupData.items;
     templates.value = templateData.items;
 
-    const nextGroupDetails: Record<string, ScreeningTemplateGroupDetailData | null> = {};
-    await Promise.all(groupData.items.map(async (group) => {
-      try {
-        nextGroupDetails[group.id] = await screeningTemplatesApi.getGroup(group.id);
-      } catch {
-        nextGroupDetails[group.id] = null;
-      }
-    }));
+    const nextGroupDetails: Record<
+      string,
+      ScreeningTemplateGroupDetailData | null
+    > = {};
+    await Promise.all(
+      groupData.items.map(async (group) => {
+        try {
+          nextGroupDetails[group.id] = await screeningTemplatesApi.getGroup(
+            group.id,
+          );
+        } catch {
+          nextGroupDetails[group.id] = null;
+        }
+      }),
+    );
     groupDetails.value = nextGroupDetails;
   } catch (err) {
     groups.value = [];
@@ -255,7 +295,9 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
     </AppPageHeader>
 
     <AppPageContent class="relative z-[1] space-y-6 px-4 py-4 lg:px-16">
-      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div
+        class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
+      >
         <div class="space-y-2">
           <h1 class="text-xl font-semibold tracking-tight">筛选模板组管理</h1>
           <p class="text-sm text-muted-foreground">
@@ -272,9 +314,13 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
       </div>
 
       <Card v-if="hasFocusContext" class="border-primary/20 bg-primary/5 p-4">
-        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div
+          class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+        >
           <div class="space-y-1">
-            <p class="text-sm font-medium text-foreground">已从模板引用跳转到分组管理</p>
+            <p class="text-sm font-medium text-foreground">
+              已从模板引用跳转到分组管理
+            </p>
             <p class="text-xs text-muted-foreground">
               {{ focusSummary }}
             </p>
@@ -316,43 +362,49 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
           :id="`${GROUP_CARD_ID_PREFIX}${card.group.id}`"
           :class="[
             'overflow-hidden border-border/70 shadow-sm transition-colors',
-            card.matchesFocusContext ? 'border-primary/40 ring-2 ring-primary/15 bg-primary/[0.03]' : '',
+            card.matchesFocusContext
+              ? 'border-primary/40 ring-2 ring-primary/15 bg-primary/[0.03]'
+              : '',
           ]"
         >
           <div class="space-y-4 p-5">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div
+              class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
+            >
               <div class="min-w-0 flex-1 space-y-3">
                 <div class="space-y-2">
                   <div class="flex flex-wrap items-center gap-2">
-                    <h3 class="text-base font-semibold">{{ card.group.name }}</h3>
-                    <Badge v-if="card.matchesFocusContext" variant="default">{{ card.focusBadgeLabel }}</Badge>
-                    <Badge variant="secondary">模板组 · {{ card.group.templateCount }} 个模板</Badge>
-                    <Badge :variant="card.hasDefaultTemplate ? 'outline' : 'secondary'">
-                      {{ card.hasDefaultTemplate ? "已设默认模板" : "未设默认模板" }}
-                    </Badge>
-                    <Badge v-if="card.group.learningEnabled" variant="outline">学习反馈已启用</Badge>
+                    <h3 class="text-base font-semibold">
+                      {{ card.group.name }}
+                    </h3>
+                    <Badge v-if="card.matchesFocusContext" variant="default">{{
+                      card.focusBadgeLabel
+                    }}</Badge>
+                    <Badge variant="secondary"
+                      >{{ card.group.templateCount }} 个模板</Badge
+                    >
                   </div>
 
                   <p
-                    class="text-sm"
-                    :class="card.hasDescription ? 'text-muted-foreground' : 'text-muted-foreground/80'"
+                    v-if="card.hasDescription"
+                    class="line-clamp-1 text-sm text-muted-foreground"
                   >
-                    {{ card.hasDescription ? card.description : "未填写分组说明" }}
+                    {{ card.description }}
                   </p>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>默认模板：{{ card.defaultTemplateName }}</span>
+                <div
+                  class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+                >
+                  <span>{{ card.defaultTemplateName }}</span>
                   <span>·</span>
-                  <span>通过 ≥ {{ card.group.passThreshold }}</span>
+                  <span>≥ {{ card.group.passThreshold }} 通过</span>
                   <span>·</span>
-                  <span>待定从 {{ card.group.reviewThreshold }} 分起</span>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>创建于 {{ formatDate(card.group.createdAt) }}</span>
-                  <span>·</span>
-                  <span>更新于 {{ formatDate(card.group.updatedAt) }}</span>
+                  <span>{{ card.reviewRangeLabel }} 待定</span>
+                  <template v-if="card.group.learningEnabled">
+                    <span>·</span>
+                    <span>学习反馈开启</span>
+                  </template>
                 </div>
               </div>
 
@@ -382,29 +434,48 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
               </div>
             </div>
 
-            <div class="grid gap-0 overflow-hidden rounded-lg border border-border/60 bg-muted/[0.18] divide-y divide-border/60 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)_minmax(0,1.05fr)] xl:divide-x xl:divide-y-0">
-              <div class="p-4">
-                <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <div
+              class="grid gap-0 overflow-hidden rounded-lg border border-border/60 bg-muted/[0.14] lg:grid-cols-[minmax(0,1.6fr)_minmax(240px,0.85fr)]"
+            >
+              <div class="p-4 lg:border-r lg:border-border/60">
+                <div
+                  class="mb-3 flex items-center gap-2 text-xs text-muted-foreground"
+                >
                   <Boxes class="h-3.5 w-3.5" />
-                  <span>三列内容区 · 分组内模板</span>
+                  <span>模板配置</span>
                 </div>
 
-                <div v-if="card.visibleTemplateNames.length > 0" class="space-y-3">
-                  <div class="flex flex-wrap gap-2">
-                    <Badge
+                <div
+                  v-if="card.visibleTemplateNames.length > 0"
+                  class="space-y-3"
+                >
+                  <div class="space-y-1.5">
+                    <div
                       v-for="templateName in card.visibleTemplateNames"
                       :key="templateName"
-                      variant="outline"
-                      class="max-w-full truncate"
+                      class="flex items-center justify-between gap-3 py-1"
                     >
-                      {{ templateName }}
-                    </Badge>
-                    <Badge v-if="card.hiddenTemplateCount > 0" variant="secondary">
-                      +{{ card.hiddenTemplateCount }} 个
-                    </Badge>
+                      <span class="min-w-0 truncate text-sm text-foreground">{{
+                        templateName
+                      }}</span>
+                      <Badge
+                        v-if="
+                          templateName === card.defaultTemplateName &&
+                          card.hasDefaultTemplate
+                        "
+                        variant="outline"
+                        >默认</Badge
+                      >
+                    </div>
+                    <div
+                      v-if="card.hiddenTemplateCount > 0"
+                      class="text-xs text-muted-foreground"
+                    >
+                      另外还有 {{ card.hiddenTemplateCount }} 个模板
+                    </div>
                   </div>
                   <p class="text-xs text-muted-foreground">
-                    导入页会在这组模板里提供候选项，并按默认模板决定初始选择。
+                    导入页选择该分组时，会优先使用默认模板与当前阈值。
                   </p>
                 </div>
 
@@ -414,48 +485,44 @@ watch([focusedTemplateId, focusedGroupId, loading], () => {
               </div>
 
               <div class="p-4">
-                <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-                  <FileText class="h-3.5 w-3.5" />
-                  <span>三列内容区 · 默认模板</span>
-                </div>
-
-                <div class="space-y-2">
-                  <p class="text-sm font-medium text-foreground">
-                    {{ card.defaultTemplateName }}
-                  </p>
-                  <p class="text-xs text-muted-foreground">
-                    {{ card.hasDefaultTemplate ? "导入页选择该分组时会优先预选这份模板。" : "未设置时，导入页只展示模板集合，不主动预选。" }}
-                  </p>
-                </div>
-              </div>
-
-              <div class="p-4">
-                <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                <div
+                  class="mb-3 flex items-center gap-2 text-xs text-muted-foreground"
+                >
                   <SlidersHorizontal class="h-3.5 w-3.5" />
-                  <span>三列内容区 · 阈值策略</span>
+                  <span>阈值策略</span>
                 </div>
 
-                <dl class="space-y-2 text-sm">
-                  <div class="flex items-center justify-between gap-3">
+                <dl class="flex flex-wrap gap-x-4 gap-y-2 text-sm lg:block lg:space-y-2">
+                  <div class="flex items-center gap-1.5 lg:justify-between">
                     <dt class="text-muted-foreground">通过</dt>
-                    <dd class="font-medium text-foreground">≥ {{ card.group.passThreshold }} 分</dd>
+                    <dd class="font-medium text-foreground">
+                      ≥ {{ card.group.passThreshold }} 分
+                    </dd>
                   </div>
-                  <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-center gap-1.5 lg:justify-between">
                     <dt class="text-muted-foreground">待定</dt>
-                    <dd class="font-medium text-foreground">{{ card.reviewRangeLabel }}</dd>
+                    <dd class="font-medium text-foreground">
+                      {{ card.reviewRangeLabel }}
+                    </dd>
                   </div>
-                  <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-center gap-1.5 lg:justify-between">
                     <dt class="text-muted-foreground">不通过</dt>
-                    <dd class="font-medium text-foreground">{{ card.rejectRangeLabel }}</dd>
+                    <dd class="font-medium text-foreground">
+                      {{ card.rejectRangeLabel }}
+                    </dd>
                   </div>
                 </dl>
+
+                <div
+                  class="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground"
+                >
+                  <span>创建于 {{ formatDate(card.group.createdAt) }}</span>
+                  <span class="mx-1.5">·</span>
+                  <span>更新于 {{ formatDate(card.group.updatedAt) }}</span>
+                </div>
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Clock3 class="h-3.5 w-3.5" />
-              <span>这个页面只负责维护模板组组合关系；模板正文仍在模板管理页编辑。</span>
-            </div>
           </div>
         </Card>
       </div>

@@ -1,6 +1,6 @@
 {
   "name": "ims",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "private": true,
   "scripts": {
     "dev:ui": "pnpm --filter @ims/web dev",

@@ -4,10 +4,10 @@
       v-if="!currentCandidate"
       variant="ghost"
       size="sm"
-      class="h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 dark:text-slate-300 dark:hover:bg-white/8 dark:hover:text-slate-100"
+      class="h-8 gap-1.5 rounded-[6px] bg-[#F8FAFD] px-2.5 text-xs font-semibold text-[#4B5563] shadow-none hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/14 dark:hover:text-white"
       @click="open = !open"
     >
-      <User class="h-3.5 w-3.5" />
+      <User class="h-4 w-4" />
       关联候选人
     </Button>
 
@@ -15,27 +15,27 @@
       <Button
         variant="outline"
         size="sm"
-        class="h-8 max-w-[16rem] rounded-md gap-1 border-border/60 bg-background px-1.5 text-xs font-medium leading-none text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground dark:border-white/10 dark:bg-white/8 dark:text-slate-100 dark:hover:bg-white/14"
+        class="h-8 max-w-[16rem] gap-1.5 rounded-[6px] border-transparent bg-[#F8FAFD] px-2.5 text-xs font-semibold leading-none text-[#4B5563] shadow-none hover:bg-[#EEF4FF] hover:text-[#0062FF] dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/14 dark:hover:text-white"
         @click="open = true"
       >
-        <User class="h-3.5 w-3.5" />
+        <User class="h-4 w-4" />
         <span
           class="hidden max-w-[11rem] truncate sm:inline"
           :title="currentCandidate?.name"
         >
           {{ currentCandidate?.name ?? "候选人" }}
         </span>
-        <ChevronsUpDown class="ml-auto h-3.5 w-3.5 opacity-70" />
+        <ChevronsUpDown class="ml-auto h-3.5 w-3.5 opacity-60" />
       </Button>
     </div>
 
     <Dialog
       v-model:open="open"
-      content-class="sm:max-w-lg max-h-[85vh] overflow-hidden rounded-[8px] border-0 bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)] dark:border-white/10 dark:bg-[#132237] dark:shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
+      content-class="candidate-selector-dialog w-[min(92vw,980px)] max-w-[980px] max-h-[88vh] overflow-hidden rounded-[16px] border border-[#E0E9F3] bg-[#F8FAFD] p-0 shadow-[0_14px_32px_-18px_rgba(15,23,42,0.35)] dark:border-white/10 dark:bg-[#132237] dark:shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
     >
       <template #content>
-        <AppDialogLayout body-class="space-y-4">
-          <div class="relative">
+        <AppDialogLayout body-class="space-y-4 pt-8 sm:pt-9">
+          <div class="relative pr-10">
             <Search
               class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
             />
@@ -47,7 +47,7 @@
             />
           </div>
 
-          <ScrollArea class="h-64 rounded-[6px] bg-white dark:bg-white/6">
+          <ScrollArea class="h-[420px] rounded-[8px] bg-white dark:bg-white/6">
             <div v-if="isLoading" class="flex items-center justify-center py-8">
               <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -60,35 +60,49 @@
               <p>{{ searchQuery ? "未找到匹配的候选人" : "暂无候选人" }}</p>
             </div>
 
-            <ul v-else class="space-y-1 p-1">
-              <li v-for="candidate in candidates" :key="candidate.id">
+            <ul v-else class="grid grid-cols-1 gap-3 p-3 md:grid-cols-2">
+              <li
+                v-for="candidate in candidates"
+                :key="candidate.id"
+                :data-candidate-id="candidate.id"
+              >
                 <div
-                  class="rounded-md px-2 py-2 transition-colors"
-                  :class="selectedId === candidate.id ? 'bg-accent/70 dark:bg-white/12' : 'hover:bg-accent/50 dark:hover:bg-white/8'"
+                  class="h-full rounded-[8px] border border-transparent bg-[#F8FAFD] px-3 py-3 transition-all duration-150"
+                  :class="selectedId === candidate.id ? 'border-[#1E40AF] bg-[#F2F7FF] ring-1 ring-[#1E40AF]/16 dark:border-[#93B4FF] dark:bg-[#142B4A] dark:ring-[#93B4FF]/20' : 'hover:border-[#E0E9F3] hover:bg-[#F9FAFB] dark:hover:bg-white/8'"
                 >
                   <button
                     type="button"
-                    class="flex w-full items-start gap-3 rounded-md px-1 py-0.5 text-left text-sm"
-                    @click="handleSelect(candidate)"
+                    class="flex w-full items-start text-left text-sm"
+                    :aria-pressed="selectedId === candidate.id"
+                    @click="handleSelect(candidate, true)"
                   >
-                    <div class="flex min-w-0 flex-1 flex-col">
-                      <span class="truncate font-medium">{{ candidate.name }}</span>
+                    <div class="flex min-w-0 flex-1 flex-col gap-1">
+                      <div class="flex items-start justify-between gap-3">
+                        <span class="truncate text-[15px] font-semibold text-[#1A1A1A] dark:text-slate-100">{{ candidate.name }}</span>
+                        <Badge
+                          v-if="candidate.tags?.length"
+                          variant="secondary"
+                          class="shrink-0 text-xs"
+                        >
+                          {{ candidate.tags[0] }}
+                        </Badge>
+                      </div>
                       <span
                         v-if="candidate.applyPositionName ?? candidate.position"
-                        class="text-xs text-muted-foreground"
+                        class="text-xs text-[#4B5563] dark:text-slate-300"
                       >
                         {{ candidate.applyPositionName ?? candidate.position }}
                       </span>
-                      <div class="mt-1 space-y-1 text-[11px] leading-4">
+                      <div class="mt-1 space-y-1 text-[12px] leading-5">
                         <p
                           v-if="candidate.interviewTime"
-                          class="text-muted-foreground"
+                          class="text-[#6B7280] dark:text-slate-400"
                         >
                           {{ formatInterviewTime(candidate.interviewTime) }} 开始
                         </p>
                         <p
                           v-if="compactInterviewLocationText(candidate)"
-                          class="truncate text-muted-foreground"
+                          class="truncate text-[#6B7280] dark:text-slate-400"
                           :title="compactInterviewLocationText(candidate)"
                         >
                           {{ compactInterviewLocationText(candidate) }}
@@ -107,13 +121,6 @@
                         </a>
                       </div>
                     </div>
-                    <Badge
-                      v-if="candidate.tags?.length"
-                      variant="secondary"
-                      class="text-xs"
-                    >
-                      {{ candidate.tags[0] }}
-                    </Badge>
                   </button>
                 </div>
               </li>
@@ -131,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { ChevronsUpDown, ExternalLink, Loader2, Search, User } from "lucide-vue-next";
 import { candidatesApi } from "@/api/candidates";
 import { useAppNotifications } from "@/composables/use-app-notifications";
@@ -188,6 +195,9 @@ watch(
 watch(open, async (isOpen) => {
   if (isOpen && candidates.value.length === 0 && !searchQuery.value) {
     await loadAllCandidates();
+    syncSelectionAndScroll();
+  } else if (isOpen) {
+    syncSelectionAndScroll();
   }
 });
 
@@ -215,6 +225,7 @@ async function loadAllCandidates() {
     candidates.value = [];
   } finally {
     isLoading.value = false;
+    syncSelectionAndScroll();
   }
 }
 
@@ -277,11 +288,15 @@ async function searchCandidates() {
     candidates.value = [];
   } finally {
     isLoading.value = false;
+    syncSelectionAndScroll();
   }
 }
 
-function handleSelect(candidate: CandidateInfo) {
+function handleSelect(candidate: CandidateInfo, shouldScroll = false) {
   selectedId.value = candidate.id;
+  if (shouldScroll) {
+    syncSelectionAndScroll();
+  }
 }
 
 function handleConfirm() {
@@ -368,4 +383,25 @@ function meetingLinkTitle(candidate: CandidateInfo) {
 
   return "点击打开面试会议";
 }
+
+function syncSelectionAndScroll() {
+  const targetId = selectedId.value ?? currentCandidate.value?.id ?? props.modelValue ?? null;
+  if (!targetId) return;
+
+  if (!candidates.value.some((candidate) => candidate.id === targetId)) return;
+
+  selectedId.value = targetId;
+
+  void nextTick(() => {
+    const target = document.querySelector<HTMLElement>(`[data-candidate-id="${targetId}"]`);
+    target?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  });
+}
 </script>
+
+<style scoped>
+:deep(.candidate-selector-dialog > button[aria-label="Close"]) {
+  top: 18px;
+  right: 18px;
+}
+</style>

@@ -50,7 +50,7 @@
           >
             <button
               type="button"
-              class="conversation-action-button flex h-7 w-7 items-center justify-center rounded-[6px] border border-transparent text-[#9CA3AF] transition-colors hover:border-[#CFE0FF] hover:bg-white hover:text-[#0062FF] dark:text-slate-400 dark:hover:border-white/10 dark:hover:bg-white/10 dark:hover:text-slate-200"
+              class="conversation-action-button flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#F8FAFD] text-[#9CA3AF] transition-colors hover:bg-[#EEF4FF] hover:text-[#0062FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#CFE0FF] dark:bg-white/8 dark:text-slate-400 dark:hover:bg-white/12 dark:hover:text-slate-200 dark:focus-visible:ring-white/15"
               @click.stop="openRename(conversation)"
               title="重命名会话"
             >
@@ -59,7 +59,7 @@
             </button>
             <button
               type="button"
-              class="conversation-action-button flex h-7 w-7 items-center justify-center rounded-[6px] border border-transparent text-[#9CA3AF] transition-colors hover:border-red-100 hover:bg-white hover:text-[#E7000B] dark:text-slate-400 dark:hover:border-red-500/20 dark:hover:bg-red-500/15 dark:hover:text-red-200"
+              class="conversation-action-button flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#F8FAFD] text-[#9CA3AF] transition-colors hover:bg-[#EEF4FF] hover:text-[#0062FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#CFE0FF] dark:bg-white/8 dark:text-slate-400 dark:hover:bg-white/12 dark:hover:text-slate-200 dark:focus-visible:ring-white/15"
               @click.stop="handleDelete(conversation.id)"
               title="删除会话"
             >

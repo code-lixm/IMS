@@ -62,7 +62,7 @@ onMounted(() => {
   <div>
     <button
       type="button"
-      class="relative flex h-8 w-8 items-center justify-center rounded-[6px] border transition-colors"
+      class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-[6px] border transition-colors"
       :class="buttonStateClass"
       :aria-label="buttonLabel"
       :aria-pressed="recorderStore.panelOpen"
